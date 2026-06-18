@@ -1,0 +1,18 @@
+# Identifiants et secrets — ne jamais versionner
+config.secret.php
+.env
+.env.*
+*.local.php
+
+# Config éditeur — .vscode/sftp.json contient le mot de passe SFTP en clair
+.vscode/
+
+# Anciens fichiers d'identifiants
+BDD.txt
+
+# Dossier d'uploads (photos des membres)
+uploads/
+
+# Logs
+*.log
+error_log

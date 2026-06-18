@@ -1,0 +1,15 @@
+# Touba Lyon 2026 - Protections au niveau du serveur (Apache)
+
+# Empêcher le listage des répertoires
+Options -Indexes
+
+# Bloquer l'accès direct aux fichiers sensibles (config, secrets, includes, logs)
+<FilesMatch "(^\.|config\.secret\.php|db_config\.php|db_setup\.php|admin_guard\.php|\.env|\.log|\.txt|\.md)$">
+    Require all denied
+</FilesMatch>
+
+# Bloquer l'accès direct aux scripts de maintenance / génération de données.
+# (Ils sont aussi protégés par authentification admin dans le code — défense en profondeur.)
+<FilesMatch "^(db_update|generate_mock_data|generate_50_senegalais)\.php$">
+    Require all denied
+</FilesMatch>
