@@ -170,7 +170,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Clôturer un Dahira passé (ou du jour), nombre de participants = présences validées
         elseif ($action === 'cloture') {
             $id = (int) ($_POST['id'] ?? 0);
-            $nb = trim($_POST['nb_participants'] ?? '');
             if ($id > 0) {
                 try {
                     $st = $pdo->prepare("SELECT date_dahira, a_dahira FROM dahira_plannings WHERE id = ?");
@@ -183,19 +182,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } elseif ($row['date_dahira'] > date('Y-m-d')) {
                         $error = "Impossible de clôturer : le Dahira n'a pas encore eu lieu.";
                     } else {
-                        // Si le champ est vide : nombre = présences validées par les membres
-                        if ($nb === '') {
-                            try {
-                                $stP = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'dahira' AND planning_id = ?");
-                                $stP->execute([$id]);
-                                $nb = (string) $stP->fetchColumn();
-                            } catch (Exception $e) {
-                                $nb = '';
-                            }
+                        // Nombre de participants = présences validées par les membres
+                        $nb = 0;
+                        try {
+                            $stP = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'dahira' AND planning_id = ?");
+                            $stP->execute([$id]);
+                            $nb = (int) $stP->fetchColumn();
+                        } catch (Exception $e) {
+                            $nb = 0;
                         }
                         $pdo->prepare("UPDATE dahira_plannings SET cloture = 1, nb_participants = ?, updated_at = NOW() WHERE id = ?")
-                            ->execute([$nb !== '' ? (int) $nb : null, $id]);
-                        $success = "Dahira clôturé." . ($nb !== '' ? " Participants : $nb." : "");
+                            ->execute([$nb > 0 ? $nb : null, $id]);
+                        $success = "Dahira clôturé." . ($nb > 0 ? " Participants : $nb." : "");
                     }
                 } catch (Exception $e) {
                     error_log('Touba Lyon planning - clôture : ' . $e->getMessage());
@@ -393,10 +391,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
 
             <div class="admin-content">
                 <h1 class="admin-page-title">📅 Planning Hebdomadaire du Dahira</h1>
-                <p class="admin-page-desc" style="color:var(--text-muted); margin-top:-0.4rem; font-size:0.9rem;">
-                    Commission Secrétariat Général — un Dahira a lieu un dimanche sur deux.
-                    <?php echo $commissionId > 0 ? '' : '<span style="color:#ffd873;">(Aucune commission « Secrétariat Général » trouvée : les annonces iront à tous les membres validés.)</span>'; ?>
-                </p>
+                <div style="height:0.6rem;"></div>
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
                 <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
@@ -476,6 +471,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                                     </button>
                                 </form>
                                 <a href="planning_dahira_image.php?id=<?php echo (int)$prochain['id']; ?>" target="_blank" class="btn btn-secondary btn-sm" style="width:100%; text-align:center; border-color:var(--accent); color:var(--accent);">🖼️ Voir l'image du programme</a>
+                                <a href="dahira_detail.php?id=<?php echo (int)$prochain['id']; ?>" class="btn btn-secondary btn-sm" style="width:100%; text-align:center; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
                             </div>
                         </div>
                         <!-- Zone de saisie du programme du prochain Dahira -->
@@ -614,19 +610,52 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                 <details class="glass-card" style="margin-bottom:1.5rem;">
                     <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">📅 Dimanches planifiés (<?php echo count($plannings); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
                     <div style="margin-top:0.9rem;">
-                    <?php if (empty($plannings)): ?>
-                        <p style="color:var(--text-muted); text-align:center; padding:2rem 0;">Aucun dimanche planifié. Utilisez le générateur ci-dessus.</p>
+                    <!-- À venir -->
+                    <?php if (empty($planningsAvenir)): ?>
+                        <p style="color:var(--text-muted); text-align:center; padding:1rem 0;">Aucun dimanche à venir. Utilisez le générateur ci-dessus.</p>
                     <?php else: ?>
+                    <h4 style="color:var(--accent); font-size:0.9rem; margin:0.5rem 0 0.75rem;">🕌 À venir (<?php echo count($planningsAvenir); ?>)</h4>
                     <div class="pl-grid">
-                        <?php foreach ($plannings as $p):
+                        <?php foreach ($planningsAvenir as $p):
                             $d = $p['date_dahira'];
                             $aDahira = ((int) ($p['a_dahira'] ?? 1)) === 1;
-                            $isPast = $d < date('Y-m-d');
                         ?>
                         <div class="glass-card pl-card" style="<?php echo $aDahira ? 'border-left:3px solid var(--accent);' : 'opacity:0.85; border-left:3px solid rgba(255,255,255,0.25);'; ?>">
                             <div class="pl-date">
                                 <?php echo ucfirst(dahira_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
-                                <?php if ($isPast): ?><small>· passé</small><?php endif; ?>
+                            </div>
+                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                                <span>
+                                <?php if ($aDahira): ?>
+                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">🕌 Dahira</span>
+                                <?php else: ?>
+                                    <span class="pl-badge" style="font-size:0.75rem; padding:0.25rem 0.6rem; background:rgba(255,255,255,0.07); color:var(--text-muted); border:1px solid var(--glass-border);">🚫 Pas Dahira</span>
+                                <?php endif; ?>
+                                </span>
+                                <form action="admin_planning.php" method="POST" style="margin:0;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="toggle_dahira">
+                                    <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem;"><?php echo $aDahira ? '→ Pas Dahira' : '→ Dahira'; ?></button>
+                                </form>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+
+                    <!-- Passés -->
+                    <?php if (!empty($planningsPasses)): ?>
+                    <h4 style="color:var(--text-muted); font-size:0.9rem; margin:1.1rem 0 0.75rem;">🕰️ Passés (<?php echo count($planningsPasses); ?>)</h4>
+                    <div class="pl-grid">
+                        <?php foreach ($planningsPasses as $p):
+                            $d = $p['date_dahira'];
+                            $aDahira = ((int) ($p['a_dahira'] ?? 1)) === 1;
+                        ?>
+                        <div class="glass-card pl-card" style="opacity:0.8; <?php echo $aDahira ? 'border-left:3px solid var(--accent);' : 'border-left:3px solid rgba(255,255,255,0.25);'; ?>">
+                            <div class="pl-date">
+                                <?php echo ucfirst(dahira_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
+                                <small>· passé</small>
                             </div>
                             <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
                                 <span>
@@ -664,10 +693,6 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="action" value="cloture">
                     <input type="hidden" name="id" id="dahira-cloture-id">
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label" style="display:block; margin-bottom:0.4rem;">👥 Nombre de participants (facultatif)</label>
-                        <input type="number" name="nb_participants" id="dahira-cloture-nb" class="form-input" min="0" placeholder="Ex : 25" style="width:100%;">
-                    </div>
                 </form>
             </div>
             <div class="modal-footer" style="display:flex; gap:0.5rem; justify-content:flex-end;">
@@ -720,9 +745,6 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                 btn.addEventListener('click', function () {
                     idInput.value = btn.getAttribute('data-id');
                     msg.textContent = 'Clôturer le Dahira du ' + date + ' ?';
-                    var nb = document.getElementById('dahira-cloture-nb');
-                    var presence = parseInt(btn.getAttribute('data-presence') || '0', 10) || 0;
-                    if (nb) { nb.value = presence > 0 ? String(presence) : ''; }
                     openModal(modal);
                 });
             });

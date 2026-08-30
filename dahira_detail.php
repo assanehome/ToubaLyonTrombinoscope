@@ -67,6 +67,17 @@ $publie = ((int)($dahira['publie'] ?? 0)) === 1;
 $programme = (string)($dahira['programme'] ?? '');
 $nbParticipants = $dahira['nb_participants'] ?? null;
 
+// Nombre de participants : présences validées par les membres (sinon saisie manuelle)
+$nbPresences = 0;
+try {
+    $stN = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'dahira' AND planning_id = ?");
+    $stN->execute([$id]);
+    $nbPresences = (int) $stN->fetchColumn();
+} catch (Exception $e) {
+    $nbPresences = 0;
+}
+$nbPartIndicateur = $nbPresences > 0 ? $nbPresences : (int) ($nbParticipants ?? 0);
+
 // Présence du membre connecté
 $presenceFaite = false;
 $membreId = !empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : 0;
@@ -80,9 +91,6 @@ if ($membreId > 0) {
     }
 }
 
-// Message WhatsApp
-$waMsg = dahira_message_annonce($date, $lieu, $debut, $fin, $programme);
-$waLink = dahira_wa_link(null, $waMsg);
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -109,6 +117,32 @@ $waLink = dahira_wa_link(null, $waMsg);
         .dh-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
         .dh-item .v a { color: var(--accent); }
         .dh-back { display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1rem; }
+        /* Animations d'entrée (comme sur l'accueil) */
+        @keyframes dhCardIn {
+            from { opacity: 0; transform: translateY(24px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .dh-anim { animation: dhCardIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .dh-anim-1 { animation-delay: 0.05s; }
+        .dh-anim-2 { animation-delay: 0.10s; }
+        .dh-anim-3 { animation-delay: 0.15s; }
+        .dh-anim-4 { animation-delay: 0.20s; }
+        .dh-anim-5 { animation-delay: 0.25s; }
+        /* Liseré doré animé en haut de l'en-tête */
+        .dh-hero { position: relative; overflow: hidden; }
+        .dh-hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -20%; right: -20%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(212,175,55,0.9), rgba(241,210,121,0.95), transparent);
+            background-size: 200% 100%;
+            animation: dhFlow 4.5s linear infinite;
+        }
+        @keyframes dhFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* Carte de validation de présence : bouton doré avec léger survol */
+        .dh-presence .btn-primary { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
+        .dh-presence .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); filter: brightness(1.05); }
     </style>
 </head>
 <body>
@@ -126,7 +160,7 @@ $waLink = dahira_wa_link(null, $waMsg);
 
                 <div class="dh-wrap">
                     <!-- En-tête -->
-                    <div class="dh-hero">
+                    <div class="dh-hero dh-anim dh-anim-1">
                         <div class="dh-date">
                             <?php echo ucfirst(dahira_jour_fr($date)) . ' ' . date('d/m/Y', strtotime($date)); ?>
                             <small>🕐 de <?php echo htmlspecialchars($debut); ?> à <?php echo htmlspecialchars($fin); ?></small>
@@ -143,33 +177,17 @@ $waLink = dahira_wa_link(null, $waMsg);
                         </div>
                     </div>
 
-                    <!-- Informations -->
-                    <div class="dh-grid">
-                        <div class="glass-card dh-item">
-                            <div class="k">📍 Lieu</div>
-                            <div class="v"><?php echo $lieu !== '' ? htmlspecialchars($lieu) : '—'; ?></div>
-                        </div>
-                        <div class="glass-card dh-item">
-                            <div class="k">🕐 Horaires</div>
-                            <div class="v"><?php echo htmlspecialchars($debut); ?> — <?php echo htmlspecialchars($fin); ?></div>
-                        </div>
-                        <div class="glass-card dh-item">
-                            <div class="k">👥 Participants</div>
-                            <div class="v"><?php echo !empty($nbParticipants) ? (int)$nbParticipants : '—'; ?></div>
+                    <!-- Indicateur de participation (basé sur les présences validées) -->
+                    <div class="dh-anim dh-anim-2" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1.4rem;">
+                        <div class="glass-card" style="padding:1rem; text-align:center;">
+                            <div class="dh-stat-valeur" style="font-size:1.8rem; font-weight:700; color:var(--accent); line-height:1.2;"><?php echo (int)$nbPartIndicateur; ?></div>
+                            <div style="color:var(--text-muted); font-size:0.82rem;">👥 Participants</div>
                         </div>
                     </div>
 
-                    <?php if ($programme !== ''): ?>
-                    <!-- Programme -->
-                    <div class="glass-card" style="margin-bottom:1.4rem;">
-                        <h3 style="color:var(--white); margin-bottom:0.8rem;">🗓️ Programme</h3>
-                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.85rem; color:var(--white); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:0.9rem;"><?php echo htmlspecialchars($programme); ?></pre>
-                    </div>
-                    <?php endif; ?>
-
-                    <!-- Validation de présence -->
+                    <!-- Validation de présence (en haut) -->
                     <?php if ($membreId > 0 && $publie): ?>
-                    <div class="glass-card" style="margin-bottom:1.4rem; border:2px solid rgba(212,175,55,0.45);">
+                    <div class="glass-card dh-presence dh-anim dh-anim-3" style="margin-bottom:1.4rem; border:2px solid rgba(212,175,55,0.45);">
                         <h3 style="color:var(--white); margin-bottom:0.6rem;">✅ Validez votre présence</h3>
                         <?php if ($date <= date('Y-m-d')): ?>
                             <?php if ($presenceFaite): ?>
@@ -183,22 +201,37 @@ $waLink = dahira_wa_link(null, $waMsg);
                         <?php endif; ?>
                     </div>
                     <?php elseif ($membreId > 0 && !$publie): ?>
-                    <div style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">💤 Ce Dahira n'est pas encore publié : la validation de présence n'est pas disponible.</div>
+                    <div class="dh-anim dh-anim-3" style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">💤 Ce Dahira n'est pas encore publié : la validation de présence n'est pas disponible.</div>
                     <?php elseif ($membreId === 0): ?>
-                    <div style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
+                    <div class="dh-anim dh-anim-3" style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
                     <?php endif; ?>
 
-                    <!-- Message WhatsApp -->
-                    <div class="glass-card" style="margin-bottom:1.4rem;">
-                        <h3 style="color:var(--white); margin-bottom:0.8rem;">💬 Message d'annonce</h3>
-                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.85rem; color:var(--white); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:0.9rem;"><?php echo htmlspecialchars($waMsg); ?></pre>
-                        <div style="margin-top:0.8rem;">
-                            <?php echo dahira_wa_button($waLink, 'Partager sur WhatsApp'); ?>
+                    <!-- Informations -->
+                    <div class="dh-grid dh-anim dh-anim-4">
+                        <div class="glass-card dh-item">
+                            <div class="k">📍 Lieu</div>
+                            <div class="v"><?php echo $lieu !== '' ? htmlspecialchars($lieu) : '—'; ?></div>
+                        </div>
+                        <div class="glass-card dh-item">
+                            <div class="k">🕐 Horaires</div>
+                            <div class="v"><?php echo htmlspecialchars($debut); ?> — <?php echo htmlspecialchars($fin); ?></div>
+                        </div>
+                        <div class="glass-card dh-item">
+                            <div class="k">👥 Participants</div>
+                            <div class="v"><?php echo $nbPartIndicateur > 0 ? (int)$nbPartIndicateur : '—'; ?></div>
                         </div>
                     </div>
 
+                    <?php if ($programme !== ''): ?>
+                    <!-- Programme -->
+                    <div class="glass-card dh-anim dh-anim-5" style="margin-bottom:1.4rem;">
+                        <h3 style="color:var(--white); margin-bottom:0.8rem;">🗓️ Programme</h3>
+                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.85rem; color:var(--white); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:0.9rem;"><?php echo htmlspecialchars($programme); ?></pre>
+                    </div>
+                    <?php endif; ?>
+
                     <!-- Actions -->
-                    <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                    <div class="dh-anim dh-anim-5" style="display:flex; gap:0.6rem; flex-wrap:wrap;">
                         <a href="<?php echo $__dhAdmin ? 'admin_planning.php' : 'index.php'; ?>" class="btn btn-secondary btn-sm">← Retour</a>
                     </div>
                 </div>

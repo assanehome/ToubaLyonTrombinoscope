@@ -229,7 +229,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Clôturer une séance (passée ou du jour), nombre de participants = présences validées
         elseif ($action === 'cloture') {
             $id = (int) ($_POST['id'] ?? 0);
-            $nb = trim($_POST['nb_participants'] ?? '');
             if ($id > 0) {
                 try {
                     // Autoriser la clôture uniquement si la date est passée ou aujourd'hui
@@ -241,19 +240,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } elseif ($d > date('Y-m-d')) {
                         $error = "Impossible de clôturer : la séance n'a pas encore eu lieu.";
                     } else {
-                        // Si le champ est vide : nombre = présences validées par les membres
-                        if ($nb === '') {
-                            try {
-                                $stP = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'guddi' AND planning_id = ?");
-                                $stP->execute([$id]);
-                                $nb = (string) $stP->fetchColumn();
-                            } catch (Exception $e) {
-                                $nb = '';
-                            }
+                        // Nombre de participants = présences validées par les membres
+                        $nb = 0;
+                        try {
+                            $stP = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'guddi' AND planning_id = ?");
+                            $stP->execute([$id]);
+                            $nb = (int) $stP->fetchColumn();
+                        } catch (Exception $e) {
+                            $nb = 0;
                         }
                         $pdo->prepare("UPDATE guddi_plannings SET cloture = 1, nb_participants = ?, updated_at = NOW() WHERE id = ?")
-                            ->execute([$nb !== '' ? (int) $nb : null, $id]);
-                        $success = "Séance clôturée." . ($nb !== '' ? " Participants : $nb." : "");
+                            ->execute([$nb > 0 ? $nb : null, $id]);
+                        $success = "Séance clôturée." . ($nb > 0 ? " Participants : $nb." : "");
                     }
                 } catch (Exception $e) {
                     $error = "Une erreur technique est survenue.";
@@ -996,10 +994,6 @@ if ($commissionId > 0) {
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="action" value="cloture">
                     <input type="hidden" name="id" id="cloture-id">
-                    <div class="form-group" style="margin:0;">
-                        <label class="form-label" style="display:block; margin-bottom:0.4rem;">👥 Nombre de participants (facultatif)</label>
-                        <input type="number" name="nb_participants" id="cloture-nb" class="form-input" min="0" placeholder="Ex : 25" style="width:100%;">
-                    </div>
                 </form>
             </div>
             <div class="modal-footer" style="display:flex; gap:0.5rem; justify-content:flex-end;">
@@ -1151,9 +1145,6 @@ if ($commissionId > 0) {
                 btn.addEventListener('click', function () {
                     idInput.value = btn.getAttribute('data-id');
                     msg.textContent = 'Clôturer la séance du ' + date + ' ?';
-                    var nb = document.getElementById('cloture-nb');
-                    var presence = parseInt(btn.getAttribute('data-presence') || '0', 10) || 0;
-                    if (nb) { nb.value = presence > 0 ? String(presence) : ''; }
                     openModal(modal);
                 });
             });

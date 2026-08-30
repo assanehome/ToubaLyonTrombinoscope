@@ -59,7 +59,6 @@ if (!$seance) {
 
 // Données partagées
 $heure = dahira_param($pdo, 'guddi_heure', '20h00');
-$lienDefaut = dahira_param($pdo, 'guddi_lien_defaut', '');
 $lieuDefaut = dahira_param($pdo, 'guddi_lieu_defaut', '');
 $lieuDahira = $lieuDefaut !== '' ? $lieuDefaut : dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
 $modeDefaut = dahira_param($pdo, 'guddi_mode_defaut', 'distance');
@@ -74,8 +73,17 @@ $presentateur = (string)($seance['presentateur'] ?? '');
 $livre = (string)($seance['livre'] ?? '');
 $pdfPath = (string)($seance['pdf_path'] ?? '');
 $nbParticipants = $seance['nb_participants'] ?? null;
-$lienAffiche = $lienDefaut;
-$pdfUrl = !empty($pdfPath) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($pdfPath) : '';
+
+// Nombre de participants : présences validées par les membres (sinon saisie manuelle)
+$nbPresences = 0;
+try {
+    $stN = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'guddi' AND planning_id = ?");
+    $stN->execute([$id]);
+    $nbPresences = (int) $stN->fetchColumn();
+} catch (Exception $e) {
+    $nbPresences = 0;
+}
+$nbPartIndicateur = $nbPresences > 0 ? $nbPresences : (int) ($nbParticipants ?? 0);
 
 // Présence du membre connecté
 $presenceFaite = false;
@@ -89,11 +97,6 @@ if ($membreId > 0) {
         $presenceFaite = false;
     }
 }
-
-// Messages (annonce / annulation)
-$waMsg = $actif
-    ? guddi_message($date, $heure, $theme, $presentateur, $lienAffiche, $livre, $pdfUrl, $mode, $lieuDahira)
-    : guddi_message_annulation($date);
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -120,6 +123,32 @@ $waMsg = $actif
         .gd-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
         .gd-item .v a { color: var(--accent); }
         .gd-back { display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1rem; }
+        /* Animations d'entrée (comme sur l'accueil) */
+        @keyframes gdCardIn {
+            from { opacity: 0; transform: translateY(24px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .gd-anim { animation: gdCardIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .gd-anim-1 { animation-delay: 0.05s; }
+        .gd-anim-2 { animation-delay: 0.10s; }
+        .gd-anim-3 { animation-delay: 0.15s; }
+        .gd-anim-4 { animation-delay: 0.20s; }
+        .gd-anim-5 { animation-delay: 0.25s; }
+        /* Liseré doré animé en haut de l'en-tête */
+        .gd-hero { position: relative; overflow: hidden; }
+        .gd-hero::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -20%; right: -20%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(212,175,55,0.9), rgba(241,210,121,0.95), transparent);
+            background-size: 200% 100%;
+            animation: gdFlow 4.5s linear infinite;
+        }
+        @keyframes gdFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* Carte de validation de présence : bouton doré avec léger survol */
+        .gd-presence .btn-primary { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
+        .gd-presence .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); filter: brightness(1.05); }
     </style>
 </head>
 <body>
@@ -137,7 +166,7 @@ $waMsg = $actif
 
                 <div class="gd-wrap">
                     <!-- En-tête -->
-                    <div class="gd-hero">
+                    <div class="gd-hero gd-anim gd-anim-1">
                         <div class="gd-date">
                             <?php echo ucfirst(guddi_jour_fr($date)) . ' ' . date('d/m/Y', strtotime($date)); ?>
                             <small>🕐 à partir de <?php echo htmlspecialchars($heure); ?></small>
@@ -156,8 +185,37 @@ $waMsg = $actif
                         </div>
                     </div>
 
+                    <!-- Indicateur de participation (basé sur les présences validées) -->
+                    <div class="gd-anim gd-anim-2" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1.4rem;">
+                        <div class="glass-card" style="padding:1rem; text-align:center;">
+                            <div class="gd-stat-valeur" style="font-size:1.8rem; font-weight:700; color:var(--accent); line-height:1.2;"><?php echo (int)$nbPartIndicateur; ?></div>
+                            <div style="color:var(--text-muted); font-size:0.82rem;">👥 Participants</div>
+                        </div>
+                    </div>
+
+                    <!-- Validation de présence (en haut) -->
+                    <?php if ($membreId > 0 && ((int)($seance['publie'] ?? 0)) === 1): ?>
+                    <div class="glass-card gd-presence gd-anim gd-anim-3" style="margin-bottom:1.4rem; border:2px solid rgba(212,175,55,0.45);">
+                        <h3 style="color:var(--white); margin-bottom:0.6rem;">✅ Validez votre présence</h3>
+                        <?php if ($date <= date('Y-m-d')): ?>
+                            <?php if ($presenceFaite): ?>
+                                <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Jazakallahou Khair</div>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="annulerPresence('guddi', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
+                            <?php else: ?>
+                                <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('guddi', <?php echo (int)$id; ?>, this)">✅ J'étais présent(e)</button>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <div style="color:var(--text-muted); font-size:0.85rem;">🔔 Vous pourrez valider votre présence le jour même.</div>
+                        <?php endif; ?>
+                    </div>
+                    <?php elseif ($membreId > 0 && ((int)($seance['publie'] ?? 0)) !== 1): ?>
+                    <div class="gd-anim gd-anim-3" style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">💤 Ce Guddi Àjjuma n'est pas encore publié : la validation de présence n'est pas disponible.</div>
+                    <?php elseif ($membreId === 0): ?>
+                    <div class="gd-anim gd-anim-3" style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
+                    <?php endif; ?>
+
                     <!-- Informations -->
-                    <div class="gd-grid">
+                    <div class="gd-grid gd-anim gd-anim-4">
                         <div class="glass-card gd-item">
                             <div class="k">🎯 Thème</div>
                             <div class="v"><?php echo $theme !== '' ? htmlspecialchars($theme) : '—'; ?></div>
@@ -176,7 +234,7 @@ $waMsg = $actif
                         </div>
                         <div class="glass-card gd-item">
                             <div class="k">👥 Participants</div>
-                            <div class="v"><?php echo !empty($nbParticipants) ? (int)$nbParticipants : '—'; ?></div>
+                            <div class="v"><?php echo $nbPartIndicateur > 0 ? (int)$nbPartIndicateur : '—'; ?></div>
                         </div>
                         <div class="glass-card gd-item">
                             <div class="k">📄 Livre étudié (PDF)</div>
@@ -184,35 +242,8 @@ $waMsg = $actif
                         </div>
                     </div>
 
-                    <!-- Validation de présence -->
-                    <?php if ($membreId > 0 && ((int)($seance['publie'] ?? 0)) === 1): ?>
-                    <div class="glass-card" style="margin-bottom:1.4rem; border:2px solid rgba(212,175,55,0.45);">
-                        <h3 style="color:var(--white); margin-bottom:0.6rem;">✅ Validez votre présence</h3>
-                        <?php if ($date <= date('Y-m-d')): ?>
-                            <?php if ($presenceFaite): ?>
-                                <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Jazakallahou Khair</div>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="annulerPresence('guddi', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
-                            <?php else: ?>
-                                <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('guddi', <?php echo (int)$id; ?>, this)">✅ J'étais présent(e)</button>
-                            <?php endif; ?>
-                        <?php else: ?>
-                            <div style="color:var(--text-muted); font-size:0.85rem;">🔔 Vous pourrez valider votre présence le jour même.</div>
-                        <?php endif; ?>
-                    </div>
-                    <?php elseif ($membreId > 0 && ((int)($seance['publie'] ?? 0)) !== 1): ?>
-                    <div style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">💤 Ce Guddi Àjjuma n'est pas encore publié : la validation de présence n'est pas disponible.</div>
-                    <?php elseif ($membreId === 0): ?>
-                    <div style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
-                    <?php endif; ?>
-
-                    <!-- Message WhatsApp -->
-                    <div class="glass-card" style="margin-bottom:1.4rem;">
-                        <h3 style="color:var(--white); margin-bottom:0.8rem;"><?php echo $actif ? '💬 Message d\'annonce' : '💬 Message d\'annulation'; ?></h3>
-                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.85rem; color:var(--white); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:0.9rem;"><?php echo htmlspecialchars($waMsg); ?></pre>
-                    </div>
-
                     <!-- Actions -->
-                    <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                    <div class="gd-anim gd-anim-5" style="display:flex; gap:0.6rem; flex-wrap:wrap;">
                         <a href="<?php echo $__guAdmin ? 'admin_guddi.php' : 'index.php'; ?>" class="btn btn-secondary btn-sm">← Retour</a>
                         <?php if ($__guAdmin && !$cloture && !$actif): ?>
                             <a href="admin_guddi.php" class="btn btn-primary btn-sm">↩️ Réactiver</a>

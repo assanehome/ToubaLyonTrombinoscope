@@ -237,6 +237,37 @@ try {
         .mi-row .k { font-size:0.68rem; color:#f2d574; text-transform:uppercase; letter-spacing:0.02em; font-weight:600; flex-shrink:0; }
         .mi-row .v { color:#fff; font-size:0.9rem; font-weight:600; word-break:break-word; text-align:right; }
         .mi-foot { padding:0.6rem 1rem; border-top:1px solid rgba(255,255,255,0.08); text-align:center; flex-shrink:0; }
+        /* ── Prochaines rencontres : animations comme le suivi Juz ── */
+        .renc-card {
+            position: relative;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1rem 1.1rem;
+            background: rgba(255,255,255,0.03);
+            overflow: hidden;
+            animation: rencCardIn 0.45s cubic-bezier(0.22,1,0.36,1) both;
+            transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+        .renc-card:hover { transform: translateY(-3px); border-color: rgba(212,175,55,0.55); box-shadow: 0 10px 24px rgba(0,0,0,0.35); }
+        .renc-card:nth-child(1) { animation-delay: 0.08s; }
+        .renc-card:nth-child(2) { animation-delay: 0.16s; }
+        @keyframes rencCardIn { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        /* Liseré doré animé en haut de la carte « Prochaines rencontres » */
+        .renc-wrap { position: relative; overflow: hidden; }
+        .renc-wrap::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -20%; right: -20%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(212,175,55,0.9), rgba(241,210,121,0.95), transparent);
+            background-size: 200% 100%;
+            animation: rencFlow 4.5s linear infinite;
+        }
+        @keyframes rencFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* Boutons d'action des cartes : survol animé */
+        .renc-card .btn { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
+        .renc-card .btn:hover { filter: brightness(1.08); }
+        .renc-card .btn-primary:active { transform: translateY(2px); }
     </style>
 </head>
 <body>
@@ -318,7 +349,7 @@ try {
 
         <!-- Séances publiées : Dahira & Guddi Àjjuma (validation de présence) -->
         <?php if (!empty($prochainDahira) || !empty($prochainGuddi)): ?>
-        <div class="glass-card" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+        <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
             <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🕌 Prochaines rencontres — validez votre présence</div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
 
@@ -327,10 +358,10 @@ try {
                     $dDate = $prochainDahira['date_dahira'];
                     $dPassed = $dDate <= date('Y-m-d');
                 ?>
-                <div style="border:1px solid var(--glass-border); border-radius:16px; padding:1rem 1.1rem; background:rgba(255,255,255,0.03);">
+                <div class="renc-card">
                     <div style="font-weight:800; color:var(--accent);">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem; white-space:pre-line;">🕐 <?php echo htmlspecialchars($dahiraHeure); ?> à <?php echo htmlspecialchars($dahiraFin); ?><br>📍 <?php echo htmlspecialchars($dahiraLieu); ?></div>
-                    <div style="margin-top:0.5rem;"><a href="dahira_detail.php?id=<?php echo (int)$prochainDahira['id']; ?>" style="color:var(--accent); font-size:0.82rem;">👁️ Voir le détail</a></div>
+                    <div style="margin-top:0.6rem;"><a href="dahira_detail.php?id=<?php echo (int)$prochainDahira['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
                     <?php if (isset($_SESSION['player_id'])): ?>
                         <?php if ($dPassed && $dahiraPresenceFaite): ?>
                             <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Jazakallahou Khair</div>
@@ -353,11 +384,11 @@ try {
                     $gMode = (string)($prochainGuddi['mode'] ?? '');
                     if ($gMode === '') { $gMode = dahira_param($pdo, 'guddi_mode_defaut', 'distance'); }
                 ?>
-                <div style="border:1px solid var(--glass-border); border-radius:16px; padding:1rem 1.1rem; background:rgba(255,255,255,0.03);">
+                <div class="renc-card">
                     <div style="font-weight:800; color:var(--accent);">💎 Guddi Àjjuma — <?php echo ucfirst(guddi_jour_fr($gDate)) . ' ' . date('d/m/Y', strtotime($gDate)); ?></div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🕐 à partir de <?php echo htmlspecialchars($guddiHeure); ?> · <?php echo $gMode === 'presentiel' ? '🏛️ présentiel' : '💻 à distance'; ?></div>
                     <?php if (!empty($prochainGuddi['theme'])): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.2rem;">🎯 <?php echo htmlspecialchars((string)$prochainGuddi['theme']); ?></div><?php endif; ?>
-                    <div style="margin-top:0.5rem;"><a href="guddi_detail.php?id=<?php echo (int)$prochainGuddi['id']; ?>" style="color:var(--accent); font-size:0.82rem;">👁️ Voir le détail</a></div>
+                    <div style="margin-top:0.6rem;"><a href="guddi_detail.php?id=<?php echo (int)$prochainGuddi['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
                     <?php if (isset($_SESSION['player_id'])): ?>
                         <?php if ($gPassed && $guddiPresenceFaite): ?>
                             <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Jazakallahou Khair</div>
