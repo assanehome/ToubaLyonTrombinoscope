@@ -42,6 +42,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $back = !empty($m['type_adhesion']) ? 'admin_adhesions.php' : 'admin_dashboard.php';
                         header('Location: ' . $back . '?deleted=1');
                         exit;
+                    } elseif ($action === 'update') {
+                        // Modification des informations : le membre repasse EN ATTENTE.
+                        $nom = trim($_POST['nom'] ?? '');
+                        $prenom = trim($_POST['prenom'] ?? '');
+                        $email = trim($_POST['email'] ?? '');
+                        $civilite = (trim($_POST['civilite'] ?? '') === 'Sokhna') ? 'Sokhna' : 'Goor Yalla';
+                        if ($nom === '' || $prenom === '' || $email === '') {
+                            $error = "Nom, prénom et e-mail sont obligatoires.";
+                        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                            $error = "L'adresse e-mail n'est pas valide.";
+                        } else {
+                            $chk = $pdo->prepare("SELECT id FROM membres WHERE email = ? AND id <> ?");
+                            $chk->execute([$email, $pid]);
+                            if ($chk->fetch()) {
+                                $error = "Cette adresse e-mail est déjà utilisée par un autre membre.";
+                            } else {
+                                $sql = "UPDATE membres SET civilite=?, nom=?, prenom=?, genre=?, email=?, telephone=?, adresse=?, code_postal=?, commune=?, type_adhesion=?, statut=?, secteur_activite=?, profession=?, test_kourel=?, annee_integration=?, commentaires=?, charte_acceptee=?, status='pending' WHERE id=?";
+                                $pdo->prepare($sql)->execute([
+                                    $civilite, $nom, $prenom, (trim($_POST['genre'] ?? '') ?: null), $email,
+                                    (trim($_POST['telephone'] ?? '') ?: null), (trim($_POST['adresse'] ?? '') ?: null),
+                                    (trim($_POST['code_postal'] ?? '') ?: null), (trim($_POST['commune'] ?? '') ?: null),
+                                    (trim($_POST['type_adhesion'] ?? '') ?: null), (trim($_POST['statut'] ?? '') ?: null),
+                                    (trim($_POST['secteur_activite'] ?? '') ?: null), (trim($_POST['profession'] ?? '') ?: null),
+                                    (trim($_POST['test_kourel'] ?? '') ?: null), (trim($_POST['annee_integration'] ?? '') ?: null),
+                                    (trim($_POST['commentaires'] ?? '') ?: null), (isset($_POST['charte_acceptee']) ? 1 : 0), $pid
+                                ]);
+                                $success = "Modifications enregistrées. Le membre est repassé en attente de validation.";
+                            }
+                        }
                     }
                 } else {
                     $error = "Membre introuvable.";
@@ -54,9 +83,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Chargement du membre
+// Chargement du membre (avec le nom de l'intégrateur assigné)
 try {
-    $stmt = $pdo->prepare("SELECT * FROM membres WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT m.*, TRIM(CONCAT(COALESCE(i.prenom,''), ' ', i.nom)) AS integrateur_nom FROM membres m LEFT JOIN membres i ON m.integrateur_id = i.id WHERE m.id = ?");
     $stmt->execute([$id]);
     $m = $stmt->fetch();
 } catch (Exception $e) {
@@ -68,6 +97,10 @@ try {
 $isAdhesion = $m && !empty($m['type_adhesion']);
 $backLink = $isAdhesion ? 'admin_adhesions.php' : 'admin_dashboard.php';
 $backLabel = $isAdhesion ? 'Inscriptions Dahira' : 'Tableau de bord';
+$STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
+// Mode lecture seule (bouton "Voir") : profil non editable.
+$readonly = isset($_GET['view']) && $_GET['view'] === '1';
+try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }
 
 /** Ligne d'information (n'affiche rien si la valeur est vide). */
 function info_row($label, $value, $alwaysShow = false) {
@@ -132,6 +165,9 @@ function status_badge($status) {
     <?php include __DIR__ . '/header.php'; ?>
 
     <main class="container">
+        <div class="dashboard-layout">
+            <?php include __DIR__ . '/admin_menu.php'; ?>
+            <div class="dashboard-main">
         <div class="membre-wrap">
 
             <div style="margin-bottom: 1.25rem;">
@@ -173,51 +209,113 @@ function status_badge($status) {
                     </div>
                 </div>
 
-                <!-- Identité -->
-                <div class="info-section glass-card">
-                    <h2>Identité</h2>
-                    <?php
-                        info_row('Nom de famille', $m['nom'], true);
-                        info_row('Prénom', $m['prenom'], true);
-                        info_row('Civilité', $m['civilite']);
-                        info_row('Genre', $m['genre'] ?? '');
-                    ?>
-                </div>
-
-                <!-- Coordonnées -->
-                <div class="info-section glass-card">
-                    <h2>Coordonnées</h2>
-                    <?php
-                        info_row('Email', $m['email'], true);
-                        info_row('Téléphone', $m['telephone'] ?? '');
-                        info_row('Adresse', $m['adresse'] ?? '');
-                        info_row('Code postal', $m['code_postal'] ?? '');
-                        info_row('Commune', $m['commune'] ?? '');
-                    ?>
-                </div>
-
-                <?php if ($isAdhesion): ?>
-                <!-- Adhésion Dahira -->
-                <div class="info-section glass-card">
-                    <h2>Adhésion au Dahira</h2>
-                    <?php
-                        info_row("Type d'adhésion", $m['type_adhesion']);
-                        info_row('Test Kourel', $m['test_kourel'] ?? '');
-                        info_row('Statut', $m['statut'] ?? '');
-                        info_row("Secteur d'activité", $m['secteur_activite'] ?? '');
-                        info_row('Profession', $m['profession'] ?? '');
-                        info_row("Année d'intégration", $m['annee_integration'] ?? '');
-                        info_row('Charte acceptée', !empty($m['charte_acceptee']) ? 'Oui' : 'Non', true);
-                        info_row('Commentaires', $m['commentaires'] ?? '');
-                    ?>
-                </div>
+                <?php if ($readonly): ?>
+                    <style>
+                        fieldset:disabled .form-input,
+                        fieldset:disabled select.form-input,
+                        fieldset:disabled textarea.form-input { opacity:1; color:var(--white); -webkit-text-fill-color:var(--white); cursor:default; background:rgba(255,255,255,0.04); }
+                        fieldset:disabled input[type="checkbox"] { opacity:0.85; }
+                    </style>
+                    <div class="glass-card" style="display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:0.7rem 1rem; margin-bottom:1rem; border-left:3px solid var(--gold);">
+                        <span style="color:var(--text-muted); font-size:0.9rem;">👁️ Profil en lecture seule</span>
+                        <a href="membre.php?id=<?php echo (int)$m['id']; ?>" class="btn btn-primary btn-sm">✏️ Modifier</a>
+                    </div>
                 <?php endif; ?>
+
+                <!-- Formulaire d'édition : toute modification repasse le membre EN ATTENTE de validation -->
+                <form method="POST" style="margin:0;">
+                    <?php echo csrf_field(); ?>
+                    <input type="hidden" name="action" value="update">
+                    <input type="hidden" name="member_id" value="<?php echo (int)$m['id']; ?>">
+                    <fieldset <?php echo $readonly ? 'disabled' : ''; ?> style="border:0; padding:0; margin:0; min-width:0;">
+
+                    <!-- Identité -->
+                    <div class="info-section glass-card">
+                        <h2>Identité</h2>
+                        <div class="form-group"><label class="form-label">Nom de famille</label><input class="form-input" name="nom" value="<?php echo htmlspecialchars($m['nom']); ?>" required></div>
+                        <div class="form-group"><label class="form-label">Prénom</label><input class="form-input" name="prenom" value="<?php echo htmlspecialchars($m['prenom']); ?>" required></div>
+                        <div class="form-group"><label class="form-label">Civilité</label>
+                            <select class="form-input" name="civilite">
+                                <option value="Goor Yalla" <?php echo ($m['civilite'] !== 'Sokhna') ? 'selected' : ''; ?>>Goor Yalla (Homme)</option>
+                                <option value="Sokhna" <?php echo ($m['civilite'] === 'Sokhna') ? 'selected' : ''; ?>>Sokhna (Femme)</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Genre</label>
+                            <select class="form-input" name="genre">
+                                <option value="">—</option>
+                                <option value="Homme" <?php echo (($m['genre'] ?? '') === 'Homme') ? 'selected' : ''; ?>>Homme</option>
+                                <option value="Femme" <?php echo (($m['genre'] ?? '') === 'Femme') ? 'selected' : ''; ?>>Femme</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Coordonnées -->
+                    <div class="info-section glass-card">
+                        <h2>Coordonnées</h2>
+                        <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" name="email" value="<?php echo htmlspecialchars($m['email']); ?>" required></div>
+                        <div class="form-group"><label class="form-label">Téléphone</label><input class="form-input" name="telephone" value="<?php echo htmlspecialchars($m['telephone'] ?? ''); ?>"></div>
+                        <div class="form-group"><label class="form-label">Adresse</label><input class="form-input" name="adresse" value="<?php echo htmlspecialchars($m['adresse'] ?? ''); ?>"></div>
+                        <div class="form-group"><label class="form-label">Code postal</label><input class="form-input" name="code_postal" value="<?php echo htmlspecialchars($m['code_postal'] ?? ''); ?>"></div>
+                        <div class="form-group"><label class="form-label">Commune</label><input class="form-input" name="commune" value="<?php echo htmlspecialchars($m['commune'] ?? ''); ?>"></div>
+                    </div>
+
+                    <!-- Adhésion & profil (hors suivi intégration) -->
+                    <div class="info-section glass-card">
+                        <h2>Adhésion au Dahira</h2>
+                        <div class="form-group"><label class="form-label">Type d'adhésion</label>
+                            <select class="form-input" name="type_adhesion">
+                                <option value="">—</option>
+                                <?php foreach (['Membre actif', 'Membre sympathisant'] as $tt): ?>
+                                    <option value="<?php echo $tt; ?>" <?php echo (($m['type_adhesion'] ?? '') === $tt) ? 'selected' : ''; ?>><?php echo $tt; ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Statut (activité)</label>
+                            <select class="form-input" name="statut">
+                                <option value="">—</option>
+                                <?php foreach ($STATUTS as $st): ?>
+                                    <option value="<?php echo $st; ?>" <?php echo (($m['statut'] ?? '') === $st) ? 'selected' : ''; ?>><?php echo $st; ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Secteur d'activité</label>
+                            <select class="form-input" name="secteur_activite">
+                                <option value="">—</option>
+                                <?php foreach ($secteursList as $sName): ?>
+                                    <option value="<?php echo htmlspecialchars($sName); ?>" <?php echo (($m['secteur_activite'] ?? '') === $sName) ? 'selected' : ''; ?>><?php echo htmlspecialchars($sName); ?></option>
+                                <?php endforeach; ?>
+                                <?php if (!empty($m['secteur_activite']) && !in_array($m['secteur_activite'], $secteursList, true)): ?>
+                                    <option value="<?php echo htmlspecialchars($m['secteur_activite']); ?>" selected><?php echo htmlspecialchars($m['secteur_activite']); ?> (ancienne valeur)</option>
+                                <?php endif; ?>
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Profession</label><input class="form-input" name="profession" value="<?php echo htmlspecialchars($m['profession'] ?? ''); ?>"></div>
+                        <div class="form-group"><label class="form-label">Test Kourel</label>
+                            <select class="form-input" name="test_kourel">
+                                <option value="">—</option>
+                                <option value="Oui" <?php echo (($m['test_kourel'] ?? '') === 'Oui') ? 'selected' : ''; ?>>Oui</option>
+                                <option value="Non" <?php echo (($m['test_kourel'] ?? '') === 'Non') ? 'selected' : ''; ?>>Non</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Année d'intégration</label><input class="form-input" name="annee_integration" value="<?php echo htmlspecialchars($m['annee_integration'] ?? ''); ?>"></div>
+                        <div class="form-group"><label class="form-label">Commentaires</label><textarea class="form-input" name="commentaires" rows="2"><?php echo htmlspecialchars($m['commentaires'] ?? ''); ?></textarea></div>
+                        <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
+                            <input type="checkbox" id="charte" name="charte_acceptee" value="1" <?php echo !empty($m['charte_acceptee']) ? 'checked' : ''; ?>>
+                            <label for="charte" class="form-label" style="margin:0;">Charte acceptée</label>
+                        </div>
+                        <?php if (!$readonly): ?>
+                        <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.5rem;">💾 Enregistrer (repasse en attente)</button>
+                        <?php endif; ?>
+                    </div>
+                    </fieldset>
+                </form>
 
                 <!-- Compte -->
                 <div class="info-section glass-card">
                     <h2>Compte</h2>
                     <?php
-                        info_row('Statut du dossier', ucfirst($m['status']), true);
+                        $statutFr = ['approved' => 'Validé', 'pending' => 'En attente', 'rejected' => 'Refusé'];
+                        info_row('Statut du dossier', $statutFr[$m['status']] ?? ucfirst($m['status']), true);
                         info_row('Score Ki Kan La', $m['score'] . ' pts', true);
                         info_row("Date d'inscription", date('d/m/Y à H:i', strtotime($m['created_at'])), true);
                     ?>
@@ -259,6 +357,8 @@ function status_badge($status) {
                 </div>
 
             <?php endif; ?>
+        </div>
+            </div>
         </div>
     </main>
 

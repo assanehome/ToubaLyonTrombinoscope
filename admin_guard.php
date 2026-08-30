@@ -14,4 +14,10 @@ if (empty($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true
     http_response_code(403);
     die('Accès refusé. Cette page est réservée aux administrateurs connectés. Connectez-vous via admin_login.php.');
 }
+
+// Première connexion : forcer le changement de mot de passe avant tout accès.
+if (!empty($_SESSION['admin_must_change']) && basename($_SERVER['PHP_SELF'] ?? '') !== 'admin_password.php') {
+    header('Location: admin_password.php');
+    exit;
+}
 ?>

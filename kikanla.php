@@ -14,6 +14,7 @@ if (!isset($_SESSION['player_id'])) {
     header('Location: login.php');
     exit;
 }
+require_once __DIR__ . '/player_approved_guard.php';
 
 $playerId = $_SESSION['player_id'];
 
@@ -45,7 +46,7 @@ try {
     $totalMembers = $stmtCount->fetchColumn();
     
     if ($totalMembers < 3) {
-        $gameError = "Le jeu requiert au moins 3 membres validés avec photo dans le Trombinoscope pour pouvoir jouer. Veuillez en ajouter d'abord.";
+        $gameError = "Le jeu requiert au moins 3 membres validés avec photo dans le Dahira - Mubawwa-A-Sidqin pour pouvoir jouer. Veuillez en ajouter d'abord.";
     }
 } catch (Exception $e) {
     error_log('Touba Lyon kikanla (count): ' . $e->getMessage());
@@ -65,7 +66,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ki Kan La - Le Jeu du Trombinoscope</title>
+    <title>Ki Kan La - Le Jeu du Dahira - Mubawwa-A-Sidqin</title>
     <link rel="stylesheet" href="style.css">
     <style>
         /* Game Dashboard Specific Styles */
@@ -329,6 +330,9 @@ try {
     <?php include __DIR__ . '/header.php'; ?>
 
     <main class="container">
+        <div class="dashboard-layout">
+            <?php include __DIR__ . '/member_menu.php'; ?>
+            <div class="dashboard-main">
         <!-- Game stats bar -->
         <div class="game-header">
             <div class="player-info">
@@ -443,7 +447,7 @@ try {
         <div id="tab-leaderboard" class="tab-content" style="display: none;">
             <div class="form-card" style="max-width: 800px; margin: 0 auto; padding: 2.5rem;">
                 <h2 style="text-align: center; color: var(--gold); font-size: 1.8rem; margin-bottom: 0.5rem;">Classement des Joueurs</h2>
-                <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem;">Les 10 meilleurs scores du Trombinoscope Touba Lyon.</p>
+                <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem;">Les 10 meilleurs scores du Dahira - Mubawwa-A-Sidqin Touba Lyon.</p>
 
                 <?php if (empty($leaderboard)): ?>
                     <div style="text-align: center; padding: 2rem; color: var(--text-muted);">
@@ -547,6 +551,8 @@ try {
                         </table>
                     </div>
                 <?php endif; ?>
+            </div>
+        </div>
             </div>
         </div>
     </main>

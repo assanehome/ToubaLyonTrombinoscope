@@ -23,6 +23,7 @@ $f = [
 $TYPES   = ['Membre actif', 'Membre sympathisant'];
 $GENRES  = ['Homme', 'Femme'];
 $STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
+try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate()) {
@@ -115,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if (empty($error) && $newFilename !== null) {
-                    // civilite dérivée du genre (cohérence avec le trombinoscope)
+                    // civilite dérivée du genre (cohérence avec le Dahira - Mubawwa-A-Sidqin)
                     $civilite = ($f['genre'] === 'Femme') ? 'Sokhna' : 'Goor Yalla';
                     $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
 
@@ -462,7 +463,15 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
                 </div>
                 <div class="form-group">
                     <label for="secteur_activite" class="form-label">Secteur d'activité <span style="color:var(--danger)">*</span></label>
-                    <textarea id="secteur_activite" name="secteur_activite" class="form-input" rows="2" placeholder="Génie électrique, Finance, Restauration, Ferroviaire, Informatique, etc." required><?php echo htmlspecialchars($f['secteur_activite']); ?></textarea>
+                    <select id="secteur_activite" name="secteur_activite" class="form-input modern-select" required>
+                        <option value="">— Choisir un secteur —</option>
+                        <?php foreach ($secteursList as $sName): ?>
+                            <option value="<?php echo htmlspecialchars($sName); ?>" <?php echo ($f['secteur_activite'] === $sName) ? 'selected' : ''; ?>><?php echo htmlspecialchars($sName); ?></option>
+                        <?php endforeach; ?>
+                        <?php if ($f['secteur_activite'] !== '' && !in_array($f['secteur_activite'], $secteursList, true)): ?>
+                            <option value="<?php echo htmlspecialchars($f['secteur_activite']); ?>" selected><?php echo htmlspecialchars($f['secteur_activite']); ?> (ancienne valeur)</option>
+                        <?php endif; ?>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label for="profession" class="form-label">Profession <span style="color:var(--danger)">*</span></label>

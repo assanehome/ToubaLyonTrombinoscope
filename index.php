@@ -1,9 +1,10 @@
 <?php
 /**
- * Touba Lyon 2026 - Trombinoscope Homepage
+ * Touba Lyon 2026 - Dahira - Mubawwa-A-Sidqin Homepage
  */
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/admin_redirect.php';
+require_once __DIR__ . '/csrf.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -14,6 +15,7 @@ if (!isset($_SESSION['player_id'])) {
     header('Location: login.php');
     exit;
 }
+require_once __DIR__ . '/player_approved_guard.php';
 
 if (isset($_SESSION['player_id'])) {
     try {
@@ -26,6 +28,73 @@ if (isset($_SESSION['player_id'])) {
     } catch (Exception $e) {
         // Silent catch
     }
+}
+
+// Lecture du Coran : Juz réservés (non validés) dans une session en cours
+$myWirdParts = [];
+$myWirdSession = null;
+if (isset($_SESSION['player_id'])) {
+    try {
+        $qw = $pdo->prepare("SELECT p.id, p.numero, p.session_id, s.id AS sid, s.titre, s.token FROM quran_parts p JOIN quran_sessions s ON s.id = p.session_id WHERE p.membre_id = ? AND p.statut = 'reservee' AND s.statut = 'en_cours' ORDER BY p.numero ASC");
+        $qw->execute([(int) $_SESSION['player_id']]);
+        $myWirdParts = $qw->fetchAll();
+        if (!empty($myWirdParts)) {
+            $myWirdSession = ['sid' => $myWirdParts[0]['sid'], 'titre' => $myWirdParts[0]['titre'], 'token' => $myWirdParts[0]['token']];
+        }
+    } catch (Exception $e) {
+        $myWirdParts = [];
+    }
+}
+// Sessions de lecture en cours (avec des Juz encore libres)
+$wirdSessions = [];
+if (isset($_SESSION['player_id'])) {
+    try {
+        $wirdSessions = $pdo->query(
+            "SELECT s.id, s.titre, s.token, SUM(p.statut='lue') AS lues, SUM(p.statut='libre') AS libres
+             FROM quran_sessions s JOIN quran_parts p ON p.session_id = s.id
+             WHERE s.statut = 'en_cours' GROUP BY s.id, s.titre, s.token HAVING libres > 0 ORDER BY s.created_at DESC"
+        )->fetchAll();
+    } catch (Exception $e) {
+        $wirdSessions = [];
+    }
+}
+
+// Prochain Guddi Àjjuma (séance publiée, à venir ou du jour) — affiché sur l'accueil membre
+require_once __DIR__ . '/planning_guddi_helper.php';
+require_once __DIR__ . '/planning_dahira_helper.php'; // pour dahira_param()
+$prochainGuddi = null;
+$guddiHeure = '20h00';
+$guddiPresenceFaite = false;
+try {
+    $stG = $pdo->query("SELECT * FROM guddi_plannings WHERE publie = 1 AND date_guddi >= CURDATE() AND actif = 1 ORDER BY date_guddi ASC LIMIT 1");
+    $prochainGuddi = $stG->fetch();
+    $guddiHeure = dahira_param($pdo, 'guddi_heure', '20h00');
+    if ($prochainGuddi && isset($_SESSION['player_id'])) {
+        $stP = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'guddi' AND planning_id = ? AND membre_id = ?");
+        $stP->execute([(int)$prochainGuddi['id'], (int)$_SESSION['player_id']]);
+        $guddiPresenceFaite = ((int)$stP->fetchColumn()) > 0;
+    }
+} catch (Exception $e) {
+    $prochainGuddi = null;
+}
+
+// Prochain Dahira publié (validation de présence)
+$prochainDahira = null;
+$dahiraHeure = '';
+$dahiraPresenceFaite = false;
+try {
+    $stD = $pdo->query("SELECT * FROM dahira_plannings WHERE publie = 1 AND date_dahira >= CURDATE() AND a_dahira = 1 ORDER BY date_dahira ASC LIMIT 1");
+    $prochainDahira = $stD->fetch();
+    $dahiraHeure = dahira_param($pdo, 'dahira_debut', '17h00');
+    $dahiraFin = dahira_param($pdo, 'dahira_fin', '20h30');
+    $dahiraLieu = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
+    if ($prochainDahira && isset($_SESSION['player_id'])) {
+        $stP = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'dahira' AND planning_id = ? AND membre_id = ?");
+        $stP->execute([(int)$prochainDahira['id'], (int)$_SESSION['player_id']]);
+        $dahiraPresenceFaite = ((int)$stP->fetchColumn()) > 0;
+    }
+} catch (Exception $e) {
+    $prochainDahira = null;
 }
 
 try {
@@ -43,7 +112,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trombinoscope - Touba Lyon</title>
+    <title>Dahira - Mubawwa-A-Sidqin - Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
     <style>
         .filter-container {
@@ -54,6 +123,74 @@ try {
             margin-bottom: 0.5rem;
             flex-wrap: wrap;
         }
+        /* ── w-tovalidate-idx : carte moderne "Juz à valider" (couleurs du site) ── */
+        .w-tovalidate-idx {
+            position: relative;
+            max-width: 820px;
+            margin: 0 auto 1.5rem;
+            padding: 1.5rem 1.5rem 1.25rem;
+            border-radius: 22px;
+            background: linear-gradient(160deg, rgba(27,67,50,0.6), rgba(8,28,21,0.8));
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(212,175,55,0.32);
+            box-shadow:
+                0 18px 45px rgba(0,0,0,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+            overflow: hidden;
+            color: #ffd873;
+        }
+        /* Liseré doré animé en haut de la carte */
+        .w-tovalidate-idx::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -20%; right: -20%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(212,175,55,0.9), rgba(241,210,121,0.95), transparent);
+            background-size: 200% 100%;
+            animation: wtvFlowIdxs 4.5s linear infinite;
+        }
+        @keyframes wtvFlowIdxs { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .wtv-idx-top { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
+        .wtv-idx-icon {
+            width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+            background: linear-gradient(135deg, rgba(212,175,55,0.32), rgba(212,175,55,0.08));
+            border: 1px solid rgba(212,175,55,0.4);
+            box-shadow: 0 6px 18px rgba(212,175,55,0.2);
+        }
+        .wtv-idx-titles { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 170px; }
+        .wtv-idx-title { font-size: 1.05rem; font-weight: 800; color: #fff; letter-spacing: -0.01em; }
+        .wtv-idx-session { font-size: 0.82rem; color: #f1d279; font-weight: 600; }
+        .wtv-idx-cta { margin-left: auto; white-space: nowrap; }
+        .wtv-idx-count { font-size: 0.78rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg, #d4af37, #f1d279); border-radius: 50px; padding: 4px 13px; box-shadow: 0 4px 12px rgba(212,175,55,0.35); margin-left: auto; }
+        .wtv-idx-list { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1.1rem; }
+        .wtv-item-idx {
+            display: inline-flex; align-items: center; gap: 0.45rem;
+            background: rgba(212,175,55,0.09);
+            border: 1px solid rgba(212,175,55,0.24);
+            border-radius: 12px;
+            padding: 5px 6px;
+            animation: wtvChipIdx 0.45s cubic-bezier(0.22,1,0.36,1) both;
+            transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+        .wtv-item-idx:hover { transform: translateY(-2px); border-color: rgba(212,175,55,0.55); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+        @keyframes wtvChipIdx { from { opacity: 0; transform: translateY(10px) scale(0.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        .wtv-item-idx .wtv-num { font-weight: 800; font-size: 0.88rem; color: #f1d279; padding: 4px 6px 4px 12px; white-space: nowrap; cursor: pointer; border-radius: 8px; transition: background 0.2s; }
+        .wtv-item-idx .wtv-num:hover { background: rgba(212,175,55,0.14); }
+        .wtv-item-idx .wtv-btn {
+            background: linear-gradient(135deg, #d4af37, #e9c766); color: #0c241a; border: 0; border-radius: 9px;
+            font-weight: 800; font-size: 0.82rem; padding: 7px 13px; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+            transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
+            box-shadow: 0 4px 0 rgba(133,105,18,0.9);
+        }
+        .wtv-item-idx .wtv-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(133,105,18,0.9); }
+        .wtv-item-idx .wtv-btn:hover { filter: brightness(1.12); }
+        .wtv-item-idx .wtv-btn--pdf { background: rgba(212,175,55,0.14); color: #f1d279; border: 1px solid rgba(212,175,55,0.3); box-shadow: none; }
+        .wtv-item-idx .wtv-btn--pdf:hover { background: rgba(212,175,55,0.26); color: #fff; box-shadow: none; }
+        .wtv-idx-hint { margin-top: 0.85rem; font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; }
+        .wtv-idx-hint::before { content: '💡'; }
         .filter-btn {
             background: rgba(255, 255, 255, 0.05);
             color: var(--white);
@@ -80,6 +217,26 @@ try {
             font-weight: 700;
             box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
         }
+        /* ── Fiche membre (popup moderne, responsive) ── */
+        #member-modal { position:fixed; inset:0; overflow:hidden; align-items:center; justify-content:center; }
+        .mi-card { position:fixed; left:50%; top:50%; width:calc(100vw - 28px); max-width:380px; max-height:86vh; display:flex; flex-direction:column;
+            background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:18px; overflow:hidden;
+            box-shadow:0 30px 80px rgba(0,0,0,0.55); z-index:2001;
+            transform:translate(-50%, -46%) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
+        #member-modal.active .mi-card { transform:translate(-50%, -50%) scale(1); opacity:1; }
+        .mi-head { position:relative; padding:0.9rem 1rem 0.75rem; background:linear-gradient(135deg,#1b4332,#2d6a4f); text-align:center; flex-shrink:0; }
+        .mi-photo-wrap { width:62px; height:62px; border-radius:50%; overflow:hidden; border:2px solid var(--gold); margin:0 auto 0.45rem; box-shadow:0 4px 12px rgba(0,0,0,0.4); background:#081c15; }
+        .mi-photo-wrap img { width:100%; height:100%; object-fit:cover; }
+        .mi-head h2 { color:#fff; font-size:1.1rem; margin:0 0 0.25rem; }
+        .mi-close { position:absolute; top:0.5rem; right:0.6rem; background:rgba(255,255,255,0.15); color:#fff; border:0; width:26px; height:26px; border-radius:50%; font-size:1.05rem; line-height:1; cursor:pointer; }
+        .mi-close:hover { background:rgba(255,255,255,0.3); }
+        .mi-body { padding:0.35rem 1rem 0.6rem; overflow-y:auto; flex:1; scrollbar-width:none; -ms-overflow-style:none; }
+        .mi-body::-webkit-scrollbar { width:0; height:0; display:none; }
+        .mi-row { display:flex; align-items:baseline; justify-content:space-between; gap:0.75rem; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.07); }
+        .mi-row:last-child { border-bottom:none; }
+        .mi-row .k { font-size:0.68rem; color:#f2d574; text-transform:uppercase; letter-spacing:0.02em; font-weight:600; flex-shrink:0; }
+        .mi-row .v { color:#fff; font-size:0.9rem; font-weight:600; word-break:break-word; text-align:right; }
+        .mi-foot { padding:0.6rem 1rem; border-top:1px solid rgba(255,255,255,0.08); text-align:center; flex-shrink:0; }
     </style>
 </head>
 <body>
@@ -87,6 +244,9 @@ try {
     <?php include __DIR__ . '/header.php'; ?>
 
     <main class="container">
+        <div class="dashboard-layout">
+            <?php include __DIR__ . '/member_menu.php'; ?>
+            <div class="dashboard-main">
         <!-- User Welcome Banner -->
         <?php if (isset($_SESSION['player_id'])): ?>
             <div class="user-welcome-banner glass-card" style="margin-top: 2rem; margin-bottom: 1rem; padding: 1.25rem 2rem; display: flex; justify-content: space-between; align-items: center; border-radius: 20px; flex-wrap: wrap; gap: 1rem;">
@@ -98,6 +258,123 @@ try {
                 </div>
                 <a href="kikanla.php" class="btn btn-primary btn-sm">🎮 Jouer à Ki Kan La</a>
             </div>
+        <?php endif; ?>
+
+        <?php if (!empty($myWirdParts) || !empty($wirdSessions)): ?>
+            <form id="idx-w-form" method="POST" action="wird.php" style="display:none;">
+                <?php echo csrf_field(); ?>
+                <input type="hidden" name="session_id" value="<?php echo (int)$myWirdSession['sid']; ?>">
+                <input type="hidden" name="token" value="<?php echo htmlspecialchars($myWirdSession['token'], ENT_QUOTES); ?>">
+                <input type="hidden" name="action" id="idx-wf-action" value="validate">
+                <input type="hidden" name="part_id" id="idx-wf-pid" value="">
+                <input type="hidden" name="ptoken" value="">
+            </form>
+            <div class="w-tovalidate-idx">
+                <div class="wtv-idx-top">
+                    <div class="wtv-idx-icon">📖</div>
+                    <div class="wtv-idx-titles">
+                        <span class="wtv-idx-title">Lecture du Coran</span>
+                        <span class="wtv-idx-session">Sessions en cours · vos Juz à valider</span>
+                    </div>
+                    <?php if (!empty($myWirdParts)): ?>
+                        <span class="wtv-idx-count"><?php echo count($myWirdParts); ?></span>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (!empty($myWirdParts)): ?>
+                <div class="wtv-idx-list" style="margin-top:0.9rem;">
+                    <div style="color:#ffd873; font-size:0.85rem; font-weight:700; margin-bottom:0.5rem;">📖 Vos Juz à valider — Session : <?php echo htmlspecialchars($myWirdSession['titre']); ?></div>
+                    <?php foreach ($myWirdParts as $mp): ?>
+                    <?php
+                        $n = (int)$mp['numero'];
+                        $n2 = sprintf('%02d', $n);
+                        $v1 = "pdf_viewer.php?file=" . urlencode("Coran_pdf/Version_1/{$n2}.pdf");
+                        $v2 = "pdf_viewer.php?file=" . urlencode("Coran_pdf/Version_2/{$n2}-quran{$n}-ar.pdf");
+                    ?>
+                    <span class="wtv-item-idx">
+                        <span class="wtv-num">Juz <?php echo $n; ?></span>
+                        <button type="button" class="wtv-btn" onclick="idxConfirmValidation(<?php echo (int)$mp['id']; ?>)">✓ Lu</button>
+                        <a href="<?php echo htmlspecialchars($v1); ?>" target="_blank" class="wtv-btn wtv-btn--pdf">V1</a>
+                        <a href="<?php echo htmlspecialchars($v2); ?>" target="_blank" class="wtv-btn wtv-btn--pdf">V2</a>
+                    </span>
+                    <?php endforeach; ?>
+                </div>
+                <div class="wtv-idx-hint" style="margin-top:0.7rem;">Cliquez sur ✓ Lu après chaque lecture, ou ouvrez directement le PDF souhaité.</div>
+                <?php endif; ?>
+
+                <?php if (!empty($wirdSessions)): ?>
+                <div style="margin-top:0.9rem; padding-top:0.8rem; border-top:1px solid rgba(255,255,255,0.08);">
+                    <div style="color:#ffd873; font-size:0.85rem; font-weight:700; margin-bottom:0.4rem;">📚 Autres sessions en cours — choisissez un Juz</div>
+                    <?php foreach ($wirdSessions as $w): ?>
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.06);">
+                            <span style="color: #fff;"><strong><?php echo htmlspecialchars($w['titre']); ?></strong> <span style="color: var(--text-muted); font-size: 0.85rem;">· <?php echo (int)$w['lues']; ?>/30 lues · <strong style="color:#ffd873;"><?php echo (int)$w['libres']; ?></strong> Juz libres</span></span>
+                            <a href="wird.php?s=<?php echo (int)$w['id']; ?>&t=<?php echo htmlspecialchars($w['token'], ENT_QUOTES); ?>" class="btn btn-primary btn-sm" style="white-space:nowrap;">Choisir un Juz</a>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+
+        <!-- Séances publiées : Dahira & Guddi Àjjuma (validation de présence) -->
+        <?php if (!empty($prochainDahira) || !empty($prochainGuddi)): ?>
+        <div class="glass-card" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🕌 Prochaines rencontres — validez votre présence</div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+
+                <?php if (!empty($prochainDahira)): ?>
+                <?php
+                    $dDate = $prochainDahira['date_dahira'];
+                    $dPassed = $dDate <= date('Y-m-d');
+                ?>
+                <div style="border:1px solid var(--glass-border); border-radius:16px; padding:1rem 1.1rem; background:rgba(255,255,255,0.03);">
+                    <div style="font-weight:800; color:var(--accent);">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem; white-space:pre-line;">🕐 <?php echo htmlspecialchars($dahiraHeure); ?> à <?php echo htmlspecialchars($dahiraFin); ?><br>📍 <?php echo htmlspecialchars($dahiraLieu); ?></div>
+                    <div style="margin-top:0.5rem;"><a href="dahira_detail.php?id=<?php echo (int)$prochainDahira['id']; ?>" style="color:var(--accent); font-size:0.82rem;">👁️ Voir le détail</a></div>
+                    <?php if (isset($_SESSION['player_id'])): ?>
+                        <?php if ($dPassed && $dahiraPresenceFaite): ?>
+                            <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Jazakallahou Khair</div>
+                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem;" onclick="annulerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">↩️ Annuler</button>
+                        <?php elseif ($dPassed): ?>
+                            <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">✅ J'étais présent(e)</button>
+                        <?php else: ?>
+                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Vous pourrez valider votre présence le jour même.</div>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($prochainGuddi)): ?>
+                <?php
+                    $gDate = $prochainGuddi['date_guddi'];
+                    $gPassed = $gDate <= date('Y-m-d');
+                    $gMode = (string)($prochainGuddi['mode'] ?? '');
+                    if ($gMode === '') { $gMode = dahira_param($pdo, 'guddi_mode_defaut', 'distance'); }
+                ?>
+                <div style="border:1px solid var(--glass-border); border-radius:16px; padding:1rem 1.1rem; background:rgba(255,255,255,0.03);">
+                    <div style="font-weight:800; color:var(--accent);">💎 Guddi Àjjuma — <?php echo ucfirst(guddi_jour_fr($gDate)) . ' ' . date('d/m/Y', strtotime($gDate)); ?></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🕐 à partir de <?php echo htmlspecialchars($guddiHeure); ?> · <?php echo $gMode === 'presentiel' ? '🏛️ présentiel' : '💻 à distance'; ?></div>
+                    <?php if (!empty($prochainGuddi['theme'])): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.2rem;">🎯 <?php echo htmlspecialchars((string)$prochainGuddi['theme']); ?></div><?php endif; ?>
+                    <div style="margin-top:0.5rem;"><a href="guddi_detail.php?id=<?php echo (int)$prochainGuddi['id']; ?>" style="color:var(--accent); font-size:0.82rem;">👁️ Voir le détail</a></div>
+                    <?php if (isset($_SESSION['player_id'])): ?>
+                        <?php if ($gPassed && $guddiPresenceFaite): ?>
+                            <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Jazakallahou Khair</div>
+                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem;" onclick="annulerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">↩️ Annuler</button>
+                        <?php elseif ($gPassed): ?>
+                            <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">✅ J'étais présent(e)</button>
+                        <?php else: ?>
+                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Vous pourrez valider votre présence le jour même.</div>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+            </div>
+        </div>
         <?php endif; ?>
 
         <!-- Intro Header -->
@@ -124,7 +401,7 @@ try {
                 <div class="empty-state-icon">👥</div>
                 <h2>Aucun membre validé</h2>
                 <p style="margin-top: 0.5rem; color: var(--text-muted);">
-                    Le trombinoscope est actuellement vide ou les inscriptions sont en cours de validation.
+                    Le Dahira - Mubawwa-A-Sidqin est actuellement vide ou les inscriptions sont en cours de validation.
                 </p>
                 <div style="margin-top: 1.5rem;">
                     <a href="register.php" class="btn btn-primary">Créer la première inscription</a>
@@ -136,7 +413,17 @@ try {
                     <?php 
                         $fullName = $m['prenom'] . ' ' . $m['nom'];
                     ?>
-                    <div class="member-card" data-name="<?php echo htmlspecialchars($fullName); ?>" data-civilite="<?php echo htmlspecialchars($m['civilite'] ?? 'Goor Yalla'); ?>">
+                    <div class="member-card" data-name="<?php echo htmlspecialchars($fullName); ?>" data-civilite="<?php echo htmlspecialchars($m['civilite'] ?? 'Goor Yalla'); ?>"
+                        data-photo="<?php echo htmlspecialchars($m['photo_path'] ?? '', ENT_QUOTES); ?>"
+                        data-genre="<?php echo htmlspecialchars($m['genre'] ?? '', ENT_QUOTES); ?>"
+                        data-commune="<?php echo htmlspecialchars($m['commune'] ?? '', ENT_QUOTES); ?>"
+                        data-profession="<?php echo htmlspecialchars($m['profession'] ?? '', ENT_QUOTES); ?>"
+                        data-secteur="<?php echo htmlspecialchars($m['secteur_activite'] ?? '', ENT_QUOTES); ?>"
+                        data-annee="<?php echo htmlspecialchars($m['annee_integration'] ?? '', ENT_QUOTES); ?>"
+                        data-type="<?php echo htmlspecialchars($m['type_adhesion'] ?? '', ENT_QUOTES); ?>"
+                        data-score="<?php echo (int)($m['score'] ?? 0); ?>"
+                        data-email="<?php echo htmlspecialchars($m['email'] ?? '', ENT_QUOTES); ?>"
+                        onclick="showMemberInfo(this)" style="cursor:pointer;">
                         <div class="member-photo-container">
                             <img src="uploads/<?php echo htmlspecialchars($m['photo_path']); ?>" class="member-photo" alt="Photo de <?php echo htmlspecialchars($fullName); ?>" loading="lazy">
                         </div>
@@ -159,11 +446,105 @@ try {
                 </p>
             </div>
         <?php endif; ?>
+            </div>
+        </div>
     </main>
+
+    <!-- Fiche membre (au clic sur une carte) -->
+    <div id="member-modal" class="modal-overlay">
+        <div class="mi-card">
+            <div class="mi-head">
+                <button type="button" class="mi-close" onclick="closeMemberInfo()" aria-label="Fermer">&times;</button>
+                <div class="mi-photo-wrap" id="mi-photo-wrap">
+                    <img id="mi-photo" src="" alt="Photo">
+                </div>
+                <h2 id="mi-name">Prénom Nom</h2>
+                <span id="mi-civilite" class="member-civilite-badge" style="display:inline-block;"></span>
+            </div>
+            <div class="mi-body">
+                <div id="mi-rows"></div>
+            </div>
+            <div class="mi-foot">
+                <button type="button" onclick="closeMemberInfo()" class="btn btn-primary btn-sm">Fermer</button>
+            </div>
+        </div>
+    </div>
 
     <footer class="app-footer">
         <p>&copy; 2026 Touba Lyon - Tous droits réservés.</p>
     </footer>
+
+    <!-- Modal de confirmation validation lecture (index.php) -->
+    <div id="idx-confirm-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card glass-card">
+            <div class="modal-header"><h3 class="gold-text">Confirmation</h3></div>
+            <div class="modal-body"><p style="color:var(--text-muted);">Avez-vous bien terminé la lecture de ce Juz ?</p></div>
+            <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1.5rem;">
+                <button type="button" onclick="idxCloseConfirmModal()" class="btn btn-secondary btn-sm">Non, annuler</button>
+                <button type="button" id="idx-confirm-btn" class="btn btn-primary btn-sm">Oui, j'ai lu</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var idxConfirmPid = 0;
+        function idxConfirmValidation(pid) {
+            idxConfirmPid = pid;
+            var modal = document.getElementById('idx-confirm-modal');
+            modal.style.display = 'flex';
+            setTimeout(function() { modal.classList.add('active'); }, 10);
+        }
+        function idxCloseConfirmModal() {
+            var modal = document.getElementById('idx-confirm-modal');
+            modal.classList.remove('active');
+            setTimeout(function() { modal.style.display = 'none'; }, 400);
+        }
+        var idxConfirmBtn = document.getElementById('idx-confirm-btn');
+        if (idxConfirmBtn) {
+            idxConfirmBtn.addEventListener('click', function() {
+                if (idxConfirmPid) {
+                    document.getElementById('idx-wf-pid').value = idxConfirmPid;
+                    document.getElementById('idx-w-form').submit();
+                }
+            });
+        }
+    </script>
+
+    <script>
+        // Validation de présence (Dahira / Guddi Àjjuma publiés)
+        var presenceToken = <?php echo json_encode(isset($trobaCsrf) ? $trobaCsrf : ''); ?>;
+        function validerPresence(type, id, btn) {
+            if (presenceToken === '') {
+                try { presenceToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content'); } catch (e) {}
+            }
+            var corps = new URLSearchParams();
+            corps.set('action', 'validate');
+            corps.set('type', type);
+            corps.set('id', String(id));
+            corps.set('csrf_token', presenceToken);
+            fetch('presence_validate.php', { method: 'POST', body: corps })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.ok) { window.location.reload(); }
+                    else { alert(d.msg || 'Erreur.'); }
+                })
+                .catch(function () { alert('Une erreur est survenue. Réessayez.'); });
+        }
+        function annulerPresence(type, id, btn) {
+            var corps = new URLSearchParams();
+            corps.set('action', 'cancel');
+            corps.set('type', type);
+            corps.set('id', String(id));
+            corps.set('csrf_token', presenceToken);
+            fetch('presence_validate.php', { method: 'POST', body: corps })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.ok) { window.location.reload(); }
+                    else { alert(d.msg || 'Erreur.'); }
+                })
+                .catch(function () { alert('Une erreur est survenue. Réessayez.'); });
+        }
+    </script>
 
     <script>
         const searchInput = document.getElementById('search-input');
@@ -214,6 +595,45 @@ try {
                 filterMembers();
             });
         });
+
+        // ── Fiche membre au clic sur une carte ──
+        function miEsc(s){ var d=document.createElement('div'); d.textContent=(s===null||s===undefined||s==='')?'—':s; return d.innerHTML; }
+        function miRow(label, value){
+            if (value === '' || value === null || value === undefined) return '';
+            return '<div class="mi-row"><span class="k">' + label + '</span><span class="v">' + miEsc(value) + '</span></div>';
+        }
+        function showMemberInfo(card) {
+            var d = card.dataset;
+            var modal = document.getElementById('member-modal');
+            var wrap = document.getElementById('mi-photo-wrap');
+            if (d.photo) {
+                wrap.innerHTML = '<img id="mi-photo" src="uploads/' + encodeURIComponent(d.photo) + '" alt="Photo">';
+            } else {
+                var ini = ((d.name || '?').trim().charAt(0) || '?').toUpperCase();
+                wrap.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;color:var(--gold);">' + ini + '</div>';
+            }
+            document.getElementById('mi-name').textContent = d.name || '';
+            var civ = document.getElementById('mi-civilite');
+            civ.textContent = d.civilite || '';
+            civ.style.display = d.civilite ? 'inline-block' : 'none';
+            var html = '';
+            html += miRow('Email', d.email);
+            html += miRow('Genre', d.genre);
+            html += miRow('Commune', d.commune);
+            html += miRow('Profession', d.profession);
+            html += miRow("Secteur d'activité", d.secteur);
+            html += miRow("Année d'intégration", d.annee);
+            html += miRow("Type d'adhésion", d.type);
+            document.getElementById('mi-rows').innerHTML = html;
+            modal.style.display = 'flex';
+            setTimeout(function(){ modal.classList.add('active'); }, 10);
+        }
+        function closeMemberInfo() {
+            var modal = document.getElementById('member-modal');
+            modal.classList.remove('active');
+            setTimeout(function(){ modal.style.display = 'none'; }, 300);
+        }
+        document.getElementById('member-modal').addEventListener('click', function(e){ if (e.target === this) closeMemberInfo(); });
     </script>
 </body>
 </html>

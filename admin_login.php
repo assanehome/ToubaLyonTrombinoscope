@@ -56,25 +56,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } else {
-        // Standard admin authentication
-        $username = trim($_POST['username'] ?? '');
+        // Standard admin authentication (par nom d'utilisateur OU adresse email)
+        $identifier = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
 
-        if (empty($username) || empty($password)) {
+        if (empty($identifier) || empty($password)) {
             $error = "Veuillez remplir tous les champs.";
         } else {
             try {
-                $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ?");
-                $stmt->execute([$username]);
+                $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ? OR email = ?");
+                $stmt->execute([$identifier, $identifier]);
                 $admin = $stmt->fetch();
 
                 if ($admin && password_verify($password, $admin['password'])) {
                     $_SESSION['admin_logged_in'] = true;
                     $_SESSION['admin_id'] = $admin['id'];
                     $_SESSION['admin_username'] = $admin['username'];
+                    $_SESSION['admin_is_member'] = false;
+                    if (!empty($admin['must_change_password'])) {
+                        $_SESSION['admin_must_change'] = true;
+                        header('Location: admin_password.php');
+                        exit;
+                    }
+                    $_SESSION['admin_must_change'] = false;
                     header('Location: admin_dashboard.php');
                     exit;
                 } else {
+                    // Repli : membre ayant le rôle administrateur (identifiants membre)
+                    $stmtM = $pdo->prepare("SELECT id, prenom, nom, password FROM membres WHERE email = ? AND is_admin = 1");
+                    $stmtM->execute([$identifier]);
+                    $memberAdmin = $stmtM->fetch();
+                    if ($memberAdmin && password_verify($password, $memberAdmin['password'])) {
+                        $_SESSION['admin_logged_in'] = true;
+                        $_SESSION['admin_username'] = trim($memberAdmin['prenom'] . ' ' . $memberAdmin['nom']);
+                        $_SESSION['admin_is_member'] = true;
+                        $_SESSION['admin_member_id'] = (int)$memberAdmin['id'];
+                        $_SESSION['admin_must_change'] = false;
+                        unset($_SESSION['admin_id']);
+                        header('Location: admin_dashboard.php');
+                        exit;
+                    }
                     $error = "Identifiant ou mot de passe incorrect.";
                 }
             } catch (Exception $e) {
@@ -90,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $setupMode ? 'Configuration Administrateur' : 'Connexion Admin'; ?> - Trombinoscope</title>
+    <title><?php echo $setupMode ? 'Configuration Administrateur' : 'Connexion Admin'; ?> - Dahira - Mubawwa-A-Sidqin</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -110,8 +131,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <form action="admin_login.php" method="POST">
                 <div class="form-group">
-                    <label for="username" class="form-label">Nom d'utilisateur</label>
-                    <input type="text" id="username" name="username" class="form-input" placeholder="Ex: admin" required autofocus>
+                    <label for="username" class="form-label"><?php echo $setupMode ? "Nom d'utilisateur" : "Nom d'utilisateur ou adresse email"; ?></label>
+                    <input type="text" id="username" name="username" class="form-input" placeholder="<?php echo $setupMode ? 'Ex: admin' : 'Nom d\'utilisateur ou email'; ?>" required autofocus>
                 </div>
 
                 <?php if ($setupMode): ?>

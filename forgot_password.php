@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $html = '<div style="font-family: Arial, sans-serif; color: #1a1a1a; max-width: 480px; margin: auto;">'
                         . '<h2 style="color: #1b4332;">Réinitialisation de votre mot de passe</h2>'
                         . '<p>Bonjour ' . htmlspecialchars($prenom) . ',</p>'
-                        . '<p>Vous avez demandé à réinitialiser le mot de passe de votre compte Trombinoscope Touba Lyon. '
+                        . '<p>Vous avez demandé à réinitialiser le mot de passe de votre compte Dahira - Mubawwa-A-Sidqin Touba Lyon. '
                         . 'Cliquez sur le bouton ci-dessous pour en choisir un nouveau :</p>'
                         . '<p style="text-align:center; margin: 28px 0;">'
                         . '<a href="' . $safeLink . '" style="background:#1b4332; color:#fff; text-decoration:none; padding:12px 28px; border-radius:8px; font-weight:bold; display:inline-block;">Réinitialiser mon mot de passe</a>'
@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         . '<p style="font-size: 0.9em; color:#555;">Ce lien est valable <strong>1 heure</strong>. '
                         . 'Si vous n\'êtes pas à l\'origine de cette demande, ignorez simplement cet e-mail : votre mot de passe restera inchangé.</p>'
                         . '<hr style="border:none; border-top:1px solid #eee; margin: 24px 0;">'
-                        . '<p style="font-size: 0.8em; color:#999;">Touba Lyon — Trombinoscope 2026</p>'
+                        . '<p style="font-size: 0.8em; color:#999;">Touba Lyon — Dahira - Mubawwa-A-Sidqin</p>'
                         . '</div>';
 
                     $sent = send_smtp_mail(

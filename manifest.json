@@ -1,0 +1,53 @@
+{
+  "id": "/Dahira/",
+  "name": "Dahira Touba Lyon",
+  "short_name": "Dahira Touba Lyon",
+  "description": "Le Trombinoscope du Dahira Touba Lyon : membres, adhésions et jeu Ki Kan La.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "index.php",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#081c15",
+  "theme_color": "#081c15",
+  "categories": ["social"],
+  "icons": [
+    {
+      "src": "icone_192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icone_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Trombinoscope",
+      "short_name": "Trombino",
+      "description": "Voir les membres du Dahira",
+      "url": "index.php",
+      "icons": [{ "src": "icone_192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Mon profil",
+      "short_name": "Profil",
+      "description": "Consulter et modifier mon profil",
+      "url": "profile.php",
+      "icons": [{ "src": "icone_192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Ki Kan La",
+      "short_name": "Ki Kan La",
+      "description": "Jouer à Ki Kan La",
+      "url": "kikanla.php",
+      "icons": [{ "src": "icone_192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

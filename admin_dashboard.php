@@ -13,6 +13,12 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
     exit;
 }
 
+// Première connexion : forcer le changement de mot de passe avant tout accès.
+if (!empty($_SESSION['admin_must_change'])) {
+    header('Location: admin_password.php');
+    exit;
+}
+
 // Generate CSRF token for secure actions
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
@@ -70,16 +76,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch stats and lists
 try {
-    // Stats : "En attente" = inscriptions trombinoscope en attente (les adhésions en attente
+    // Stats : "En attente" = inscriptions Dahira - Mubawwa-A-Sidqin en attente (les adhésions en attente
     // sont gérées dans admin_adhesions.php) ; "Validés" = TOUS les membres validés, y compris
     // les adhésions Dahira approuvées.
     $counts = ['pending' => 0, 'approved' => 0, 'rejected' => 0];
-    $counts['pending']  = (int) $pdo->query("SELECT COUNT(*) FROM membres WHERE status = 'pending' AND type_adhesion IS NULL")->fetchColumn();
+    $counts['pending']  = (int) $pdo->query("SELECT COUNT(*) FROM membres WHERE status = 'pending'")->fetchColumn();
     $counts['approved'] = (int) $pdo->query("SELECT COUNT(*) FROM membres WHERE status = 'approved'")->fetchColumn();
     $totalMembers = $counts['pending'] + $counts['approved'];
 
-    // List of pending members (inscriptions trombinoscope uniquement)
-    $stmt = $pdo->query("SELECT * FROM membres WHERE status = 'pending' AND type_adhesion IS NULL ORDER BY created_at DESC");
+    // List of pending members (TOUS les membres en attente)
+    $stmt = $pdo->query("SELECT * FROM membres WHERE status = 'pending' ORDER BY created_at DESC");
     $pendingMembers = $stmt->fetchAll();
 
     // List of approved members (TOUS les validés, y compris les adhésions Dahira approuvées)
@@ -94,29 +100,141 @@ try {
     http_response_code(500);
     die("Une erreur technique est survenue. Veuillez réessayer plus tard.");
 }
+
+// Valeurs distinctes (sur l'ensemble des membres) pour alimenter les filtres.
+$fltCommissions = []; $fltSecteurs = []; $fltTypes = []; $fltStatuts = []; $fltGenres = []; $fltAnnees = [];
+foreach (array_merge($pendingMembers, $approvedMembers) as $a) {
+    if (!empty($a['souhait_commission'])) { $fltCommissions[$a['souhait_commission']] = true; }
+    if (!empty($a['secteur_activite']))   { $fltSecteurs[$a['secteur_activite']] = true; }
+    if (!empty($a['type_adhesion']))      { $fltTypes[$a['type_adhesion']] = true; }
+    if (!empty($a['statut']))             { $fltStatuts[$a['statut']] = true; }
+    if (!empty($a['genre']))              { $fltGenres[$a['genre']] = true; }
+    if (!empty($a['annee_integration']))  { $fltAnnees[$a['annee_integration']] = true; }
+}
+$fltCommissions = array_keys($fltCommissions); sort($fltCommissions);
+$fltSecteurs = array_keys($fltSecteurs); sort($fltSecteurs);
+$fltTypes = array_keys($fltTypes); sort($fltTypes);
+$fltStatuts = array_keys($fltStatuts); sort($fltStatuts);
+$fltGenres = array_keys($fltGenres); sort($fltGenres);
+$fltAnnees = array_keys($fltAnnees); rsort($fltAnnees);
+
+/** Rendu d'un select de filtre. */
+function filter_select($id, $label, $options) {
+    $h = '<select id="' . $id . '" class="adh-select">';
+    $h .= '<option value="">' . htmlspecialchars($label) . ' : tous</option>';
+    foreach ($options as $o) { $h .= '<option value="' . htmlspecialchars($o, ENT_QUOTES) . '">' . htmlspecialchars($o) . '</option>'; }
+    $h .= '</select>';
+    return $h;
+}
+
+/** Attributs data-* pour le filtrage d'une ligne/carte membre. */
+function member_filter_attrs($m) {
+    $e = function ($v) { return htmlspecialchars($v ?? '', ENT_QUOTES); };
+    return ' data-status="' . $e($m['status'] ?? '') . '"'
+        . ' data-civilite="' . $e($m['civilite'] ?? '') . '"'
+        . ' data-commission="' . $e($m['souhait_commission'] ?? '') . '"'
+        . ' data-secteur="' . $e($m['secteur_activite'] ?? '') . '"'
+        . ' data-type="' . $e($m['type_adhesion'] ?? '') . '"'
+        . ' data-statut="' . $e($m['statut'] ?? '') . '"'
+        . ' data-genre="' . $e($m['genre'] ?? '') . '"'
+        . ' data-annee="' . $e($m['annee_integration'] ?? '') . '"'
+        . ' data-search="' . $e(mb_strtolower(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? '') . ' ' . ($m['email'] ?? ''))) . '"';
+}
+
+/** Détail minimal d'un membre (juste le type d'adhésion). */
+function member_detail_html($m) {
+    if (empty($m['type_adhesion'])) { return ''; }
+    return '<span class="badge" style="background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.35); font-size:0.68rem; margin-top:0.25rem; display:inline-block;">' . htmlspecialchars($m['type_adhesion']) . '</span>';
+}
+
+/** Photo d'un membre, ou pastille à initiales si aucune photo. */
+function member_photo_html($m, $cls = 'table-photo', $link = true) {
+    $p = $m['photo_path'] ?? '';
+    if ($p !== '') {
+        $u = 'uploads/' . htmlspecialchars($p, ENT_QUOTES);
+        $img = '<img src="' . $u . '" class="' . $cls . '" alt="Photo">';
+        // $link=false : pas de lien (ex: carte déjà cliquable → évite l'imbrication de <a>)
+        return $link ? '<a href="' . $u . '" target="_blank">' . $img . '</a>' : $img;
+    }
+    $ini = strtoupper(mb_substr($m['prenom'] ?? '', 0, 1) . mb_substr($m['nom'] ?? '', 0, 1));
+    return '<span class="' . $cls . ' photo-ph">' . htmlspecialchars($ini !== '' ? $ini : '?') . '</span>';
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Administration - Trombinoscope</title>
+    <title>Administration - Dahira - Mubawwa-A-Sidqin</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        .adh-filters-adv { display:flex; flex-wrap:wrap; gap:0.6rem; margin:0 0 1rem; align-items:center; }
+        .adh-filters-adv input, .adh-select { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:10px; color:var(--white); font-size:0.85rem; padding:0.5rem 0.75rem; color-scheme:dark; }
+        .adh-filters-adv input { flex:1 1 220px; min-width:180px; border-radius:50px; }
+        .adh-select { flex:1 1 150px; min-width:140px; }
+        .adh-select option { background-color:#0c241a; color:#fff; }
+        .adh-filters-adv input:focus, .adh-select:focus { outline:none; border-color:var(--accent); }
+        #adh-reset { background:transparent; border:1px solid var(--glass-border); color:var(--text-muted); border-radius:50px; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
+        #adh-reset:hover { border-color:var(--danger); color:var(--danger); }
+        .adh-count { font-size:0.82rem; color:var(--text-muted); margin-left:auto; }
+        .adh-toggle { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:50px; padding:0.45rem 1rem; font-size:0.85rem; font-weight:600; cursor:pointer; margin-bottom:1rem; display:inline-flex; align-items:center; gap:0.4rem; }
+        .adh-toggle:hover { border-color:var(--accent); }
+        .adh-toggle .chev { transition:transform 0.2s ease; }
+        .adh-toggle.open .chev { transform:rotate(180deg); }
+        .adh-filters-adv.is-hidden { display:none; }
+        /* Indicateurs compacts (moins de place) */
+        .stats-grid { gap:0.6rem !important; margin-bottom:1rem !important; grid-template-columns:repeat(3, 1fr) !important; }
+        .stats-grid .stat-card { padding:0.75rem 0.9rem !important; border-radius:12px !important; display:flex; flex-direction:column; gap:0.15rem; }
+        .stats-grid .stat-value { font-size:1.7rem !important; line-height:1.1 !important; }
+        .stats-grid .stat-title { font-size:0.72rem !important; }
+        @media (max-width:520px){ .stats-grid .stat-value { font-size:1.4rem !important; } .stats-grid .stat-title { font-size:0.62rem !important; } }
+        .dash-chips { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.85rem; }
+        .dash-chip { background:rgba(255,255,255,0.05); color:var(--white); border:1px solid var(--glass-border); border-radius:50px; padding:0.45rem 1.1rem; font-size:0.85rem; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
+        .dash-chip:hover { border-color:var(--accent); }
+        .dash-chip.active { background:var(--accent); color:var(--secondary); border-color:var(--accent); }
+        .photo-ph { display:inline-flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#d4af37,#b8902f); color:#0c241a; font-weight:800; text-transform:uppercase; }
+        .table-photo.photo-ph { width:44px; height:44px; border-radius:50%; font-size:0.95rem; }
+        .member-photo.photo-ph { width:100%; height:100%; font-size:2.5rem; border-radius:0; }
+        @media (max-width: 600px) {
+            .adh-filters-adv input, .adh-select { flex:1 1 100%; }
+            .table-responsive { overflow:visible; }
+            .admin-table thead { display:none; }
+            .admin-table, .admin-table tbody, .admin-table tr, .admin-table td { display:block; width:100%; }
+            .admin-table tr { border:1px solid var(--glass-border); border-radius:14px; margin-bottom:0.85rem; padding:0.85rem 1rem; background:rgba(255,255,255,0.03); }
+            .admin-table td { border:none !important; padding:0.3rem 0; }
+            .table-actions { display:flex; flex-direction:column; align-items:stretch; gap:0.5rem; margin-top:0.4rem; }
+            .table-actions .btn, .table-actions a, .table-actions button { width:100%; justify-content:center; display:flex; }
+        }
+        /* ── Fiche membre (popup moderne, responsive) — identique à index ── */
+        #member-modal { position:fixed; inset:0; overflow:hidden; align-items:center; justify-content:center; }
+        .mi-card { position:fixed; left:50%; top:50%; width:calc(100vw - 28px); max-width:380px; max-height:86vh; display:flex; flex-direction:column;
+            background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:18px; overflow:hidden;
+            box-shadow:0 30px 80px rgba(0,0,0,0.55); z-index:2001;
+            transform:translate(-50%, -46%) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
+        #member-modal.active .mi-card { transform:translate(-50%, -50%) scale(1); opacity:1; }
+        .mi-head { position:relative; padding:0.9rem 1rem 0.75rem; background:linear-gradient(135deg,#1b4332,#2d6a4f); text-align:center; flex-shrink:0; }
+        .mi-photo-wrap { width:62px; height:62px; border-radius:50%; overflow:hidden; border:2px solid var(--gold); margin:0 auto 0.45rem; box-shadow:0 4px 12px rgba(0,0,0,0.4); background:#081c15; }
+        .mi-photo-wrap img { width:100%; height:100%; object-fit:cover; }
+        .mi-head h2 { color:#fff; font-size:1.1rem; margin:0 0 0.25rem; }
+        .mi-close { position:absolute; top:0.5rem; right:0.6rem; background:rgba(255,255,255,0.15); color:#fff; border:0; width:26px; height:26px; border-radius:50%; font-size:1.05rem; line-height:1; cursor:pointer; }
+        .mi-close:hover { background:rgba(255,255,255,0.3); }
+        .mi-body { padding:0.35rem 1rem 0.6rem; overflow-y:auto; flex:1; scrollbar-width:none; -ms-overflow-style:none; }
+        .mi-body::-webkit-scrollbar { width:0; height:0; display:none; }
+        .mi-row { display:flex; align-items:baseline; justify-content:space-between; gap:0.75rem; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.07); }
+        .mi-row:last-child { border-bottom:none; }
+        .mi-row .k { font-size:0.68rem; color:#f2d574; text-transform:uppercase; letter-spacing:0.02em; font-weight:600; flex-shrink:0; }
+        .mi-row .v { color:#fff; font-size:0.9rem; font-weight:600; word-break:break-word; text-align:right; }
+        .mi-foot { padding:0.6rem 1rem; border-top:1px solid rgba(255,255,255,0.08); text-align:center; flex-shrink:0; }
+    </style>
 </head>
 <body>
 
     <?php include __DIR__ . '/header.php'; ?>
 
     <main class="container">
-        <!-- Admin Welcome Banner -->
-        <div class="admin-welcome-banner glass-card" style="margin-top: 2rem; margin-bottom: 1rem; padding: 1.25rem 2rem; display: flex; justify-content: space-between; align-items: center; border-radius: 20px;">
-            <span>Espace Administration — Connecté en tant que : <strong class="gold-text"><?php echo htmlspecialchars($_SESSION['admin_username'] ?? 'Admin'); ?></strong></span>
-            <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
-                <a href="admin_adhesions.php" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">📝 Inscriptions Dahira (<?php echo $adhesionsCount; ?>)</a>
-                <a href="admin_admins.php" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">👥 Gérer les admins</a>
-                <span class="badge badge-approved" style="font-size: 0.85rem; padding: 0.4rem 1rem;">Administrateur</span>
-            </div>
-        </div>
+        <div class="dashboard-layout">
+            <?php include __DIR__ . '/admin_menu.php'; ?>
+            <div class="dashboard-main">
 
         <!-- Stats Section -->
         <div class="stats-grid">
@@ -134,6 +252,27 @@ try {
             </div>
         </div>
 
+
+        <!-- Pastilles rapides par civilité (comme sur le Trombinoscope public) -->
+        <div class="dash-chips">
+            <button type="button" class="dash-chip active" data-civ="all">Tous</button>
+            <button type="button" class="dash-chip" data-civ="Goor Yalla">Goor Yalla</button>
+            <button type="button" class="dash-chip" data-civ="Sokhna">Sokhna</button>
+        </div>
+
+        <!-- Filtres combinés (groupe replié par défaut) -->
+        <button type="button" id="adh-toggle" class="adh-toggle">🔎 Filtres <span class="chev">▾</span></button>
+        <div class="adh-filters-adv is-hidden" id="adh-panel">
+            <input type="text" id="adh-search" placeholder="🔍 Nom, prénom ou email…">
+            <?php echo filter_select('f-commission', 'Commission', $fltCommissions); ?>
+            <?php echo filter_select('f-secteur', 'Secteur', $fltSecteurs); ?>
+            <?php echo filter_select('f-type', 'Type', $fltTypes); ?>
+            <?php echo filter_select('f-statut', 'Statut', $fltStatuts); ?>
+            <?php echo filter_select('f-genre', 'Genre', $fltGenres); ?>
+            <?php if (!empty($fltAnnees)) echo filter_select('f-annee', 'Année', $fltAnnees); ?>
+            <button type="button" id="adh-reset">✕ Réinitialiser</button>
+            <span class="adh-count" id="adh-count"></span>
+        </div>
 
         <!-- Tabs Navigation -->
         <div class="dashboard-tabs">
@@ -174,24 +313,19 @@ try {
                         </thead>
                         <tbody>
                             <?php foreach ($pendingMembers as $m): ?>
-                                <tr>
-                                    <td>
-                                        <a href="uploads/<?php echo htmlspecialchars($m['photo_path']); ?>" target="_blank">
-                                            <img src="uploads/<?php echo htmlspecialchars($m['photo_path']); ?>" class="table-photo" alt="Photo de <?php echo htmlspecialchars($m['prenom']); ?>">
-                                        </a>
-                                    </td>
+                                <tr class="filterable"<?php echo member_filter_attrs($m); ?>>
+                                    <td><?php echo member_photo_html($m); ?></td>
                                     <td>
                                         <div style="font-weight:600;"><span style="text-transform:capitalize;"><?php echo htmlspecialchars($m['prenom']); ?></span> <span style="text-transform:uppercase;"><?php echo htmlspecialchars($m['nom']); ?></span></div>
                                         <div style="font-size:0.8rem; color:var(--text-muted); word-break:break-all;"><?php echo htmlspecialchars($m['email']); ?></div>
-                                        <div style="font-size:0.78rem; color:var(--text-muted);"><?php echo date('d/m/Y H:i', strtotime($m['created_at'])); ?></div>
                                     </td>
                                     <td>
                                         <div class="table-actions">
                                             <?php
                                                 $actionFullName = $m['prenom'] . ' ' . $m['nom'];
                                             ?>
-                                            <a href="membre.php?id=<?php echo (int)$m['id']; ?>" class="btn btn-secondary btn-sm" style="border-color: var(--accent); color: var(--accent);">Voir</a>
-                                            <button onclick="handleAction('approve', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-primary btn-sm" style="background: var(--success); box-shadow: none;">Valider</button>
+                                            <a href="membre.php?id=<?php echo (int)$m['id']; ?>" class="btn btn-secondary btn-sm" style="border-color: var(--accent); color: var(--accent);">Voir la fiche</a>
+                                            <button onclick="handleAction('approve', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-primary btn-sm" style="background: var(--success); box-shadow: none;">✓ Valider</button>
                                             <button onclick="handleAction('delete', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-danger btn-sm">Rejeter</button>
                                         </div>
                                     </td>
@@ -241,24 +375,19 @@ try {
                         </thead>
                         <tbody>
                             <?php foreach ($approvedMembers as $m): ?>
-                                <tr>
-                                    <td>
-                                        <a href="uploads/<?php echo htmlspecialchars($m['photo_path']); ?>" target="_blank">
-                                            <img src="uploads/<?php echo htmlspecialchars($m['photo_path']); ?>" class="table-photo" alt="Photo de <?php echo htmlspecialchars($m['prenom']); ?>">
-                                        </a>
-                                    </td>
+                                <tr class="filterable"<?php echo member_filter_attrs($m); ?>>
+                                    <td><?php echo member_photo_html($m); ?></td>
                                     <td>
                                         <div style="font-weight:600;"><span style="text-transform:capitalize;"><?php echo htmlspecialchars($m['prenom']); ?></span> <span style="text-transform:uppercase;"><?php echo htmlspecialchars($m['nom']); ?></span></div>
                                         <div style="font-size:0.8rem; color:var(--text-muted); word-break:break-all;"><?php echo htmlspecialchars($m['email']); ?></div>
-                                        <div style="font-size:0.78rem; color:var(--text-muted);"><?php echo date('d/m/Y H:i', strtotime($m['created_at'])); ?></div>
                                     </td>
                                     <td>
                                         <div class="table-actions">
                                             <?php
                                                 $actionFullName = $m['prenom'] . ' ' . $m['nom'];
                                             ?>
-                                            <a href="membre.php?id=<?php echo (int)$m['id']; ?>" class="btn btn-secondary btn-sm" style="border-color: var(--accent); color: var(--accent);">Voir</a>
-                                            <button onclick="handleAction('suspend', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-secondary btn-sm" style="color: var(--warning); border-color: var(--warning);">Suspendre</button>
+                                            <a href="membre.php?id=<?php echo (int)$m['id']; ?>" class="btn btn-secondary btn-sm" style="border-color: var(--accent); color: var(--accent);">Voir la fiche</a>
+                                            <button onclick="handleAction('suspend', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-secondary btn-sm" style="color: var(--warning); border-color: var(--warning);">Passer en attente</button>
                                             <button onclick="handleAction('delete', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-danger btn-sm">Supprimer</button>
                                         </div>
                                     </td>
@@ -268,29 +397,27 @@ try {
                     </table>
                 </div>
 
-                <!-- Visual Trombinoscope Card Grid View -->
+                <!-- Visual Dahira - Mubawwa-A-Sidqin Card Grid View -->
                 <div id="validated-grid-view" style="display: none;">
                     <div class="trombi-grid">
                         <?php foreach ($approvedMembers as $m): ?>
                             <?php $fullName = $m['prenom'] . ' ' . $m['nom']; ?>
-                            <div class="member-card">
+                            <div class="member-card filterable" style="cursor:pointer;" onclick="showMemberInfo(this)"
+                                data-id="<?php echo (int)$m['id']; ?>"
+                                data-photo="<?php echo htmlspecialchars($m['photo_path'] ?? '', ENT_QUOTES); ?>"
+                                data-name="<?php echo htmlspecialchars($fullName, ENT_QUOTES); ?>"
+                                data-commune="<?php echo htmlspecialchars($m['commune'] ?? '', ENT_QUOTES); ?>"
+                                data-profession="<?php echo htmlspecialchars($m['profession'] ?? '', ENT_QUOTES); ?>"
+                                data-email="<?php echo htmlspecialchars($m['email'] ?? '', ENT_QUOTES); ?>"
+                                <?php echo member_filter_attrs($m); ?>>
                                 <div class="member-photo-container">
-                                    <img src="uploads/<?php echo htmlspecialchars($m['photo_path']); ?>" class="member-photo" alt="Photo de <?php echo htmlspecialchars($fullName); ?>" loading="lazy">
+                                    <?php echo member_photo_html($m, 'member-photo', false); ?>
                                 </div>
                                 <div class="member-info">
                                     <h3 class="member-name"><?php echo htmlspecialchars($fullName); ?></h3>
-                                    <a href="mailto:<?php echo htmlspecialchars($m['email']); ?>" class="member-email">
-                                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                                        <?php echo htmlspecialchars($m['email']); ?>
-                                    </a>
-                                    
-                                    <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.25rem; width: 100%;">
-                                        <a href="membre.php?id=<?php echo (int)$m['id']; ?>" class="btn btn-primary btn-sm" style="width: 100%; font-size: 0.8rem; padding: 0.45rem; background: var(--accent); color: var(--secondary); text-align:center;">Voir Profil</a>
-                                        <div style="display: flex; gap: 0.5rem; width: 100%;">
-                                            <button onclick="handleAction('suspend', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($fullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-secondary btn-sm" style="flex: 1; color: var(--accent); border-color: var(--accent); font-size: 0.8rem; padding: 0.45rem;">Suspendre</button>
-                                            <button onclick="handleAction('delete', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($fullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-danger btn-sm" style="flex: 1; font-size: 0.8rem; padding: 0.45rem;">Supprimer</button>
-                                        </div>
-                                    </div>
+                                    <?php if (!empty($m['civilite'])): ?>
+                                        <span class="member-civilite-badge"><?php echo htmlspecialchars($m['civilite']); ?></span>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         <?php endforeach; ?>
@@ -299,7 +426,30 @@ try {
             <?php endif; ?>
         </section>
         </div> <!-- Closes validated-tab -->
+            </div> <!-- Closes dashboard-main -->
+        </div> <!-- Closes dashboard-layout -->
     </main>
+
+    <!-- Fiche membre (au clic sur une carte du Trombinoscope) — identique à index -->
+    <div id="member-modal" class="modal-overlay">
+        <div class="mi-card">
+            <div class="mi-head">
+                <button type="button" class="mi-close" onclick="closeMemberInfo()" aria-label="Fermer">&times;</button>
+                <div class="mi-photo-wrap" id="mi-photo-wrap">
+                    <img id="mi-photo" src="" alt="Photo">
+                </div>
+                <h2 id="mi-name">Prénom Nom</h2>
+                <span id="mi-civilite" class="member-civilite-badge" style="display:inline-block;"></span>
+            </div>
+            <div class="mi-body">
+                <div id="mi-rows"></div>
+            </div>
+            <div class="mi-foot">
+                <a id="mi-edit" href="#" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">✏️ Modifier</a>
+                <button type="button" onclick="closeMemberInfo()" class="btn btn-primary btn-sm">Fermer</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Modern Notification Modal (alert responses) -->
     <?php if (!empty($success) || !empty($error)): ?>
@@ -397,6 +547,47 @@ try {
     </form>
 
     <script>
+        // ── Fiche membre au clic sur une carte du Trombinoscope (popup identique à index) ──
+        function miEsc(s){ var d=document.createElement('div'); d.textContent=(s===null||s===undefined||s==='')?'—':s; return d.innerHTML; }
+        function miRow(label, value){
+            if (value === '' || value === null || value === undefined) return '';
+            return '<div class="mi-row"><span class="k">' + label + '</span><span class="v">' + miEsc(value) + '</span></div>';
+        }
+        function showMemberInfo(card) {
+            var d = card.dataset;
+            var modal = document.getElementById('member-modal');
+            var wrap = document.getElementById('mi-photo-wrap');
+            if (d.photo) {
+                wrap.innerHTML = '<img id="mi-photo" src="uploads/' + encodeURIComponent(d.photo) + '" alt="Photo">';
+            } else {
+                var ini = ((d.name || '?').trim().charAt(0) || '?').toUpperCase();
+                wrap.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;color:var(--gold);">' + ini + '</div>';
+            }
+            document.getElementById('mi-name').textContent = d.name || '';
+            var civ = document.getElementById('mi-civilite');
+            civ.textContent = d.civilite || '';
+            civ.style.display = d.civilite ? 'inline-block' : 'none';
+            var html = '';
+            html += miRow('Email', d.email);
+            html += miRow('Genre', d.genre);
+            html += miRow('Commune', d.commune);
+            html += miRow('Profession', d.profession);
+            html += miRow("Secteur d'activité", d.secteur);
+            html += miRow("Année d'intégration", d.annee);
+            html += miRow("Type d'adhésion", d.type);
+            document.getElementById('mi-rows').innerHTML = html;
+            var edit = document.getElementById('mi-edit');
+            if (edit) { edit.href = 'membre.php?id=' + encodeURIComponent(d.id || ''); }
+            modal.style.display = 'flex';
+            setTimeout(function(){ modal.classList.add('active'); }, 10);
+        }
+        function closeMemberInfo() {
+            var modal = document.getElementById('member-modal');
+            modal.classList.remove('active');
+            setTimeout(function(){ modal.style.display = 'none'; }, 300);
+        }
+        (function(){ var mm=document.getElementById('member-modal'); if(mm){ mm.addEventListener('click', function(e){ if (e.target === this) closeMemberInfo(); }); } })();
+
         let activeAction = null;
         let activeMemberId = null;
 
@@ -435,14 +626,14 @@ try {
                 confirmBtn.classList.add("btn-primary");
                 confirmBtn.textContent = "Valider";
             } else if (action === 'suspend') {
-                title = "Suspendre le membre";
-                msg = `Voulez-vous suspendre l'inscription de <strong>${memberName}</strong> ? Elle retournera dans la liste d'attente.`;
+                title = "Passer en attente";
+                msg = `Voulez-vous remettre <strong>${memberName}</strong> en attente de validation ? Le membre retournera dans la liste des demandes.`;
                 confirmBtn.classList.add("btn-secondary");
                 confirmBtn.style.color = "var(--accent)";
                 confirmBtn.style.borderColor = "var(--accent)";
                 confirmBtn.style.borderStyle = "solid";
                 confirmBtn.style.borderWidth = "1px";
-                confirmBtn.textContent = "Suspendre";
+                confirmBtn.textContent = "Passer en attente";
             } else if (action === 'delete') {
                 title = "⚠️ Suppression Définitive";
                 msg = `Êtes-vous sûr de vouloir supprimer définitivement <strong>${memberName}</strong> ? Son compte et sa photo seront effacés sans possibilité de retour.`;
@@ -513,6 +704,7 @@ try {
 
             // Save active tab in local storage to keep state on reload
             localStorage.setItem('active_admin_tab', tabId);
+            if (window.applyDashFilters) window.applyDashFilters();
         }
 
         // View mode switcher (table list / visual cards grid)
@@ -542,10 +734,43 @@ try {
             
             // Save active view mode in local storage
             localStorage.setItem('active_view_mode', mode);
+            if (window.applyDashFilters) window.applyDashFilters();
+        }
+
+        // Mode "Trombinoscope seul" : n'afficher que la grille des membres validés.
+        function enterTrombiOnly() {
+            const vBtn = document.querySelector('button[onclick*="validated-tab"]');
+            if (vBtn) vBtn.click();
+            setViewMode('grid');
+            var hide = function (sel) { var e = document.querySelector(sel); if (e) e.style.display = 'none'; };
+            hide('.stats-grid');
+            hide('.dashboard-tabs');
+            var pend = document.getElementById('pending-tab'); if (pend) pend.style.display = 'none';
+            var vHead = document.querySelector('#validated-tab .section-header'); if (vHead) vHead.style.display = 'none';
+            // Filtres masqués par défaut en mode Trombinoscope
+            var panel = document.getElementById('adh-panel'); if (panel) panel.classList.add('is-hidden');
+            var tog = document.getElementById('adh-toggle'); if (tog) tog.classList.remove('open');
+            // Activer le lien "Trombinoscope" du menu (comme les autres pages actives)
+            document.querySelectorAll('.admin-menu-links a').forEach(function (a) {
+                var hh = a.getAttribute('href');
+                if (hh === 'admin_dashboard.php#trombi') { a.classList.add('active'); }
+                else if (hh === 'admin_dashboard.php') { a.classList.remove('active'); }
+            });
+            // Fermer le menu mobile (comme les autres liens qui rechargent la page)
+            var ml = document.getElementById('adminMenuLinks'); if (ml) ml.classList.remove('open');
+            // Mettre à jour le libellé du bouton menu mobile (section active)
+            var tglLabel = document.querySelector('.admin-menu-toggle span:first-child');
+            if (tglLabel) tglLabel.textContent = '🖼️ Trombinoscope';
         }
 
         // On document load, restore previous tab & view mode selections
         document.addEventListener('DOMContentLoaded', () => {
+            // Lien "Trombinoscope" du menu : afficher uniquement le trombinoscope.
+            if (location.hash === '#trombi') {
+                enterTrombiOnly();
+                return;
+            }
+
             const savedTab = localStorage.getItem('active_admin_tab');
             if (savedTab) {
                 const tabBtn = document.querySelector(`button[onclick*="${savedTab}"]`);
@@ -559,6 +784,12 @@ try {
             if (savedMode) {
                 setViewMode(savedMode);
             }
+        });
+
+        // Réagir si on clique le lien Trombinoscope alors qu'on est déjà sur la page
+        window.addEventListener('hashchange', function () {
+            if (location.hash === '#trombi') { enterTrombiOnly(); }
+            else { location.reload(); }
         });
 
         function showDetails(m) {
@@ -615,6 +846,72 @@ try {
                 modal.style.display = 'none';
             }, 300);
         }
+
+        // ── Filtres combinés (recherche + commission / secteur / type / statut / genre / année) ──
+        (function () {
+            const search = document.getElementById('adh-search');
+            const selects = {
+                commission: document.getElementById('f-commission'),
+                secteur:    document.getElementById('f-secteur'),
+                type:       document.getElementById('f-type'),
+                statut:     document.getElementById('f-statut'),
+                genre:      document.getElementById('f-genre'),
+                annee:      document.getElementById('f-annee')
+            };
+            const countEl = document.getElementById('adh-count');
+            const items = Array.from(document.querySelectorAll('.filterable'));
+            const chips = Array.from(document.querySelectorAll('.dash-chip'));
+            let civFilter = 'all';
+            function norm(s){ return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }
+
+            window.applyDashFilters = function () {
+                const term = norm(search ? search.value : '');
+                items.forEach(function (el) {
+                    let show = true;
+                    if (civFilter !== 'all') { show = (el.getAttribute('data-civilite') === civFilter); }
+                    for (const key in selects) {
+                        const s = selects[key];
+                        if (show && s && s.value) { show = (el.getAttribute('data-' + key) === s.value); }
+                    }
+                    if (show && term) { show = norm(el.getAttribute('data-search')).includes(term); }
+                    el.style.display = show ? '' : 'none';
+                });
+                if (countEl) {
+                    const visible = items.filter(function (el) { return el.style.display !== 'none' && el.offsetParent !== null; }).length;
+                    countEl.textContent = visible + ' résultat(s)';
+                }
+            };
+
+            chips.forEach(function (c) {
+                c.addEventListener('click', function () {
+                    chips.forEach(x => x.classList.remove('active'));
+                    c.classList.add('active');
+                    civFilter = c.getAttribute('data-civ');
+                    window.applyDashFilters();
+                });
+            });
+
+            const toggle = document.getElementById('adh-toggle');
+            const panel = document.getElementById('adh-panel');
+            if (toggle && panel) toggle.addEventListener('click', function () {
+                panel.classList.toggle('is-hidden');
+                toggle.classList.toggle('open');
+            });
+
+            if (search) search.addEventListener('input', window.applyDashFilters);
+            for (const key in selects) { if (selects[key]) selects[key].addEventListener('change', window.applyDashFilters); }
+            const reset = document.getElementById('adh-reset');
+            if (reset) reset.addEventListener('click', function () {
+                if (search) search.value = '';
+                for (const key in selects) { if (selects[key]) selects[key].value = ''; }
+                civFilter = 'all';
+                chips.forEach(x => x.classList.remove('active'));
+                const allChip = document.querySelector('.dash-chip[data-civ="all"]');
+                if (allChip) allChip.classList.add('active');
+                window.applyDashFilters();
+            });
+            window.applyDashFilters();
+        })();
     </script>
 </body>
 </html>

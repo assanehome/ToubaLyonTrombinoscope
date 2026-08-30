@@ -14,6 +14,7 @@ if (!isset($_SESSION['player_id'])) {
     header('Location: login.php');
     exit;
 }
+require_once __DIR__ . '/player_approved_guard.php';
 
 $playerId = $_SESSION['player_id'];
 
@@ -128,7 +129,7 @@ if (!isset($_SESSION['game_question']) && (!isset($_SESSION['game_round']['compl
         $totalMembers = $stmtCount->fetchColumn();
         
         if ($totalMembers < 3) {
-            $gameError = "Le jeu requiert au moins 3 membres validés avec photo dans le Trombinoscope pour pouvoir jouer.";
+            $gameError = "Le jeu requiert au moins 3 membres validés avec photo dans le Dahira - Mubawwa-A-Sidqin pour pouvoir jouer.";
         } else {
             // Get correct member
             $excludeSql = "";
@@ -548,7 +549,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
             <div class="form-card" style="text-align: center; margin-top: 3rem; padding: 2rem;">
                 <div style="font-size: 3rem; margin-bottom: 1rem;">🎮</div>
                 <h3 style="color: var(--gold); margin-bottom: 0.5rem;">Configuration requise</h3>
-                <a href="index.php" class="btn btn-primary" style="margin-top: 1rem; margin-bottom: 1.5rem; display: inline-block; width: auto;">Retour au Trombinoscope</a>
+                <a href="index.php" class="btn btn-primary" style="margin-top: 1rem; margin-bottom: 1.5rem; display: inline-block; width: auto;">Retour au Dahira - Mubawwa-A-Sidqin</a>
                 <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5;"><?php echo htmlspecialchars($gameError); ?></p>
             </div>
             

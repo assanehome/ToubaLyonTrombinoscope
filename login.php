@@ -4,6 +4,7 @@
  */
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/admin_redirect.php';
+require_once __DIR__ . '/kourel_access.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -41,11 +42,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['player_id'] = $member['id'];
                     $_SESSION['player_name'] = $member['prenom'] . ' ' . $member['nom'];
                     $_SESSION['player_score'] = $member['score'];
-                    
-                    header('Location: index.php');
+                    $_SESSION['is_integrateur'] = !empty($member['is_integrateur']);
+                    $_SESSION['is_gestion_kourel'] = member_is_kourel_manager($pdo, (int) $member['id']);
+                    try { $_SESSION['is_gestion_commission'] = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires WHERE membre_id = " . (int) $member['id'])->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_gestion_commission'] = false; }
+                    try { $_SESSION['is_suivi_integration'] = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE cg.membre_id = " . (int) $member['id'] . " AND LOWER(c.nom) LIKE '%gration%'")->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_suivi_integration'] = false; }
+
+                    $__dest = 'index.php';
+                    if (!empty($_SESSION['after_login'])) { $__dest = $_SESSION['after_login']; unset($_SESSION['after_login']); }
+                    header('Location: ' . $__dest);
                     exit;
                 } elseif ($member['status'] === 'pending') {
-                    $error = "Votre compte est en attente de validation par un administrateur.";
+                    // Compte en attente : connexion autorisée mais accès limité au profil
+                    $_SESSION['player_id'] = $member['id'];
+                    $_SESSION['player_name'] = $member['prenom'] . ' ' . $member['nom'];
+                    $_SESSION['player_score'] = $member['score'];
+                    $_SESSION['is_integrateur'] = !empty($member['is_integrateur']);
+                    $_SESSION['is_gestion_kourel'] = member_is_kourel_manager($pdo, (int) $member['id']);
+                    try { $_SESSION['is_gestion_commission'] = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires WHERE membre_id = " . (int) $member['id'])->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_gestion_commission'] = false; }
+                    try { $_SESSION['is_suivi_integration'] = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE cg.membre_id = " . (int) $member['id'] . " AND LOWER(c.nom) LIKE '%gration%'")->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_suivi_integration'] = false; }
+                    header('Location: profile.php');
+                    exit;
                 } else {
                     $error = "Votre inscription a été refusée.";
                 }
@@ -75,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="form-card" style="max-width: 450px;">
             <h1 class="form-title">Connexion Membre</h1>
             <p style="text-align: center; color: var(--text-muted); margin-bottom: 2rem;">
-                Connectez-vous pour accéder au Trombinoscope et jouer à Ki Kan La.
+                Connectez-vous pour accéder au Dahira - Mubawwa-A-Sidqin et jouer à Ki Kan La.
             </p>
 
             <form action="login.php" method="POST">
@@ -96,13 +112,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <a href="forgot_password.php" style="color: var(--text-muted); text-decoration: none;">Mot de passe oublié ?</a>
             </p>
 
-            <p style="text-align: center; margin-top: 0.5rem; font-size: 0.9rem;">
-                Pas encore de compte ? <a href="register.php" class="gold-text" style="font-weight: 600; text-decoration: none;">Inscrivez-vous ici</a>
-            </p>
-
-            <p style="text-align: center; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--glass-border); font-size: 0.9rem;">
-                Souhaitez-vous rejoindre le Dahira ? <a href="adhesion.php" class="gold-text" style="font-weight: 600; text-decoration: none;">Formulaire d'adhésion</a>
-            </p>
         </div>
     </main>
 

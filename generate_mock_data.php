@@ -312,7 +312,7 @@ if (isset($_POST['update_existing'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Générateur de Données - Trombinoscope</title>
+    <title>Générateur de Données - Dahira - Mubawwa-A-Sidqin</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -327,7 +327,7 @@ if (isset($_POST['update_existing'])) {
                 <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 <div style="text-align: left;">
                     <strong>À quoi sert ce script ?</strong><br>
-                    Il permet de peupler le Trombinoscope ou de rafraîchir les civilités, photos, et mots de passe des membres déjà créés en attribuant des civilités cohérentes (Sokhna / Goor Yalla) et en téléchargeant des visages sénégalais/africains professionnels depuis Unsplash, avec le mot de passe par défaut <strong>toubalyon</strong> pour pouvoir jouer à "Ki Kan La".
+                    Il permet de peupler le Dahira - Mubawwa-A-Sidqin ou de rafraîchir les civilités, photos, et mots de passe des membres déjà créés en attribuant des civilités cohérentes (Sokhna / Goor Yalla) et en téléchargeant des visages sénégalais/africains professionnels depuis Unsplash, avec le mot de passe par défaut <strong>toubalyon</strong> pour pouvoir jouer à "Ki Kan La".
                 </div>
             </div>
 
@@ -342,7 +342,7 @@ if (isset($_POST['update_existing'])) {
                     <span><?php echo htmlspecialchars($success); ?></span>
                 </div>
                 <div style="text-align: center; margin-top: 1.5rem; display: flex; gap: 1rem; justify-content: center;">
-                    <a href="index.php" class="btn btn-primary">Voir le Trombinoscope</a>
+                    <a href="index.php" class="btn btn-primary">Voir le Dahira - Mubawwa-A-Sidqin</a>
                     <a href="admin_login.php" class="btn btn-secondary">Aller à l'Administration</a>
                 </div>
             <?php else: ?>

@@ -12,6 +12,11 @@ $civilite = 'Goor Yalla';
 $nom = '';
 $prenom = '';
 $email = '';
+$adresse = $code_postal = $commune = $telephone = $statut = $secteur_activite = $profession = $annee_integration = $commentaires = '';
+$souhait_commission = '';
+$STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
+try { $commissionsList = $pdo->query("SELECT nom FROM commissions ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $commissionsList = []; }
+try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $civilite = trim($_POST['civilite'] ?? 'Goor Yalla');
@@ -23,6 +28,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
     $photo = $_FILES['photo'] ?? null;
+    $adresse = trim($_POST['adresse'] ?? '');
+    $code_postal = trim($_POST['code_postal'] ?? '');
+    $commune = trim($_POST['commune'] ?? '');
+    $telephone = trim($_POST['telephone'] ?? '');
+    $statut = trim($_POST['statut'] ?? '');
+    $secteur_activite = trim($_POST['secteur_activite'] ?? '');
+    $profession = trim($_POST['profession'] ?? '');
+    $annee_integration = trim($_POST['annee_integration'] ?? '');
+    $commentaires = trim($_POST['commentaires'] ?? '');
+    $souhait_commission = trim($_POST['souhait_commission'] ?? '');
 
     if (empty($nom) || empty($prenom) || empty($email) || empty($password)) {
         $error = "Tous les champs texte et mot de passe sont obligatoires.";
@@ -30,6 +45,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Le mot de passe doit contenir au moins 6 caractères.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "L'adresse email n'est pas valide.";
+    } elseif ($code_postal === '' || !preg_match('/^[0-9]{4,9}$/', $code_postal)) {
+        $error = "Veuillez saisir un code postal valide.";
+    } elseif ($commune === '') {
+        $error = "La commune est obligatoire.";
+    } elseif ($telephone === '' || !preg_match('/^[0-9 +().-]{6,30}$/', $telephone)) {
+        $error = "Veuillez saisir un numéro de téléphone valide.";
+    } elseif (!in_array($statut, $STATUTS, true)) {
+        $error = "Veuillez préciser votre statut.";
+    } elseif ($secteur_activite === '') {
+        $error = "Le secteur d'activité est obligatoire.";
+    } elseif ($profession === '') {
+        $error = "La profession est obligatoire.";
+    } elseif ($annee_integration === '' || !preg_match('/^[0-9]{4}$/', $annee_integration)) {
+        $error = "Veuillez saisir une année d'intégration valide (ex: 2022).";
     } elseif (!$photo || $photo['error'] === UPLOAD_ERR_NO_FILE) {
         $error = "La photo de profil est obligatoire.";
     } else {
@@ -41,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($existing) {
                 if ($existing['status'] === 'approved') {
-                    $error = "Cette adresse email est déjà inscrite dans le Trombinoscope.";
+                    $error = "Cette adresse email est déjà inscrite dans le Dahira - Mubawwa-A-Sidqin.";
                 } elseif ($existing['status'] === 'pending') {
                     $error = "Une demande d'inscription avec cette adresse email est déjà en attente de validation.";
                 } else {
@@ -82,8 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             if (move_uploaded_file($photo['tmp_name'], $destination)) {
                                 // Save to DB
                                 $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-                                $stmt = $pdo->prepare("INSERT INTO membres (nom, prenom, civilite, email, photo_path, password, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')");
-                                $stmt->execute([$nom, $prenom, $civilite, $email, $newFilename, $hashedPassword]);
+                                $genre = ($civilite === 'Sokhna') ? 'Femme' : 'Homme';
+                                $stmt = $pdo->prepare("INSERT INTO membres (nom, prenom, civilite, genre, email, photo_path, password, status, type_adhesion, charte_acceptee, adresse, code_postal, commune, telephone, statut, secteur_activite, profession, annee_integration, commentaires, souhait_commission) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'Membre actif', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                                $stmt->execute([$nom, $prenom, $civilite, $genre, $email, $newFilename, $hashedPassword, ($adresse ?: null), $code_postal, $commune, $telephone, $statut, $secteur_activite, $profession, $annee_integration, ($commentaires ?: null), ($souhait_commission ?: null)]);
                                 
                                 $success = "Votre inscription a été soumise avec succès ! Un administrateur va la valider prochainement.";
                                 
@@ -110,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inscription - Trombinoscope Touba Lyon</title>
+    <title>Inscription - Dahira - Mubawwa-A-Sidqin Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -119,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <main class="container">
         <div class="form-card">
-            <h1 class="form-title">Rejoindre le Trombinoscope</h1>
+            <h1 class="form-title">Rejoindre le Dahira - Mubawwa-A-Sidqin</h1>
 
 
             <form action="register.php" method="POST" enctype="multipart/form-data">
@@ -147,8 +177,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="form-group">
-                    <label for="password" class="form-label">Mot de passe (pour jouer à Ki Kan La) <span style="color:var(--danger)">*</span></label>
+                    <label for="password" class="form-label">Mot de passe <span style="color:var(--danger)">*</span></label>
                     <input type="password" id="password" name="password" class="form-input" placeholder="Au moins 6 caractères" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="adresse" class="form-label">Adresse</label>
+                    <input type="text" id="adresse" name="adresse" class="form-input" value="<?php echo htmlspecialchars($adresse); ?>">
+                </div>
+
+                <div class="form-group">
+                    <label for="code_postal" class="form-label">Code postal <span style="color:var(--danger)">*</span></label>
+                    <input type="text" id="code_postal" name="code_postal" class="form-input" inputmode="numeric" value="<?php echo htmlspecialchars($code_postal); ?>" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="commune" class="form-label">Commune <span style="color:var(--danger)">*</span></label>
+                    <input type="text" id="commune" name="commune" class="form-input" value="<?php echo htmlspecialchars($commune); ?>" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="telephone" class="form-label">Téléphone <span style="color:var(--danger)">*</span></label>
+                    <input type="tel" id="telephone" name="telephone" class="form-input" value="<?php echo htmlspecialchars($telephone); ?>" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="statut" class="form-label">Statut <span style="color:var(--danger)">*</span></label>
+                    <select id="statut" name="statut" class="form-input modern-select" required>
+                        <option value="">— Choisir —</option>
+                        <?php foreach ($STATUTS as $s): ?>
+                            <option value="<?php echo $s; ?>" <?php echo ($statut === $s) ? 'selected' : ''; ?>><?php echo $s; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="secteur_activite" class="form-label">Secteur d'activité <span style="color:var(--danger)">*</span></label>
+                    <select id="secteur_activite" name="secteur_activite" class="form-input modern-select" required>
+                        <option value="">— Choisir un secteur —</option>
+                        <?php foreach ($secteursList as $sName): ?>
+                            <option value="<?php echo htmlspecialchars($sName); ?>" <?php echo ($secteur_activite === $sName) ? 'selected' : ''; ?>><?php echo htmlspecialchars($sName); ?></option>
+                        <?php endforeach; ?>
+                        <?php if ($secteur_activite !== '' && !in_array($secteur_activite, $secteursList, true)): ?>
+                            <option value="<?php echo htmlspecialchars($secteur_activite); ?>" selected><?php echo htmlspecialchars($secteur_activite); ?> (ancienne valeur)</option>
+                        <?php endif; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="profession" class="form-label">Profession <span style="color:var(--danger)">*</span></label>
+                    <input type="text" id="profession" name="profession" class="form-input" value="<?php echo htmlspecialchars($profession); ?>" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="annee_integration" class="form-label">Année d'intégration au Dahira <span style="color:var(--danger)">*</span></label>
+                    <input type="text" id="annee_integration" name="annee_integration" class="form-input" inputmode="numeric" placeholder="Ex: 2022" value="<?php echo htmlspecialchars($annee_integration); ?>" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="souhait_commission" class="form-label">Commission dont vous êtes membre <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label>
+                    <select id="souhait_commission" name="souhait_commission" class="form-input modern-select">
+                        <option value="">— Aucune —</option>
+                        <?php foreach ($commissionsList as $cName): ?>
+                            <option value="<?php echo htmlspecialchars($cName); ?>" <?php echo ($souhait_commission === $cName) ? 'selected' : ''; ?>><?php echo htmlspecialchars($cName); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="commentaires" class="form-label">Commentaires</label>
+                    <textarea id="commentaires" name="commentaires" class="form-input" rows="3"><?php echo htmlspecialchars($commentaires); ?></textarea>
                 </div>
 
                 <div class="form-group">

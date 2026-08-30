@@ -317,7 +317,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             <span><?php echo $message; ?></span>
         </div>
         <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
-            <a href="index.php" class="btn btn-primary">Voir le Trombinoscope</a>
+            <a href="index.php" class="btn btn-primary">Voir le Dahira - Mubawwa-A-Sidqin</a>
             <a href="admin_dashboard.php" class="btn btn-secondary">Administration</a>
         </div>
     <?php else: ?>
