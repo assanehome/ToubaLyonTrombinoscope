@@ -366,10 +366,9 @@ try {
     $presencesGuddi = [];
 }
 
-// Nombre de participants d'une séance : présences validées, sinon saisie manuelle
+// Nombre de participants d'une séance : membres ayant validé leur présence
 $nbPartGuddi = static function (array $p) use ($presencesGuddi): int {
-    $presence = $presencesGuddi[(int)($p['id'] ?? 0)] ?? 0;
-    return $presence > 0 ? $presence : (int)($p['nb_participants'] ?? 0);
+    return $presencesGuddi[(int)($p['id'] ?? 0)] ?? 0;
 };
 
 // Indicateurs globaux et par année (pour filtrage)

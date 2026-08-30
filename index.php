@@ -217,26 +217,6 @@ try {
             font-weight: 700;
             box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
         }
-        /* ── Fiche membre (popup moderne, responsive) ── */
-        #member-modal { position:fixed; inset:0; overflow:hidden; align-items:center; justify-content:center; }
-        .mi-card { position:fixed; left:50%; top:50%; width:calc(100vw - 28px); max-width:380px; max-height:86vh; display:flex; flex-direction:column;
-            background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:18px; overflow:hidden;
-            box-shadow:0 30px 80px rgba(0,0,0,0.55); z-index:2001;
-            transform:translate(-50%, -46%) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
-        #member-modal.active .mi-card { transform:translate(-50%, -50%) scale(1); opacity:1; }
-        .mi-head { position:relative; padding:0.9rem 1rem 0.75rem; background:linear-gradient(135deg,#1b4332,#2d6a4f); text-align:center; flex-shrink:0; }
-        .mi-photo-wrap { width:62px; height:62px; border-radius:50%; overflow:hidden; border:2px solid var(--gold); margin:0 auto 0.45rem; box-shadow:0 4px 12px rgba(0,0,0,0.4); background:#081c15; }
-        .mi-photo-wrap img { width:100%; height:100%; object-fit:cover; }
-        .mi-head h2 { color:#fff; font-size:1.1rem; margin:0 0 0.25rem; }
-        .mi-close { position:absolute; top:0.5rem; right:0.6rem; background:rgba(255,255,255,0.15); color:#fff; border:0; width:26px; height:26px; border-radius:50%; font-size:1.05rem; line-height:1; cursor:pointer; }
-        .mi-close:hover { background:rgba(255,255,255,0.3); }
-        .mi-body { padding:0.35rem 1rem 0.6rem; overflow-y:auto; flex:1; scrollbar-width:none; -ms-overflow-style:none; }
-        .mi-body::-webkit-scrollbar { width:0; height:0; display:none; }
-        .mi-row { display:flex; align-items:baseline; justify-content:space-between; gap:0.75rem; padding:0.4rem 0; border-bottom:1px solid rgba(255,255,255,0.07); }
-        .mi-row:last-child { border-bottom:none; }
-        .mi-row .k { font-size:0.68rem; color:#f2d574; text-transform:uppercase; letter-spacing:0.02em; font-weight:600; flex-shrink:0; }
-        .mi-row .v { color:#fff; font-size:0.9rem; font-weight:600; word-break:break-word; text-align:right; }
-        .mi-foot { padding:0.6rem 1rem; border-top:1px solid rgba(255,255,255,0.08); text-align:center; flex-shrink:0; }
         /* ── Prochaines rencontres : animations comme le suivi Juz ── */
         .renc-card {
             position: relative;
@@ -365,7 +345,7 @@ try {
                     <?php if (isset($_SESSION['player_id'])): ?>
                         <?php if ($dPassed && $dahiraPresenceFaite): ?>
                             <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Jazakallahou Khair</div>
-                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem;" onclick="annulerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">↩️ Annuler</button>
+                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">↩️ Annuler ma présence</button>
                         <?php elseif ($dPassed): ?>
                             <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
@@ -392,7 +372,7 @@ try {
                     <?php if (isset($_SESSION['player_id'])): ?>
                         <?php if ($gPassed && $guddiPresenceFaite): ?>
                             <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Jazakallahou Khair</div>
-                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem;" onclick="annulerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">↩️ Annuler</button>
+                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">↩️ Annuler ma présence</button>
                         <?php elseif ($gPassed): ?>
                             <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
@@ -444,17 +424,8 @@ try {
                     <?php 
                         $fullName = $m['prenom'] . ' ' . $m['nom'];
                     ?>
-                    <div class="member-card" data-name="<?php echo htmlspecialchars($fullName); ?>" data-civilite="<?php echo htmlspecialchars($m['civilite'] ?? 'Goor Yalla'); ?>"
-                        data-photo="<?php echo htmlspecialchars($m['photo_path'] ?? '', ENT_QUOTES); ?>"
-                        data-genre="<?php echo htmlspecialchars($m['genre'] ?? '', ENT_QUOTES); ?>"
-                        data-commune="<?php echo htmlspecialchars($m['commune'] ?? '', ENT_QUOTES); ?>"
-                        data-profession="<?php echo htmlspecialchars($m['profession'] ?? '', ENT_QUOTES); ?>"
-                        data-secteur="<?php echo htmlspecialchars($m['secteur_activite'] ?? '', ENT_QUOTES); ?>"
-                        data-annee="<?php echo htmlspecialchars($m['annee_integration'] ?? '', ENT_QUOTES); ?>"
-                        data-type="<?php echo htmlspecialchars($m['type_adhesion'] ?? '', ENT_QUOTES); ?>"
-                        data-score="<?php echo (int)($m['score'] ?? 0); ?>"
-                        data-email="<?php echo htmlspecialchars($m['email'] ?? '', ENT_QUOTES); ?>"
-                        onclick="showMemberInfo(this)" style="cursor:pointer;">
+                    <a class="member-card" href="membre_detail.php?id=<?php echo (int)$m['id']; ?>"
+                        data-name="<?php echo htmlspecialchars($fullName); ?>" data-civilite="<?php echo htmlspecialchars($m['civilite'] ?? 'Goor Yalla'); ?>">
                         <div class="member-photo-container">
                             <img src="uploads/<?php echo htmlspecialchars($m['photo_path']); ?>" class="member-photo" alt="Photo de <?php echo htmlspecialchars($fullName); ?>" loading="lazy">
                         </div>
@@ -464,7 +435,7 @@ try {
                                 <span class="member-civilite-badge"><?php echo htmlspecialchars($m['civilite']); ?></span>
                             <?php endif; ?>
                         </div>
-                    </div>
+                    </a>
                 <?php endforeach; ?>
             </div>
             
@@ -480,26 +451,6 @@ try {
             </div>
         </div>
     </main>
-
-    <!-- Fiche membre (au clic sur une carte) -->
-    <div id="member-modal" class="modal-overlay">
-        <div class="mi-card">
-            <div class="mi-head">
-                <button type="button" class="mi-close" onclick="closeMemberInfo()" aria-label="Fermer">&times;</button>
-                <div class="mi-photo-wrap" id="mi-photo-wrap">
-                    <img id="mi-photo" src="" alt="Photo">
-                </div>
-                <h2 id="mi-name">Prénom Nom</h2>
-                <span id="mi-civilite" class="member-civilite-badge" style="display:inline-block;"></span>
-            </div>
-            <div class="mi-body">
-                <div id="mi-rows"></div>
-            </div>
-            <div class="mi-foot">
-                <button type="button" onclick="closeMemberInfo()" class="btn btn-primary btn-sm">Fermer</button>
-            </div>
-        </div>
-    </div>
 
     <footer class="app-footer">
         <p>&copy; 2026 Touba Lyon - Tous droits réservés.</p>
@@ -627,44 +578,6 @@ try {
             });
         });
 
-        // ── Fiche membre au clic sur une carte ──
-        function miEsc(s){ var d=document.createElement('div'); d.textContent=(s===null||s===undefined||s==='')?'—':s; return d.innerHTML; }
-        function miRow(label, value){
-            if (value === '' || value === null || value === undefined) return '';
-            return '<div class="mi-row"><span class="k">' + label + '</span><span class="v">' + miEsc(value) + '</span></div>';
-        }
-        function showMemberInfo(card) {
-            var d = card.dataset;
-            var modal = document.getElementById('member-modal');
-            var wrap = document.getElementById('mi-photo-wrap');
-            if (d.photo) {
-                wrap.innerHTML = '<img id="mi-photo" src="uploads/' + encodeURIComponent(d.photo) + '" alt="Photo">';
-            } else {
-                var ini = ((d.name || '?').trim().charAt(0) || '?').toUpperCase();
-                wrap.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;color:var(--gold);">' + ini + '</div>';
-            }
-            document.getElementById('mi-name').textContent = d.name || '';
-            var civ = document.getElementById('mi-civilite');
-            civ.textContent = d.civilite || '';
-            civ.style.display = d.civilite ? 'inline-block' : 'none';
-            var html = '';
-            html += miRow('Email', d.email);
-            html += miRow('Genre', d.genre);
-            html += miRow('Commune', d.commune);
-            html += miRow('Profession', d.profession);
-            html += miRow("Secteur d'activité", d.secteur);
-            html += miRow("Année d'intégration", d.annee);
-            html += miRow("Type d'adhésion", d.type);
-            document.getElementById('mi-rows').innerHTML = html;
-            modal.style.display = 'flex';
-            setTimeout(function(){ modal.classList.add('active'); }, 10);
-        }
-        function closeMemberInfo() {
-            var modal = document.getElementById('member-modal');
-            modal.classList.remove('active');
-            setTimeout(function(){ modal.style.display = 'none'; }, 300);
-        }
-        document.getElementById('member-modal').addEventListener('click', function(e){ if (e.target === this) closeMemberInfo(); });
     </script>
 </body>
 </html>

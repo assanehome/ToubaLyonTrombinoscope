@@ -294,10 +294,9 @@ try {
     $presencesDahira = [];
 }
 
-// Nombre de participants d'un Dahira : présences validées, sinon saisie manuelle
+// Nombre de participants d'un Dahira : membres ayant validé leur présence
 $nbPartDahira = static function (array $p) use ($presencesDahira): int {
-    $presence = $presencesDahira[(int)($p['id'] ?? 0)] ?? 0;
-    return $presence > 0 ? $presence : (int)($p['nb_participants'] ?? 0);
+    return $presencesDahira[(int)($p['id'] ?? 0)] ?? 0;
 };
 
 // Indicateurs globaux (groupe replié, comme admin_guddi)
@@ -439,6 +438,38 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                     </div>
                 </details>
 
+                <!-- Dahiras passés à clôturer -->
+                <?php if (!empty($planningsPassesNonClotures)): ?>
+                <details class="glass-card" style="margin-bottom:1.5rem;">
+                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">🕰️ Dahiras passés à clôturer (<?php echo count($planningsPassesNonClotures); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
+                    <div class="pl-grid" style="margin-top:0.9rem;">
+                        <?php foreach ($planningsPassesNonClotures as $p):
+                            $d = $p['date_dahira'];
+                        ?>
+                        <div class="glass-card pl-card" style="opacity:0.8; border-left:3px solid rgba(255,255,255,0.18);">
+                            <div class="pl-date">
+                                <?php echo ucfirst(dahira_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
+                                <small>· passé</small>
+                            </div>
+                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                                <span>
+                                    <span class="pl-badge pl-badge-no" style="font-size:0.75rem; padding:0.25rem 0.6rem;">🕌 Terminé</span>
+                                    <?php $nbPres = $presencesDahira[(int)$p['id']] ?? 0; ?>
+                                    <?php if ($nbPres > 0): ?>
+                                        <span class="pl-badge" style="font-size:0.75rem; padding:0.25rem 0.6rem; background:rgba(37,211,102,0.15); color:#7bd8a6; border:1px solid rgba(37,211,102,0.3);">👥 <?php echo $nbPres; ?> présence<?php echo $nbPres > 1 ? 's' : ''; ?></span>
+                                    <?php endif; ?>
+                                </span>
+                                <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
+                                    <a href="dahira_detail.php?id=<?php echo (int)$p['id']; ?>" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
+                                    <button type="button" class="btn btn-secondary btn-sm dahira-cloture" data-id="<?php echo (int)$p['id']; ?>" data-date="<?php echo date('d/m/Y', strtotime($d)); ?>" data-presence="<?php echo $nbPres; ?>" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:rgba(37,211,102,0.6); color:#7bd8a6;">✅ Clôturer</button>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+                <?php endif; ?>
+
                 <!-- Prochain Dahira -->
                 <div class="glass-card" style="margin-bottom:1.5rem; border:2px solid rgba(212,175,55,0.55); background:linear-gradient(160deg, rgba(212,175,55,0.09) 0%, rgba(255,255,255,0.02) 100%);">
                     <?php if ($prochain):
@@ -528,38 +559,6 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                         <div style="margin-top:0.9rem;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>
                     </form>
                 </details>
-
-                <!-- Dahiras passés à clôturer -->
-                <?php if (!empty($planningsPassesNonClotures)): ?>
-                <details class="glass-card" style="margin-bottom:1.5rem;">
-                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">🕰️ Dahiras passés à clôturer (<?php echo count($planningsPassesNonClotures); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
-                    <div class="pl-grid" style="margin-top:0.9rem;">
-                        <?php foreach ($planningsPassesNonClotures as $p):
-                            $d = $p['date_dahira'];
-                        ?>
-                        <div class="glass-card pl-card" style="opacity:0.8; border-left:3px solid rgba(255,255,255,0.18);">
-                            <div class="pl-date">
-                                <?php echo ucfirst(dahira_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
-                                <small>· passé</small>
-                            </div>
-                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
-                                <span>
-                                    <span class="pl-badge pl-badge-no" style="font-size:0.75rem; padding:0.25rem 0.6rem;">🕌 Terminé</span>
-                                    <?php $nbPres = $presencesDahira[(int)$p['id']] ?? 0; ?>
-                                    <?php if ($nbPres > 0): ?>
-                                        <span class="pl-badge" style="font-size:0.75rem; padding:0.25rem 0.6rem; background:rgba(37,211,102,0.15); color:#7bd8a6; border:1px solid rgba(37,211,102,0.3);">👥 <?php echo $nbPres; ?> présence<?php echo $nbPres > 1 ? 's' : ''; ?></span>
-                                    <?php endif; ?>
-                                </span>
-                                <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
-                                    <a href="dahira_detail.php?id=<?php echo (int)$p['id']; ?>" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
-                                    <button type="button" class="btn btn-secondary btn-sm dahira-cloture" data-id="<?php echo (int)$p['id']; ?>" data-date="<?php echo date('d/m/Y', strtotime($d)); ?>" data-presence="<?php echo $nbPres; ?>" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:rgba(37,211,102,0.6); color:#7bd8a6;">✅ Clôturer</button>
-                                </div>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </details>
-                <?php endif; ?>
 
                 <!-- Dahiras clôturés (historique, après les paramètres par défaut) -->
                 <?php if (!empty($planningsPassesCloturees)): ?>

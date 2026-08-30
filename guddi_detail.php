@@ -200,7 +200,7 @@ if ($membreId > 0) {
                         <?php if ($date <= date('Y-m-d')): ?>
                             <?php if ($presenceFaite): ?>
                                 <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Jazakallahou Khair</div>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="annulerPresence('guddi', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
+                                <button type="button" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;" onclick="annulerPresence('guddi', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
                             <?php else: ?>
                                 <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('guddi', <?php echo (int)$id; ?>, this)">✅ J'étais présent(e)</button>
                             <?php endif; ?>
