@@ -49,6 +49,8 @@ if ($validLink && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $flash = "err:Échec de sécurité (CSRF).";
     } elseif ($session['statut'] !== 'en_cours') {
         $flash = "err:Cette session est clôturée.";
+    } elseif ((int)($session['lance'] ?? 1) !== 1) {
+        $flash = "err:Cette lecture n'est pas encore ouverte.";
     } else {
         $action = $_POST['action'] ?? '';
         $numero = (int) ($_POST['numero'] ?? 0);
@@ -63,11 +65,27 @@ if ($validLink && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$isPlayer && $mnom === '') {
                     $flash = "err:Veuillez saisir votre nom avant de choisir une partie.";
                 } else {
-                    // Un participant peut réserver plusieurs Juz. Réservation atomique si la partie est libre.
-                    $upd = $pdo->prepare("UPDATE quran_parts SET statut='reservee', membre_id=?, membre_nom=?, owner_token=?, reserved_at=NOW() WHERE session_id=? AND numero=? AND statut='libre'");
-                    $ownTok = $isPlayer ? null : ($ptoken !== '' ? $ptoken : bin2hex(random_bytes(12)));
-                    $upd->execute([$mid, $mnom, $ownTok, $sid, $numero]);
-                    $flash = $upd->rowCount() > 0 ? "ok:Juz " . $numero . " réservé. Bonne lecture !" : "err:Ce Juz vient d'être pris.";
+                    // Limite « un seul Juz par membre » si activée sur la session
+                    $dejaPris = 0;
+                    if ((int)($session['un_juz_par_membre'] ?? 0) === 1) {
+                        if ($isPlayer) {
+                            $ck = $pdo->prepare("SELECT COUNT(*) FROM quran_parts WHERE session_id=? AND membre_id=? AND statut IN ('reservee','lue')");
+                            $ck->execute([$sid, $playerId]);
+                        } else {
+                            $ck = $pdo->prepare("SELECT COUNT(*) FROM quran_parts WHERE session_id=? AND owner_token=? AND owner_token IS NOT NULL AND statut IN ('reservee','lue')");
+                            $ck->execute([$sid, $ptoken]);
+                        }
+                        $dejaPris = (int)$ck->fetchColumn();
+                    }
+                    if ($dejaPris > 0) {
+                        $flash = "err:Un seul Juz par personne pour cette lecture — vous en avez déjà un.";
+                    } else {
+                        // Réservation atomique si la partie est libre.
+                        $upd = $pdo->prepare("UPDATE quran_parts SET statut='reservee', membre_id=?, membre_nom=?, owner_token=?, reserved_at=NOW() WHERE session_id=? AND numero=? AND statut='libre'");
+                        $ownTok = $isPlayer ? null : ($ptoken !== '' ? $ptoken : bin2hex(random_bytes(12)));
+                        $upd->execute([$mid, $mnom, $ownTok, $sid, $numero]);
+                        $flash = $upd->rowCount() > 0 ? "ok:Juz " . $numero . " réservé. Bonne lecture !" : "err:Ce Juz vient d'être pris.";
+                    }
                 }
             } elseif ($action === 'validate' && $pid > 0) {
                 $part = $pdo->prepare("SELECT * FROM quran_parts WHERE id=? AND session_id=?");
@@ -109,7 +127,7 @@ function wird_owner_ok($pr, $isPlayer, $playerId, $ptoken)
 $parts = [];
 if ($validLink) {
     try {
-        $st = $pdo->prepare("SELECT * FROM quran_parts WHERE session_id=? ORDER BY numero ASC");
+        $st = $pdo->prepare("SELECT qp.*, m.photo_path AS membre_photo FROM quran_parts qp LEFT JOIN membres m ON m.id = qp.membre_id WHERE qp.session_id=? ORDER BY qp.numero ASC");
         $st->execute([$sid]);
         $parts = $st->fetchAll();
     } catch (Exception $e) { $parts = []; }
@@ -134,6 +152,8 @@ unset($_SESSION['wird_flash']);
     <link rel="stylesheet" href="style.css">
     <style>
         .w-wrap { max-width: 760px; margin: 1.5rem auto; padding: 0 1rem; }
+        .w-retour { display: inline-block; color: var(--text-muted); text-decoration: none; font-size: 0.85rem; margin-bottom: 1rem; }
+        .w-retour:hover { color: var(--gold); }
         .w-hero { text-align: center; margin-bottom: 1.25rem; }
         .w-hero h1 { color: var(--white); font-size: 1.5rem; margin: 0 0 0.35rem; }
         .w-hero p { color: var(--text-muted); font-size: 0.92rem; margin: 0; }
@@ -168,12 +188,48 @@ unset($_SESSION['wird_flash']);
         .wtv-item .wtv-btn:hover { filter: brightness(1.12); }
         .wtv-item .wtv-btn--pdf { background: rgba(212,175,55,0.14); color: #f1d279; border: 1px solid rgba(212,175,55,0.3); box-shadow: none; }
         .wtv-item .wtv-btn--pdf:hover { background: rgba(212,175,55,0.26); color: #fff; box-shadow: none; }
-        .w-num { font-size: 1.35rem; font-weight: 800; color: var(--white); }
-        .w-juz { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-        .w-who { font-size: 0.8rem; color: #fff; margin: 0.35rem 0; word-break: break-word; min-height: 1em; }
+        .w-juz { font-size: 1.2rem; font-weight: 800; color: var(--white); letter-spacing: -0.01em; }
+        .w-who { font-size: 0.9rem; color: #fff; margin: 0.35rem 0; word-break: break-word; min-height: 1em; }
         .w-tag { display: inline-block; font-size: 0.66rem; font-weight: 700; border-radius: 50px; padding: 1px 8px; }
+        /* Miniature de la photo du membre sur un Juz choisi */
+        .w-avatar { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; margin: 0.3rem auto 0.15rem; border: 2px solid var(--accent); background: var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
+        .w-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .w-avatar-ini { font-size: 0.9rem; font-weight: 800; color: var(--gold); text-transform: uppercase; }
+        .w-who-name { display: block; }
         .w-part .btn { width: 100%; justify-content: center; padding: 0.35rem; font-size: 0.75rem; margin-top: 0.25rem; }
         .w-msg { max-width: 520px; margin: 0 auto 1rem; padding: 0.7rem 1rem; border-radius: 12px; font-size: 0.9rem; text-align: center; }
+        /* ── Mobile : un Juz par ligne, photo à gauche, corps compact à droite ── */
+        @media (max-width: 600px) {
+            .w-grid { grid-template-columns: 1fr; gap: 0.7rem; }
+            .w-part { display: flex; align-items: flex-start; text-align: left; gap: 0.7rem; padding: 0.85rem 1rem; }
+            .w-part br { display: none; }
+            /* Photo (enfant direct) à gauche */
+            .w-avatar { width: 46px; height: 46px; margin: 0; flex: 0 0 auto; }
+            .w-avatar-ini { font-size: 1.15rem; }
+            /* Corps : rangée compacte (un Juz par ligne) */
+            .w-body { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem 0.6rem; }
+            .w-juz { font-size: 1.05rem; font-weight: 800; color: #fff; flex: 0 0 auto; min-width: 3.6rem; }
+            .w-who { margin: 0; display: flex; align-items: center; gap: 0.45rem; flex: 1 1 110px; min-width: 100px; }
+            .w-who-name { display: inline; font-size: 1rem; font-weight: 600; }
+            .w-tag { font-size: 0.78rem; padding: 3px 11px; flex: 0 0 auto; }
+            .w-body .btn { width: auto; flex: 0 0 auto; margin-top: 0; padding: 0.7rem 1.15rem; font-size: 0.95rem; border-radius: 12px; }
+            .w-body > .btn:first-of-type { margin-left: auto; }
+            .w-body div[style*="flex"] { margin-top: 0 !important; flex: 0 0 auto; gap: 0.45rem !important; }
+            .w-body div[style*="flex"] .btn { flex: 0 0 auto !important; padding: 0.6rem 0.9rem !important; font-size: 0.9rem !important; white-space: nowrap; }
+
+            /* Juz réservé par MOI : grande photo centrée en haut ; « Juz N » sous la photo ;
+               les boutons principaux pleine largeur (un par ligne), V1/V2 sur une même ligne */
+            .w-part.mine { flex-direction: column; align-items: center; text-align: center; gap: 0.2rem; padding: 0.75rem 0.9rem; }
+            .w-part.mine .w-avatar { width: 84px; height: 84px; margin: 0 auto 0.25rem; }
+            .w-part.mine .w-avatar-ini { font-size: 1.9rem; }
+            .w-part.mine .w-body { width: 100%; flex-direction: column; align-items: stretch; gap: 0.35rem; }
+            .w-part.mine .w-juz { text-align: center; font-size: 1.05rem; font-weight: 800; color: var(--gold); text-transform: none; letter-spacing: 0; }
+            .w-part.mine .w-who { justify-content: center; flex: 0 0 auto; min-height: 0; margin: 0; }
+            .w-part.mine .w-body .btn { width: 100%; margin-left: 0; }
+            /* V1 et V2 côte à côte sur une seule ligne, pleine largeur */
+            .w-part.mine .w-body div[style*="flex"] { width: 100%; flex-direction: row; gap: 0.5rem !important; margin: 0 !important; }
+            .w-part.mine .w-body div[style*="flex"] .btn { flex: 1 1 0 !important; width: auto; }
+        }
     </style>
 </head>
 <body>
@@ -183,6 +239,9 @@ unset($_SESSION['wird_flash']);
             <?php include __DIR__ . '/member_menu.php'; ?>
             <div class="dashboard-main">
         <div class="w-wrap">
+        <?php // On arrive ici par un lien partagé ou depuis l'espace membre :
+              // dans les deux cas, le retour doit être sous les yeux. ?>
+        <a href="index.php" class="w-retour">← Retour</a>
         <?php if (!$validLink): ?>
             <div class="empty-state"><div class="empty-state-icon">🔒</div><p>Lien de lecture invalide ou expiré.</p></div>
         <?php else: ?>
@@ -192,6 +251,8 @@ unset($_SESSION['wird_flash']);
 
             <div class="w-hero">
                 <h1>📖 <?php echo htmlspecialchars($session['titre']); ?></h1>
+                <?php require_once __DIR__ . '/wird_period_helper.php'; $wPeriode = wird_period_label($pdo, $session); ?>
+                <?php if ($wPeriode !== ''): ?><p style="color:#7dd3fc; font-weight:600; margin-top:0.25rem;">🗓️ <?php echo htmlspecialchars($wPeriode); ?></p><?php endif; ?>
                 <?php if (!empty($session['description'])): ?><p><?php echo htmlspecialchars($session['description']); ?></p><?php endif; ?>
                 <p style="margin-top:0.4rem;">Lecture des 30 Juz du Coran — choisissez une partie, lisez-la, puis validez.</p>
                 <div class="w-prog"><i style="width:<?php echo $pct; ?>%;"></i></div>
@@ -235,17 +296,45 @@ unset($_SESSION['wird_flash']);
                         $ownedByPlayer = ($isPlayer && (int)$p['membre_id'] === $playerId);
                         $mineActive = ($ownedByPlayer && $stt === 'reservee');
                     ?>
+                    <?php
+                        // Miniature de la photo du membre (ou initiale) pour les Juz choisis
+                        $mNom = trim((string)($p['membre_nom'] ?? ''));
+                        $mPhoto = trim((string)($p['membre_photo'] ?? ''));
+                        $renderAvatar = function () use ($mPhoto, $mNom) {
+                            echo '<span class="w-avatar">';
+                            if ($mPhoto !== '') {
+                                echo '<img src="uploads/' . htmlspecialchars($mPhoto) . '" alt="' . htmlspecialchars($mNom) . '" loading="lazy">';
+                            } else {
+                                $ini = $mNom !== '' ? mb_strtoupper(mb_substr($mNom, 0, 1)) : '?';
+                                echo '<span class="w-avatar-ini">' . htmlspecialchars($ini) . '</span>';
+                            }
+                            echo '</span>';
+                        };
+                    ?>
                     <div class="w-part <?php echo $stt; ?><?php echo $mineActive ? ' mine' : ''; ?>" id="wp-<?php echo (int)$p['numero']; ?>" data-num="<?php echo (int)$p['numero']; ?>" data-pid="<?php echo (int)$p['id']; ?>" data-statut="<?php echo $stt; ?>">
-                        <div class="w-num"><?php echo (int)$p['numero']; ?></div>
+                        <?php if ($stt === 'lue' || $stt === 'reservee') { $renderAvatar(); } ?>
+                        <div class="w-body">
+                        <?php // « Juz 7 » se lit d'un coup : le chiffre seul, répété
+                              // juste au-dessus, n'ajoutait rien. ?>
                         <div class="w-juz">Juz <?php echo (int)$p['numero']; ?></div>
                         <div class="w-who">
-                            <?php if ($stt === 'lue'): ?><span class="w-tag" style="background:rgba(45,106,79,0.3); color:#7bd8a6;">✓ Lue</span><br><?php echo htmlspecialchars($p['membre_nom'] ?? ''); ?>
-                            <?php elseif ($stt === 'reservee'): ?><span class="w-tag" style="background:rgba(212,175,55,0.2); color:#ffd873;">Réservée</span><br><?php echo htmlspecialchars($p['membre_nom'] ?? ''); ?>
+                            <?php if ($stt === 'lue'): ?><span class="w-tag" style="background:rgba(45,106,79,0.3); color:#7bd8a6;">✓ Lue</span> <span class="w-who-name"><?php echo htmlspecialchars($mNom); ?></span>
+                            <?php elseif ($stt === 'reservee'): ?><span class="w-tag" style="background:rgba(212,175,55,0.2); color:#ffd873;">Réservée</span> <span class="w-who-name"><?php echo htmlspecialchars($mNom); ?></span>
                             <?php else: ?><span class="w-tag" style="background:rgba(255,255,255,0.06); color:var(--text-muted);">Libre</span><?php endif; ?>
                         </div>
                         <?php if ($session['statut'] === 'en_cours'): ?>
                             <?php if ($stt === 'libre'): ?>
-                                <button type="button" class="btn btn-primary" onclick="confirmReserve(<?php echo (int)$p['numero']; ?>)">Choisir</button>
+                                <?php
+                                $n = (int)$p['numero'];
+                                $n2 = sprintf('%02d', $n);
+                                $v1 = "pdf_viewer.php?file=" . urlencode("Coran_pdf/Version_1/{$n2}.pdf");
+                                $v2 = "pdf_viewer.php?file=" . urlencode("Coran_pdf/Version_2/{$n2}-quran{$n}-ar.pdf");
+                                ?>
+                                <button type="button" class="btn btn-primary" onclick="confirmReserve(<?php echo $n; ?>)">Choisir</button>
+                                <div style="display:flex; gap:0.25rem; margin-top:0.25rem;">
+                                    <a href="<?php echo htmlspecialchars($v1); ?>" target="_blank" class="btn btn-secondary btn-sm" style="flex:1; padding:0.2rem; font-size:0.7rem;">📖 V1</a>
+                                    <a href="<?php echo htmlspecialchars($v2); ?>" target="_blank" class="btn btn-secondary btn-sm" style="flex:1; padding:0.2rem; font-size:0.7rem;">📖 V2</a>
+                                </div>
                             <?php elseif ($ownedByPlayer): ?>
                                 <?php
                                 $n = (int)$p['numero'];
@@ -263,6 +352,7 @@ unset($_SESSION['wird_flash']);
                                 <span class="w-mine" data-num="<?php echo (int)$p['numero']; ?>" data-pid="<?php echo (int)$p['id']; ?>" data-statut="<?php echo $stt; ?>"></span>
                             <?php endif; ?>
                         <?php endif; ?>
+                        </div><!-- /.w-body -->
                     </div>
                 <?php endforeach; ?>
             </div>
