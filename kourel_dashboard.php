@@ -9,6 +9,11 @@
  */
 require_once __DIR__ . '/kourel_guard.php'; // $__isAdmin, $__isKurelAdmin, $__managedKourels, $pdo
 require_once __DIR__ . '/csrf.php';
+require_once __DIR__ . '/dahira_emails.php';        // send_smtp_mail(), dahira_base_url()
+require_once __DIR__ . '/notification_helper.php';  // cloche + Web Push
+require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_param()
+require_once __DIR__ . '/repetition_helper.php';     // répétitions de Kurel
+require_once __DIR__ . '/kourel_suivi_helper.php';   // avancement des Khassidas, message à un membre
 
 $error = '';
 $success = '';
@@ -54,6 +59,179 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($action === 'remove_kourel_manager' && $kid > 0 && $mid > 0 && $__isKurelAdmin) {
                 $pdo->prepare("DELETE FROM kourel_gestionnaires WHERE kourel_id = ? AND membre_id = ?")->execute([$kid, $mid]);
                 $success = "Responsable retiré.";
+            } elseif ($action === 'add_khassida' && ($__isKurelAdmin || !empty($__managedKourels))) {
+                $nom = trim($_POST['nom'] ?? '');
+                if ($nom === '') { $error = "Le nom de la Khassida est obligatoire."; }
+                else { $pdo->prepare("INSERT IGNORE INTO kourel_khassidas (nom) VALUES (?)")->execute([$nom]); $success = "Khassida ajoutée."; }
+            } elseif ($action === 'delete_khassida' && ($__isKurelAdmin || !empty($__managedKourels))) {
+                $xid = (int) ($_POST['item_id'] ?? 0);
+                if ($xid > 0) { $pdo->prepare("DELETE FROM kourel_khassidas WHERE id = ?")->execute([$xid]); $success = "Khassida supprimée."; }
+            } elseif ($action === 'add_melodie' && ($__isKurelAdmin || !empty($__managedKourels))) {
+                $nom = trim($_POST['nom'] ?? '');
+                if ($nom === '') { $error = "Le nom de la mélodie est obligatoire."; }
+                else { $pdo->prepare("INSERT IGNORE INTO kourel_melodies (nom) VALUES (?)")->execute([$nom]); $success = "Mélodie ajoutée."; }
+            } elseif ($action === 'delete_melodie' && ($__isKurelAdmin || !empty($__managedKourels))) {
+                $xid = (int) ($_POST['item_id'] ?? 0);
+                if ($xid > 0) { $pdo->prepare("DELETE FROM kourel_melodies WHERE id = ?")->execute([$xid]); $success = "Mélodie supprimée."; }
+            } elseif ($action === 'create_repetition' && $kid > 0 && kurel_can_manage($kid, $__isKurelAdmin, $__managedKourels)) {
+                $titre = trim($_POST['titre'] ?? '');
+                $desc = trim($_POST['description'] ?? '');
+                $dateDebut = trim($_POST['date_debut'] ?? '');
+                $heure = trim($_POST['heure'] ?? '');
+                $modeRaw = trim($_POST['mode'] ?? '');
+                $mode = ($modeRaw === 'presentiel') ? 'presentiel' : (($modeRaw === 'distance') ? 'distance' : '');
+                $lieu = trim($_POST['lieu'] ?? '');
+                $lien = trim($_POST['lien'] ?? '');
+                $khassida = trim($_POST['khassida'] ?? '');
+                $melodie = trim($_POST['melodie'] ?? '');
+                $estPeriodique = !empty($_POST['periodique']);
+                $per = ($estPeriodique && in_array(($_POST['periodicite'] ?? ''), ['hebdomadaire', 'quinzaine', 'mensuelle'], true)) ? $_POST['periodicite'] : 'ponctuelle';
+                $dateFin = trim($_POST['date_fin'] ?? '');
+                if ($titre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateDebut)) {
+                    $error = "Le titre et une date valide sont obligatoires.";
+                } elseif ($dateDebut < date('Y-m-d')) {
+                    $error = "La date de la répétition ne peut pas être dans le passé.";
+                } elseif ($heure === '') {
+                    $error = "L'heure est obligatoire.";
+                } elseif ($mode === '') {
+                    $error = "Le mode (à distance ou présentiel) est obligatoire.";
+                } elseif ($mode === 'distance' && $lien === '') {
+                    $error = "Le lien Zoom est obligatoire pour une répétition à distance.";
+                } elseif ($mode === 'presentiel' && $lieu === '') {
+                    $error = "L'adresse est obligatoire pour une répétition en présentiel.";
+                } else {
+                    $dates = reunion_generer_dates($dateDebut, ($dateFin !== '' ? $dateFin : $dateDebut), $per);
+                    $pdo->beginTransaction();
+                    $ins = $pdo->prepare("INSERT INTO kourel_repetitions (kourel_id, titre, description, date_reunion, heure, mode, lieu, lien, periodicite, khassida, melodie, publie, cloture, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,0,?)");
+                    $createdIds = [];
+                    foreach ($dates as $d) {
+                        $ins->execute([$kid, $titre, ($desc ?: null), $d, $heure, $mode, ($lieu ?: null), ($lien ?: null), $per, ($khassida ?: null), ($melodie ?: null), (!empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null)]);
+                        $createdIds[] = (int) $pdo->lastInsertId();
+                    }
+                    if (!empty($createdIds)) {
+                        $serieId = $createdIds[0];
+                        $inPh = implode(',', array_fill(0, count($createdIds), '?'));
+                        $pdo->prepare("UPDATE kourel_repetitions SET serie_id = ? WHERE id IN ($inPh)")->execute(array_merge([$serieId], $createdIds));
+                    }
+                    $pdo->commit();
+                    $success = count($dates) > 1 ? (count($dates) . " répétitions créées (série périodique).") : "Répétition créée.";
+                }
+            } elseif (in_array($action, ['publish_repetition', 'unpublish_repetition', 'close_repetition', 'reopen_repetition', 'delete_repetition', 'delete_repetition_serie', 'edit_repetition'], true)) {
+                $rid = (int) ($_POST['repetition_id'] ?? 0);
+                $r = null;
+                if ($rid > 0) {
+                    $rq = $pdo->prepare("SELECT * FROM kourel_repetitions WHERE id = ?");
+                    $rq->execute([$rid]);
+                    $r = $rq->fetch();
+                }
+                if (!$r || !kurel_can_manage((int) $r['kourel_id'], $__isKurelAdmin, $__managedKourels)) {
+                    $error = "Répétition introuvable ou accès refusé.";
+                } elseif ($action === 'publish_repetition') {
+                    if (repetition_precedente_non_cloturee($pdo, $r)) {
+                        $error = "Impossible de publier : clôturez d'abord la répétition précédente de la série.";
+                    } else {
+                        $pdo->prepare("UPDATE kourel_repetitions SET publie = 1, updated_at = NOW() WHERE id = ?")->execute([$rid]);
+                        $r['publie'] = 1;
+                        $n = repetition_notifier_membres($pdo, $r);
+                        $success = "Répétition publiée. $n membre(s) du Kurel notifié(s).";
+                    }
+                } elseif ($action === 'unpublish_repetition') {
+                    $pdo->prepare("UPDATE kourel_repetitions SET publie = 0, updated_at = NOW() WHERE id = ?")->execute([$rid]);
+                    $success = "Répétition dépubliée (masquée aux membres).";
+                } elseif ($action === 'close_repetition') {
+                    $pdo->prepare("UPDATE kourel_repetitions SET cloture = 1, updated_at = NOW() WHERE id = ?")->execute([$rid]);
+                    $success = "Répétition clôturée.";
+                    if (!empty($_POST['publish_next'])) {
+                        $next = repetition_prochaine_a_publier($pdo, $r);
+                        if ($next) {
+                            $pdo->prepare("UPDATE kourel_repetitions SET publie = 1, updated_at = NOW() WHERE id = ?")->execute([(int) $next['id']]);
+                            $next['publie'] = 1;
+                            $nn = repetition_notifier_membres($pdo, $next);
+                            $success = "Répétition clôturée et période suivante publiée ($nn membre(s) notifié(s)).";
+                        }
+                    }
+                } elseif ($action === 'edit_repetition') {
+                    if ((int) $r['publie'] === 1) {
+                        $error = "Dépubliez la répétition avant de la modifier.";
+                    } else {
+                        $eTitre = trim($_POST['titre'] ?? '');
+                        $eDesc = trim($_POST['description'] ?? '');
+                        $eDate = trim($_POST['date_reunion'] ?? '');
+                        $eHeure = trim($_POST['heure'] ?? '');
+                        $eModeRaw = trim($_POST['mode'] ?? '');
+                        $eMode = ($eModeRaw === 'presentiel') ? 'presentiel' : (($eModeRaw === 'distance') ? 'distance' : '');
+                        $eLieu = trim($_POST['lieu'] ?? '');
+                        $eLien = trim($_POST['lien'] ?? '');
+                        $eKhassida = trim($_POST['khassida'] ?? '');
+                        $eMelodie = trim($_POST['melodie'] ?? '');
+                        if ($eTitre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eDate)) {
+                            $error = "Le titre et une date valide sont obligatoires.";
+                        } elseif ($eDate < date('Y-m-d')) {
+                            $error = "La date ne peut pas être dans le passé.";
+                        } elseif ($eHeure === '') {
+                            $error = "L'heure est obligatoire.";
+                        } elseif ($eMode === '') {
+                            $error = "Le mode est obligatoire.";
+                        } elseif ($eMode === 'distance' && $eLien === '') {
+                            $error = "Le lien Zoom est obligatoire pour une répétition à distance.";
+                        } elseif ($eMode === 'presentiel' && $eLieu === '') {
+                            $error = "L'adresse est obligatoire pour une répétition en présentiel.";
+                        } else {
+                            $pdo->prepare("UPDATE kourel_repetitions SET titre = ?, description = ?, date_reunion = ?, heure = ?, mode = ?, lieu = ?, lien = ?, khassida = ?, melodie = ?, updated_at = NOW() WHERE id = ?")
+                                ->execute([$eTitre, ($eDesc ?: null), $eDate, $eHeure, $eMode, ($eLieu ?: null), ($eLien ?: null), ($eKhassida ?: null), ($eMelodie ?: null), $rid]);
+                            $success = "Répétition modifiée.";
+                        }
+                    }
+                } elseif ($action === 'reopen_repetition') {
+                    $pdo->prepare("UPDATE kourel_repetitions SET cloture = 0, updated_at = NOW() WHERE id = ?")->execute([$rid]);
+                    $success = "Répétition rouverte.";
+                } elseif ($action === 'delete_repetition') {
+                    $pdo->prepare("DELETE FROM kourel_repetitions WHERE id = ?")->execute([$rid]);
+                    $pdo->prepare("DELETE FROM presence_validations WHERE planning_type = 'repetition' AND planning_id = ?")->execute([$rid]);
+                    $success = "Répétition supprimée.";
+                } elseif ($action === 'delete_repetition_serie') {
+                    $serie = (int) ($r['serie_id'] ?: $r['id']);
+                    $idq = $pdo->prepare("SELECT id FROM kourel_repetitions WHERE serie_id = ?");
+                    $idq->execute([$serie]);
+                    $ids = array_map('intval', $idq->fetchAll(PDO::FETCH_COLUMN));
+                    if (empty($ids)) { $ids = [$rid]; }
+                    $inPh = implode(',', array_fill(0, count($ids), '?'));
+                    $pdo->prepare("DELETE FROM kourel_repetitions WHERE id IN ($inPh)")->execute($ids);
+                    $pdo->prepare("DELETE FROM presence_validations WHERE planning_type = 'repetition' AND planning_id IN ($inPh)")->execute($ids);
+                    $success = count($ids) . " répétition(s) de la série supprimée(s).";
+                }
+            } elseif ($action === 'avancement_ajouter' && $kid > 0 && kurel_can_manage($kid, $__isKurelAdmin, $__managedKourels)) {
+                $err = kourel_avancement_ajouter(
+                    $pdo, $kid, (int) ($_POST['annee'] ?? 0),
+                    (string) ($_POST['khassida'] ?? ''), (string) ($_POST['melodie'] ?? ''),
+                    (string) ($_POST['statut'] ?? '')
+                );
+                if ($err !== '') { $error = $err; }
+                else { $success = "Khassida ajoutée au programme du Kurel."; }
+            } elseif ($action === 'avancement_statut' && $kid > 0 && kurel_can_manage($kid, $__isKurelAdmin, $__managedKourels)) {
+                $aid = (int) ($_POST['avancement_id'] ?? 0);
+                $st = (string) ($_POST['statut'] ?? '');
+                if ($aid <= 0 || !kourel_avancement_statut($pdo, $aid, $kid, $st)) {
+                    $error = "L'avancement n'a pas pu être enregistré.";
+                } else {
+                    $success = "Avancement : " . kourel_statut_libelle($st) . ".";
+                }
+            } elseif ($action === 'avancement_supprimer' && $kid > 0 && kurel_can_manage($kid, $__isKurelAdmin, $__managedKourels)) {
+                $aid = (int) ($_POST['avancement_id'] ?? 0);
+                if ($aid <= 0 || !kourel_avancement_supprimer($pdo, $aid, $kid)) {
+                    $error = "La Khassida n'a pas pu être retirée du programme.";
+                } else {
+                    $success = "Khassida retirée du programme.";
+                }
+            } elseif ($action === 'message_membre' && $kid > 0 && $mid > 0 && kurel_can_manage($kid, $__isKurelAdmin, $__managedKourels)) {
+                $envoi = kourel_message_membre(
+                    $pdo, $kid, $mid,
+                    (string) ($_POST['message'] ?? ''),
+                    (string) ($_POST['khassida'] ?? ''),
+                    (string) ($_POST['niveau'] ?? '')
+                );
+                if ($envoi['erreur'] !== '') { $error = $envoi['erreur']; }
+                else { $success = $envoi['message']; }
             } else {
                 $error = "Action non autorisée.";
             }
@@ -65,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($isAjax) {
         header('Content-Type: application/json');
-        echo json_encode(['ok' => empty($error), 'error' => $error]);
+        echo json_encode(['ok' => empty($error), 'error' => $error, 'success' => $success]);
         exit;
     }
 }
@@ -94,6 +272,19 @@ try {
                           FROM kourel_gestionnaires kg JOIN membres m ON m.id = kg.membre_id
                           ORDER BY m.nom ASC, m.prenom ASC");
     foreach ($rows2 as $r) { $kManagers[$r['kourel_id']][] = $r; }
+
+    // Répétitions par Kurel
+    $kRepetitions = [];
+    try {
+        $rr = $pdo->query("SELECT * FROM kourel_repetitions ORDER BY date_reunion DESC, id DESC");
+        foreach ($rr as $r) { $kRepetitions[(int) $r['kourel_id']][] = $r; }
+    } catch (Exception $e) { $kRepetitions = []; }
+    $repHeureDefaut = dahira_param($pdo, 'guddi_heure', '20h00');
+    $repZoomLien = dahira_param($pdo, 'guddi_lien_defaut', '');
+    $repLieuDefaut = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
+    // Listes partagées : Khassidas et types de mélodie
+    try { $khassidasList = $pdo->query("SELECT id, nom FROM kourel_khassidas ORDER BY nom ASC")->fetchAll(); } catch (Exception $e) { $khassidasList = []; }
+    try { $melodiesList = $pdo->query("SELECT id, nom FROM kourel_melodies ORDER BY nom ASC")->fetchAll(); } catch (Exception $e) { $melodiesList = []; }
 } catch (Exception $e) {
     error_log('Touba Lyon kourel_dashboard (load): ' . $e->getMessage());
     http_response_code(500);
@@ -108,6 +299,86 @@ function kourel_member_avatar($m)
     }
     return '<span class="km-avatar km-avatar--ph">' . htmlspecialchars($ini !== '' ? $ini : '?') . '</span>';
 }
+
+// Rendu HTML d'une répétition (carte). $showTitle=false pour une période au sein d'une série.
+$renderRepetitionItem = function ($r, $showTitle = true) use ($pdo, $khassidasList, $melodiesList) {
+    $rPub = ((int) $r['publie'] === 1);
+    $rClo = ((int) $r['cloture'] === 1);
+    $rid = (int) $r['id'];
+    $rDateFr = date('d/m/Y', strtotime($r['date_reunion']));
+    $csrf = csrf_field();
+    $estSerie = ($r['periodicite'] ?? 'ponctuelle') !== 'ponctuelle';
+    $canPublish = $estSerie ? !repetition_precedente_non_cloturee($pdo, $r) : true;
+    $nextToPublish = $estSerie ? repetition_prochaine_a_publier($pdo, $r) : null;
+    $h = '<div style="border:1px solid var(--glass-border); border-radius:12px; padding:0.7rem 0.9rem; background:rgba(255,255,255,0.03);">';
+    $h .= '<div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">';
+    $h .= '<div style="color:#fff; font-weight:700;">' . ($showTitle ? '🎼 ' . htmlspecialchars($r['titre']) : '🗓️ ' . $rDateFr) . '</div>';
+    $h .= '<div style="display:flex; gap:0.3rem; flex-wrap:wrap;">';
+    if ($rClo) { $h .= '<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted);">Clôturée</span>'; }
+    elseif ($rPub) { $h .= '<span class="badge badge-approved">🚀 Publiée</span>'; }
+    else { $h .= '<span class="badge badge-pending">⏳ En attente</span>'; }
+    $h .= '</div></div>';
+    $h .= '<div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.3rem;">🗓️ ' . $rDateFr . ' · 🕐 ' . htmlspecialchars($r['heure']) . ' · ' . ((string) $r['mode'] === 'presentiel' ? '🏛️ présentiel' : '💻 à distance') . '</div>';
+    $metaKM = [];
+    if (trim((string) ($r['khassida'] ?? '')) !== '') { $metaKM[] = '📜 ' . htmlspecialchars($r['khassida']); }
+    if (trim((string) ($r['melodie'] ?? '')) !== '') { $metaKM[] = '🎶 ' . htmlspecialchars($r['melodie']); }
+    if (!empty($metaKM)) { $h .= '<div style="color:var(--gold); font-size:0.82rem; margin-top:0.2rem;">' . implode(' · ', $metaKM) . '</div>'; }
+    $h .= '<div class="km-actions" style="border-top:0; padding-top:0.6rem; margin-top:0.4rem;">';
+    $h .= '<a href="repetition_detail.php?id=' . $rid . '" class="btn btn-secondary btn-sm">📊 Détail</a>';
+    if (!$rPub && !$rClo) {
+        $h .= '<button type="button" class="btn btn-secondary btn-sm" style="border-color:#7dd3fc; color:#7dd3fc;" onclick="toggleRepEdit(' . $rid . ')">✏️ Modifier</button>';
+    }
+    if (!$rClo) {
+        if (!$rPub) {
+            if ($canPublish) {
+                $h .= '<form method="POST" style="margin:0;" data-confirm="Publier cette répétition et notifier les membres du Kurel ?">' . $csrf . '<input type="hidden" name="action" value="publish_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-primary btn-sm">🚀 Publier</button></form>';
+            } else {
+                $h .= '<span class="btn btn-sm" style="background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.4); cursor:not-allowed;" title="Clôturez d\'abord la répétition précédente de la série">🚀 Publier</span>';
+            }
+        } else {
+            $h .= '<form method="POST" style="margin:0;" data-confirm="Dépublier cette répétition ? Elle sera masquée aux membres." data-confirm-danger="1">' . $csrf . '<input type="hidden" name="action" value="unpublish_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-secondary btn-sm" style="color:var(--warning); border-color:var(--warning);">⏳ Dépublier</button></form>';
+        }
+        $h .= '<form method="POST" style="margin:0;" data-confirm="Clôturer cette répétition ?">' . $csrf . '<input type="hidden" name="action" value="close_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><input type="hidden" name="publish_next" value="0"><button type="submit" class="btn btn-secondary btn-sm">Clôturer</button></form>';
+        if ($nextToPublish) {
+            $nextDateFr = date('d/m/Y', strtotime($nextToPublish['date_reunion']));
+            $h .= '<form method="POST" style="margin:0;" data-confirm="Clôturer cette répétition et publier la suivante (' . $nextDateFr . ') en notifiant les membres ?">' . $csrf . '<input type="hidden" name="action" value="close_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><input type="hidden" name="publish_next" value="1"><button type="submit" class="btn btn-primary btn-sm" style="background:rgba(125,211,252,0.15); border:1px solid rgba(125,211,252,0.5); color:#7dd3fc;">Clôturer + publier la suivante</button></form>';
+        }
+    } else {
+        $h .= '<form method="POST" style="margin:0;">' . $csrf . '<input type="hidden" name="action" value="reopen_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-secondary btn-sm">Rouvrir</button></form>';
+    }
+    $h .= '<form method="POST" style="margin:0;" data-confirm="Supprimer définitivement cette répétition ?" data-confirm-danger="1">' . $csrf . '<input type="hidden" name="action" value="delete_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-danger btn-sm">Supprimer</button></form>';
+    $h .= '</div>'; // fin actions
+    if (!$rPub && !$rClo) {
+        $mv = (string) $r['mode'];
+        $optDist = $mv === 'distance' ? ' selected' : '';
+        $optPres = $mv === 'presentiel' ? ' selected' : '';
+        $h .= '<div id="rep-edit-' . $rid . '" style="display:none; margin-top:0.5rem;">';
+        $h .= '<form method="POST" class="repetition-create-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:0.6rem;">' . $csrf;
+        $h .= '<input type="hidden" name="action" value="edit_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '">';
+        $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Titre</label><input type="text" name="titre" class="form-input" required value="' . htmlspecialchars((string) $r['titre'], ENT_QUOTES) . '"></div>';
+        $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2">' . htmlspecialchars((string) ($r['description'] ?? '')) . '</textarea></div>';
+        $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Date</label><input type="date" name="date_reunion" class="form-input" required min="' . date('Y-m-d') . '" value="' . htmlspecialchars((string) $r['date_reunion'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
+        $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure</label><input type="time" name="heure" class="form-input" required step="3600" value="' . htmlspecialchars((string) $r['heure'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
+        $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Mode</label><select name="mode" class="form-input modern-select r-mode" required><option value="distance"' . $optDist . '>💻 À distance (Zoom)</option><option value="presentiel"' . $optPres . '>🏛️ Présentiel</option></select></div>';
+        $curKh = (string) ($r['khassida'] ?? '');
+        $curMel = (string) ($r['melodie'] ?? '');
+        $optsKh = '<option value="">— Aucune —</option>';
+        foreach ($khassidasList as $kx) { $optsKh .= '<option value="' . htmlspecialchars($kx['nom'], ENT_QUOTES) . '"' . ($curKh === $kx['nom'] ? ' selected' : '') . '>' . htmlspecialchars($kx['nom']) . '</option>'; }
+        $optsMel = '<option value="">— Aucune —</option>';
+        foreach ($melodiesList as $ml) { $optsMel .= '<option value="' . htmlspecialchars($ml['nom'], ENT_QUOTES) . '"' . ($curMel === $ml['nom'] ? ' selected' : '') . '>' . htmlspecialchars($ml['nom']) . '</option>'; }
+        // Khassida et mélodie vont de pair : une rangée à deux colonnes
+        $h .= '<div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">';
+        $h .= '<div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📜 Khassida</label><select name="khassida" class="form-input modern-select">' . $optsKh . '</select></div>';
+        $h .= '<div class="form-group" style="margin:0; min-width:0;"><label class="form-label">🎶 Mélodie</label><select name="melodie" class="form-input modern-select">' . $optsMel . '</select></div>';
+        $h .= '</div>';
+        $h .= '<div class="form-group r-lien" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
+        $h .= '<div class="form-group r-lieu" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
+        $h .= '<div style="grid-column:1/-1;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>';
+        $h .= '</form></div>';
+    }
+    $h .= '</div>'; // fin carte
+    return $h;
+};
 
 // Données JS
 $idsOf = function ($arr) { return array_map(function ($r) { return (int) $r['id']; }, $arr); };
@@ -154,6 +425,8 @@ $membersJs = array_map(function ($m) {
         .com-dd option { background-color: #0c241a; color: #fff; }
         .com-dd:focus { outline: none; border-color: var(--accent); }
         .com-count { font-size: 0.82rem; color: var(--text-muted); margin-left: auto; }
+        .com-reu-group summary::-webkit-details-marker { display: none; }
+        .com-reu-group[open] .com-reu-chevron { transform: rotate(90deg); }
         @media (max-width: 600px) { .com-filters input, .com-dd { flex: 1 1 100%; } }
         /* ── Sélecteur à deux listes ── */
         #members-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
@@ -183,6 +456,14 @@ $membersJs = array_map(function ($m) {
         .tl-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.85rem 1.25rem; border-top: 1px solid var(--glass-border); flex-wrap: wrap; flex-shrink: 0; }
         .tl-count { font-size: 0.8rem; color: var(--text-muted); }
         @media (max-width: 600px) { .tl-cols { flex-direction: column; } .tl-col + .tl-col { border-left: 0; border-top: 1px solid var(--glass-border); } .tl-list { max-height: 30vh; } }
+        /* ── Avancement des Khassidas ── */
+        .kav-ligne { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.55rem 0.75rem; }
+        .kav-nom { flex: 1 1 11rem; min-width: 0; }
+        .kav-nom strong { color: var(--white); font-size: 0.88rem; }
+        .kav-melodie { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.1rem; }
+        .kav-statut { border-radius: 50px; border: 1px solid; font-size: 0.78rem; font-weight: 700; padding: 0.3rem 0.6rem; cursor: pointer; color-scheme: dark; }
+        .kav-statut option { background-color: #0c241a; color: #fff; font-weight: 600; }
+        .kav-statut:focus { outline: none; }
     </style>
 </head>
 <body>
@@ -198,8 +479,18 @@ $membersJs = array_map(function ($m) {
                 <?php if ($__isAdmin): ?>
                     <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
                 <?php else: ?>
-                    <a href="index.php" class="btn btn-secondary btn-sm">← Trombinoscope</a>
+                    <a href="trombinoscope.php" class="btn btn-secondary btn-sm">← Trombinoscope</a>
                 <?php endif; ?>
+            </div>
+
+            <!-- Accès rapide aux deux listes de référence, qui vivent en bas de page -->
+            <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1.5rem;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="ouvrirListeReference('liste-khassidas')">
+                    📜 Khassidas <span data-compteur="khassidas" style="color:var(--text-muted);">(<?php echo count($khassidasList); ?>)</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="ouvrirListeReference('liste-melodies')">
+                    🎶 Types de mélodie <span data-compteur="melodies" style="color:var(--text-muted);">(<?php echo count($melodiesList); ?>)</span>
+                </button>
             </div>
 
             <?php if (!$__isKurelAdmin): ?>
@@ -270,6 +561,196 @@ $membersJs = array_map(function ($m) {
                             <button type="button" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);" onclick="openComModal('managers', <?php echo (int) $k['id']; ?>, <?php echo htmlspecialchars(json_encode($k['nom']), ENT_QUOTES); ?>)">🎖️ Gérer les responsables</button>
                             <?php endif; ?>
                         </div>
+
+                        <?php $reps = $kRepetitions[$k['id']] ?? []; ?>
+                        <div data-zone="reps-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                            <div class="com-sub" style="margin-top:0;">🎵 Répétitions du Kurel</div>
+                            <?php if (empty($reps)): ?>
+                                <p class="km-empty">Aucune répétition pour le moment.</p>
+                            <?php else: ?>
+                                <?php
+                                    $groupes = [];
+                                    foreach ($reps as $r) { $gk = (int) ($r['serie_id'] ?: $r['id']); $groupes[$gk][] = $r; }
+                                ?>
+                                <div style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:0.75rem;">
+                                <?php foreach ($groupes as $grp): ?>
+                                    <?php if (count($grp) <= 1): ?>
+                                        <?php echo $renderRepetitionItem($grp[0], true); ?>
+                                    <?php else: ?>
+                                        <?php
+                                            $periodes = $grp;
+                                            usort($periodes, function ($a, $b) { return strcmp($a['date_reunion'], $b['date_reunion']); });
+                                            $first = $periodes[0];
+                                            $dmin = date('d/m/Y', strtotime($periodes[0]['date_reunion']));
+                                            $dmax = date('d/m/Y', strtotime($periodes[count($periodes) - 1]['date_reunion']));
+                                            $idxProchain = null;
+                                            foreach ($periodes as $i => $p) { if ((int) $p['cloture'] !== 1) { $idxProchain = $i; break; } }
+                                            if ($idxProchain === null) { $idxProchain = count($periodes) - 1; }
+                                            $prochain = $periodes[$idxProchain];
+                                            $autres = [];
+                                            foreach ($periodes as $i => $p) { if ($i !== $idxProchain) { $autres[] = $p; } }
+                                        ?>
+                                        <div style="border:1px solid rgba(212,175,55,0.35); border-radius:14px; padding:0.8rem 0.9rem; background:rgba(212,175,55,0.05);">
+                                            <div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                                                <div style="color:var(--gold); font-weight:800;">🔁 <?php echo htmlspecialchars($first['titre']); ?></div>
+                                                <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
+                                                    <span class="badge" style="background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.4);"><?php echo count($periodes); ?> répétitions · <?php echo htmlspecialchars(reunion_periodicite_label($first['periodicite'])); ?></span>
+                                                    <form method="POST" style="margin:0;" data-confirm="Supprimer TOUTE la série « <?php echo htmlspecialchars(addslashes($first['titre']), ENT_QUOTES); ?> » (<?php echo count($periodes); ?> répétitions) et tout leur suivi ? Action irréversible." data-confirm-danger="1">
+                                                        <?php echo csrf_field(); ?>
+                                                        <input type="hidden" name="action" value="delete_repetition_serie">
+                                                        <input type="hidden" name="repetition_id" value="<?php echo (int) $first['id']; ?>">
+                                                        <button type="submit" class="btn btn-danger btn-sm">🗑️ Supprimer la série</button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                            <div style="color:var(--text-muted); font-size:0.8rem; margin:0.3rem 0 0.6rem;">🗓️ du <?php echo $dmin; ?> au <?php echo $dmax; ?></div>
+                                            <div style="color:var(--text-muted); font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.35rem;">⏭️ Prochaine répétition</div>
+                                            <?php echo $renderRepetitionItem($prochain, false); ?>
+                                            <?php if (!empty($autres)): ?>
+                                            <details class="com-reu-group" style="margin-top:0.6rem;">
+                                                <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.85rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">📂 Voir les <?php echo count($autres); ?> autre(s) répétition(s) <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                                                <div style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem;">
+                                                <?php foreach ($autres as $r): ?>
+                                                    <?php echo $renderRepetitionItem($r, false); ?>
+                                                <?php endforeach; ?>
+                                                </div>
+                                            </details>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                            <details>
+                                <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Créer une répétition</summary>
+                                <form method="POST" class="repetition-create-form" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="create_repetition">
+                                    <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required placeholder="Ex: Répétition hebdomadaire du Kurel"></div>
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"></textarea></div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_debut" class="form-input" required min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Heure <span style="color:var(--danger)">*</span></label><input type="time" name="heure" class="form-input" required step="3600" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Mode <span style="color:var(--danger)">*</span></label><select name="mode" class="form-input modern-select r-mode" required><option value="distance">💻 À distance (Zoom)</option><option value="presentiel" selected>🏛️ Présentiel</option></select></div>
+                                    <!-- Khassida et mélodie vont de pair : une rangée à deux colonnes,
+                                         que la grille automatique ne séparerait pas toujours au même endroit -->
+                                    <div style="grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:0.7rem;">
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📜 Khassida <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label><select name="khassida" class="form-input modern-select"><option value="">— Aucune —</option><?php foreach ($khassidasList as $kx): ?><option value="<?php echo htmlspecialchars($kx['nom'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($kx['nom']); ?></option><?php endforeach; ?></select></div>
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">🎶 Mélodie <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label><select name="melodie" class="form-input modern-select"><option value="">— Aucune —</option><?php foreach ($melodiesList as $ml): ?><option value="<?php echo htmlspecialchars($ml['nom'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($ml['nom']); ?></option><?php endforeach; ?></select></div>
+                                    </div>
+                                    <div class="form-group r-lien" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (répétition à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($repZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
+                                    <div class="form-group r-lieu" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">📍 Adresse (présentiel) <span style="color:var(--danger)">*</span></label><input type="text" name="lieu" class="form-input r-lieu-input" value="<?php echo htmlspecialchars($repLieuDefaut); ?>"><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec l'adresse du Dahira — modifiable.</p></div>
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;">
+                                        <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;"><input type="checkbox" name="periodique" value="1" class="r-periodique"> 🔁 Répétition périodique</label>
+                                    </div>
+                                    <div class="form-group r-per-fields" style="margin:0; display:none;"><label class="form-label">Périodicité</label><select name="periodicite" class="form-input modern-select"><option value="hebdomadaire">Hebdomadaire</option><option value="quinzaine">Une semaine sur deux</option><option value="mensuelle">Mensuelle</option></select></div>
+                                    <div class="form-group r-per-fields" style="margin:0; display:none;"><label class="form-label">Date de fin</label><input type="date" name="date_fin" class="form-input" min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
+                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Créer la répétition</button></div>
+                                </form>
+                            </details>
+                        </div>
+
+                        <?php
+                            // Le tableau de marche du Kurel : quelques Khassidas par
+                            // année, chacune avec sa mélodie et son avancement.
+                            $avancements = kourel_avancements($pdo, (int) $k['id']);
+                            $enCours = kourel_khassida_en_cours($pdo, (int) $k['id']);
+                            $statuts = kourel_statuts();
+                            // Pour écrire à un membre : les Khassidas du programme,
+                            // à défaut la liste partagée.
+                            $khProgramme = [];
+                            foreach ($avancements as $lignesAnnee) {
+                                foreach ($lignesAnnee as $av) { $khProgramme[$av['khassida']] = true; }
+                            }
+                            $khProgramme = array_keys($khProgramme);
+                            if (empty($khProgramme)) {
+                                foreach ($khassidasList as $kx) { $khProgramme[] = $kx['nom']; }
+                            }
+                        ?>
+                        <div data-zone="avancement-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                            <div class="com-sub" style="margin-top:0;">📈 Avancement des Khassidas</div>
+                            <?php if (empty($avancements)): ?>
+                                <p class="km-empty">Aucune Khassida au programme pour le moment.</p>
+                            <?php else: foreach ($avancements as $annee => $lignesAnnee): ?>
+                                <div style="margin-bottom:0.9rem;">
+                                    <div style="color:var(--gold); font-weight:700; font-size:0.82rem; margin-bottom:0.4rem;">📅 <?php echo (int) $annee; ?></div>
+                                    <div style="display:flex; flex-direction:column; gap:0.45rem;">
+                                        <?php foreach ($lignesAnnee as $av): $etat = $statuts[kourel_statut_valide($av['statut'])]; ?>
+                                            <div class="kav-ligne">
+                                                <div class="kav-nom">
+                                                    <strong>📜 <?php echo htmlspecialchars($av['khassida']); ?></strong>
+                                                    <div class="kav-melodie">🎶 <?php echo htmlspecialchars(trim((string) $av['melodie']) !== '' ? $av['melodie'] : 'mélodie non précisée'); ?></div>
+                                                </div>
+                                                <form method="POST" style="margin:0;">
+                                                    <?php echo csrf_field(); ?>
+                                                    <input type="hidden" name="action" value="avancement_statut">
+                                                    <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
+                                                    <input type="hidden" name="avancement_id" value="<?php echo (int) $av['id']; ?>">
+                                                    <select name="statut" class="kav-statut" onchange="envoyerChangement(this)"
+                                                            style="border-color:<?php echo $etat['couleur']; ?>; background:<?php echo $etat['fond']; ?>; color:<?php echo $etat['couleur']; ?>;">
+                                                        <?php foreach ($statuts as $cle => $s): ?>
+                                                            <option value="<?php echo $cle; ?>"<?php echo kourel_statut_valide($av['statut']) === $cle ? ' selected' : ''; ?>><?php echo $s['icone'] . ' ' . $s['libelle']; ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </form>
+                                                <form method="POST" style="margin:0;"
+                                                      data-confirm="Retirer « <?php echo htmlspecialchars(addslashes($av['khassida']), ENT_QUOTES); ?> » du programme <?php echo (int) $annee; ?>&nbsp;?"
+                                                      data-confirm-danger="1">
+                                                    <?php echo csrf_field(); ?>
+                                                    <input type="hidden" name="action" value="avancement_supprimer">
+                                                    <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
+                                                    <input type="hidden" name="avancement_id" value="<?php echo (int) $av['id']; ?>">
+                                                    <button type="submit" title="Retirer du programme" style="background:none; border:0; color:#ff8a8a; cursor:pointer; font-size:1rem; line-height:1;">🗑️</button>
+                                                </form>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; endif; ?>
+
+                            <details>
+                                <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Ajouter une Khassida au programme</summary>
+                                <form method="POST" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.7rem;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="avancement_ajouter">
+                                    <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📜 Khassida <span style="color:var(--danger)">*</span></label><select name="khassida" class="form-input modern-select" required><?php foreach ($khassidasList as $kx): ?><option value="<?php echo htmlspecialchars($kx['nom'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($kx['nom']); ?></option><?php endforeach; ?></select></div>
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">🎶 Mélodie</label><select name="melodie" class="form-input modern-select"><option value="">— Aucune —</option><?php foreach ($melodiesList as $ml): ?><option value="<?php echo htmlspecialchars($ml['nom'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($ml['nom']); ?></option><?php endforeach; ?></select></div>
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📅 Année</label><select name="annee" class="form-input modern-select"><?php foreach (kourel_annees() as $an): ?><option value="<?php echo (int) $an; ?>"<?php echo $an === (int) date('Y') ? ' selected' : ''; ?>><?php echo (int) $an; ?></option><?php endforeach; ?></select></div>
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">Avancement</label><select name="statut" class="form-input modern-select"><?php foreach ($statuts as $cle => $s): ?><option value="<?php echo $cle; ?>"><?php echo $s['icone'] . ' ' . $s['libelle']; ?></option><?php endforeach; ?></select></div>
+                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Ajouter au programme</button></div>
+                                </form>
+                            </details>
+                        </div>
+
+                        <div data-zone="message-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                            <div class="com-sub" style="margin-top:0;">✉️ Écrire à un membre</div>
+                            <?php if (empty($membersOfK)): ?>
+                                <p class="km-empty">Ajoutez d'abord des membres à ce Kurel.</p>
+                            <?php else: ?>
+                                <p style="color:var(--text-muted); font-size:0.8rem; margin:0 0 0.7rem; line-height:1.5;">
+                                    <?php if ($enCours): ?>
+                                        Khassida en cours : <strong style="color:var(--white);">📜 <?php echo htmlspecialchars($enCours['khassida']); ?></strong>
+                                        <?php if (trim((string) $enCours['melodie']) !== ''): ?>· 🎶 <?php echo htmlspecialchars($enCours['melodie']); ?><?php endif; ?>
+                                        · <?php echo (int) $enCours['annee']; ?>.
+                                    <?php else: ?>
+                                        Aucune Khassida n'est marquée « en cours » : choisissez-en une ci-dessous, ou laissez sans.
+                                    <?php endif; ?>
+                                    Le membre reçoit une notification dans l'application, et un e-mail s'il a une adresse.
+                                </p>
+                                <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap:0.7rem;"
+                                      data-confirm="Envoyer ce message au membre choisi, par notification et par e-mail&nbsp;?">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="message_membre">
+                                    <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">👤 Membre <span style="color:var(--danger)">*</span></label><select name="membre_id" class="form-input modern-select" required><?php foreach ($membersOfK as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?></select></div>
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📜 Khassida</label><select name="khassida" class="form-input modern-select"><option value="">— Sans Khassida —</option><?php foreach ($khProgramme as $khNom): ?><option value="<?php echo htmlspecialchars($khNom, ENT_QUOTES); ?>"<?php echo ($enCours && $enCours['khassida'] === $khNom) ? ' selected' : ''; ?>><?php echo htmlspecialchars($khNom); ?></option><?php endforeach; ?></select></div>
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📈 Niveau du membre</label><select name="niveau" class="form-input modern-select"><option value="">— Sans niveau —</option><?php foreach (kourel_niveaux() as $cle => $lib): ?><option value="<?php echo $cle; ?>"><?php echo $lib; ?></option><?php endforeach; ?></select></div>
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Message <span style="color:var(--danger)">*</span></label><textarea name="message" class="form-input" rows="3" required placeholder="Ex : Assalamu aleykum, continue à travailler le début de la Khassida, tu y es presque."></textarea></div>
+                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">📨 Envoyer le message</button></div>
+                                </form>
+                            <?php endif; ?>
+                        </div>
                     </div>
                 <?php endforeach; ?>
                 <div class="empty-state" id="com-noresult" style="display:none;"><div class="empty-state-icon">🔍</div><p>Aucun Kurel ne correspond à votre recherche.</p></div>
@@ -294,6 +775,47 @@ $membersJs = array_map(function ($m) {
                 </form>
             </div>
             <?php endif; ?>
+
+            <!-- Listes de référence, en bas de page : on les consulte rarement.
+                 Les deux boutons du haut y mènent et les ouvrent. -->
+            <details id="liste-khassidas" data-zone="khassidas" class="glass-card com-reu-group" style="margin-bottom:1rem; padding:1rem 1.25rem; border-radius:16px;">
+                <summary style="cursor:pointer; color:var(--gold); font-weight:800; font-size:1rem; list-style:none; display:flex; align-items:center; gap:0.5rem;">📜 Khassidas <span data-compteur="khassidas-titre" style="color:var(--text-muted); font-weight:600;">(<?php echo count($khassidasList); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.9rem;">
+                    <?php if (empty($khassidasList)): ?><p class="km-empty">Aucune Khassida pour le moment.</p><?php else: foreach ($khassidasList as $kx): ?>
+                        <span class="km-chip"><span class="km-name">📜 <?php echo htmlspecialchars($kx['nom']); ?></span>
+                            <form method="POST" style="margin:0; display:inline;" data-confirm="Supprimer « <?php echo htmlspecialchars(addslashes($kx['nom']), ENT_QUOTES); ?> » de la liste ?" data-confirm-danger="1">
+                                <?php echo csrf_field(); ?><input type="hidden" name="action" value="delete_khassida"><input type="hidden" name="item_id" value="<?php echo (int) $kx['id']; ?>">
+                                <button type="submit" title="Supprimer" style="background:none; border:0; color:#ff8a8a; cursor:pointer; font-size:1rem; line-height:1;">&times;</button>
+                            </form>
+                        </span>
+                    <?php endforeach; endif; ?>
+                </div>
+                <form method="POST" style="margin-top:0.9rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <?php echo csrf_field(); ?><input type="hidden" name="action" value="add_khassida">
+                    <input type="text" name="nom" class="form-input" placeholder="Ajouter une Khassida…" style="flex:1 1 220px;" required>
+                    <button type="submit" class="btn btn-primary btn-sm">➕ Ajouter</button>
+                </form>
+            </details>
+
+            <details id="liste-melodies" data-zone="melodies" class="glass-card com-reu-group" style="margin-bottom:1.5rem; padding:1rem 1.25rem; border-radius:16px;">
+                <summary style="cursor:pointer; color:var(--gold); font-weight:800; font-size:1rem; list-style:none; display:flex; align-items:center; gap:0.5rem;">🎶 Types de mélodie <span data-compteur="melodies-titre" style="color:var(--text-muted); font-weight:600;">(<?php echo count($melodiesList); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.9rem;">
+                    <?php if (empty($melodiesList)): ?><p class="km-empty">Aucune mélodie pour le moment.</p><?php else: foreach ($melodiesList as $ml): ?>
+                        <span class="km-chip"><span class="km-name">🎶 <?php echo htmlspecialchars($ml['nom']); ?></span>
+                            <form method="POST" style="margin:0; display:inline;" data-confirm="Supprimer « <?php echo htmlspecialchars(addslashes($ml['nom']), ENT_QUOTES); ?> » de la liste ?" data-confirm-danger="1">
+                                <?php echo csrf_field(); ?><input type="hidden" name="action" value="delete_melodie"><input type="hidden" name="item_id" value="<?php echo (int) $ml['id']; ?>">
+                                <button type="submit" title="Supprimer" style="background:none; border:0; color:#ff8a8a; cursor:pointer; font-size:1rem; line-height:1;">&times;</button>
+                            </form>
+                        </span>
+                    <?php endforeach; endif; ?>
+                </div>
+                <form method="POST" style="margin-top:0.9rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <?php echo csrf_field(); ?><input type="hidden" name="action" value="add_melodie">
+                    <input type="text" name="nom" class="form-input" placeholder="Ajouter un type de mélodie…" style="flex:1 1 220px;" required>
+                    <button type="submit" class="btn btn-primary btn-sm">➕ Ajouter</button>
+                </form>
+            </details>
+
         </div>
 
             </div>
@@ -332,6 +854,142 @@ $membersJs = array_map(function ($m) {
     <form id="tl-form" style="display:none;"><?php echo csrf_field(); ?></form>
 
     <script>
+        // ---------------------------------------------------------------
+        // Actions sans rechargement : seule la zone concernée est refaite
+        // ---------------------------------------------------------------
+        // Un message qui passe, plutôt qu'une fenêtre à refermer : l'action
+        // vient d'être confirmée, la personne sait ce qu'elle a demandé.
+        function messageDiscret(texte, estErreur) {
+            var t = document.getElementById('zone-message');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'zone-message';
+                t.style.cssText = 'position:fixed; left:50%; bottom:1.25rem; transform:translateX(-50%);'
+                    + ' z-index:4000; max-width:min(92vw, 30rem); padding:0.7rem 1.1rem; border-radius:12px;'
+                    + ' font-size:0.88rem; line-height:1.45; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,0.35);'
+                    + ' opacity:0; transition:opacity 0.2s;';
+                document.body.appendChild(t);
+            }
+            t.style.background = estErreur ? 'rgba(120, 22, 22, 0.96)' : 'rgba(18, 46, 34, 0.96)';
+            t.style.border = '1px solid ' + (estErreur ? 'rgba(255, 138, 138, 0.55)' : 'rgba(212, 175, 55, 0.5)');
+            t.style.color = estErreur ? '#ffd7d7' : '#f4dd8c';
+            t.textContent = texte;
+            t.style.opacity = '1';
+            clearTimeout(t._minuteur);
+            t._minuteur = setTimeout(function () { t.style.opacity = '0'; }, 4200);
+        }
+
+        // Les sections ouvertes doivent le rester : on note leur état avant
+        // l'échange, on le repose après — sauf si la structure a changé.
+        function etatsDesSections(zone) {
+            return Array.prototype.map.call(zone.querySelectorAll('details'), function (d) { return d.open; });
+        }
+        function reposerEtatsDesSections(zone, etats) {
+            var ds = zone.querySelectorAll('details');
+            if (ds.length !== etats.length) { return; }
+            for (var i = 0; i < ds.length; i++) { ds[i].open = etats[i]; }
+        }
+
+        // Redemande la page au serveur, mais n'en garde que la zone visée.
+        function rafraichirZone(zone) {
+            var cle = zone.getAttribute('data-zone');
+            return fetch(window.location.href, { credentials: 'same-origin', cache: 'no-store' })
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    var doc = new DOMParser().parseFromString(html, 'text/html');
+                    var frais = doc.querySelector('[data-zone="' + cle + '"]');
+                    if (!frais) { window.location.reload(); return; }
+                    var etats = etatsDesSections(zone);
+                    zone.innerHTML = frais.innerHTML;
+                    reposerEtatsDesSections(zone, etats);
+                    initFormulairesRepetition(zone);
+                    // Les compteurs vivent hors de la zone : ils la suivent.
+                    doc.querySelectorAll('[data-compteur]').forEach(function (src) {
+                        var cible = document.querySelector('[data-compteur="' + src.getAttribute('data-compteur') + '"]');
+                        if (cible) { cible.textContent = src.textContent; }
+                    });
+                });
+        }
+
+        // Envoie le formulaire en arrière-plan, puis refait sa zone.
+        function envoyerFormulaireZone(form, zone) {
+            var corps = new URLSearchParams(new FormData(form));
+            corps.append('ajax', '1');
+            var boutons = form.querySelectorAll('button, input[type=submit]');
+            boutons.forEach(function (b) { b.disabled = true; });
+            fetch(window.location.href, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: corps.toString(),
+                credentials: 'same-origin'
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (!j.ok) { throw new Error(j.error || 'Erreur'); }
+                    return rafraichirZone(zone).then(function () {
+                        messageDiscret(j.success || 'Enregistré.', false);
+                    });
+                })
+                .catch(function (e) {
+                    boutons.forEach(function (b) { b.disabled = false; });
+                    messageDiscret(e.message || "L'action n'a pas abouti.", true);
+                });
+        }
+
+        // Interception à la capture, donc avant l'écouteur du popup partagé :
+        // la confirmation est demandée ici, et le formulaire ne part jamais en
+        // rechargement de page.
+        document.addEventListener('submit', function (ev) {
+            var form = ev.target;
+            if (!form || form.tagName !== 'FORM') { return; }
+            var zone = form.closest('[data-zone]');
+            if (!zone) { return; }
+            // On prend la main dans tous les cas : laisser filer l'événement
+            // rendrait la main au popup partagé, qui recharge la page.
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (form.reportValidity && !form.reportValidity()) { return; }
+            var msg = form.getAttribute('data-confirm');
+            if (!msg) {
+                envoyerFormulaireZone(form, zone);
+                return;
+            }
+            var suite = function () { envoyerFormulaireZone(form, zone); };
+            if (form.getAttribute('data-confirm-danger') === '1') {
+                window.modernDanger(msg, suite);
+            } else {
+                window.modernConfirm(msg, suite);
+            }
+        }, true);
+
+        // Un choix dans une liste déroulante vaut validation : on passe par un
+        // vrai événement de soumission, seul chemin que l'interception connaît
+        // (form.submit() rechargerait la page).
+        function envoyerChangement(champ) {
+            var f = champ.form;
+            if (!f) { return; }
+            if (f.requestSubmit) { f.requestSubmit(); }
+            else { f.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }
+        }
+
+        // Les listes de référence sont en bas de page et repliées : le raccourci
+        // les déplie avant d'y descendre, sinon on arrive sur un simple titre.
+        function ouvrirListeReference(id) {
+            var d = document.getElementById(id);
+            if (!d) { return; }
+            d.open = true;
+            var doux = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            var avant = window.scrollY;
+            d.scrollIntoView(doux ? { behavior: 'smooth', block: 'center' } : { block: 'center' });
+            // Le défilement animé n'aboutit pas partout (onglet en arrière-plan,
+            // animations bridées) : si rien n'a bougé, on y va d'un coup.
+            if (doux) {
+                setTimeout(function () {
+                    if (Math.abs(window.scrollY - avant) < 4) { d.scrollIntoView({ block: 'center' }); }
+                }, 400);
+            }
+        }
+
         var TL_ALL = <?php echo json_encode($membersJs, JSON_UNESCAPED_UNICODE); ?>;
         var COM_MEMBERS = <?php echo json_encode((object) $kMembersMap, JSON_UNESCAPED_UNICODE); ?>;
         var COM_MANAGERS = <?php echo json_encode((object) $kManagersMap, JSON_UNESCAPED_UNICODE); ?>;
@@ -510,6 +1168,40 @@ $membersJs = array_map(function ($m) {
     </div>
     <?php endif; ?>
 
+    <script>
+        // Répétitions : formulaire de modification + affichage dynamique création
+        function toggleRepEdit(id) {
+            var el = document.getElementById('rep-edit-' + id);
+            if (el) { el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none'; }
+        }
+        // Appelée au chargement, puis sur chaque zone remise en place : les
+        // écouteurs d'un formulaire remplacé sont partis avec l'ancien noeud.
+        function initFormulairesRepetition(racine) {
+            (racine || document).querySelectorAll('.repetition-create-form').forEach(function (f) {
+                var per = f.querySelector('.r-periodique');
+                var perFields = f.querySelectorAll('.r-per-fields');
+                var mode = f.querySelector('.r-mode');
+                var lien = f.querySelector('.r-lien');
+                var lieu = f.querySelector('.r-lieu');
+                var lienInput = f.querySelector('.r-lien-input');
+                var lieuInput = f.querySelector('.r-lieu-input');
+                function syncPer() { perFields.forEach(function (el) { el.style.display = (per && per.checked) ? '' : 'none'; }); }
+                function syncMode() {
+                    var v = mode ? mode.value : '';
+                    if (lien) { lien.style.display = (v === 'distance') ? '' : 'none'; }
+                    if (lieu) { lieu.style.display = (v === 'presentiel') ? '' : 'none'; }
+                    if (lienInput) { lienInput.required = (v === 'distance'); }
+                    if (lieuInput) { lieuInput.required = (v === 'presentiel'); }
+                }
+                if (per) { per.addEventListener('change', syncPer); }
+                if (mode) { mode.addEventListener('change', syncMode); }
+                syncPer(); syncMode();
+            });
+        }
+        initFormulairesRepetition(document);
+    </script>
+
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
+    <?php include __DIR__ . '/modern_popup.php'; ?>
 </body>
 </html>

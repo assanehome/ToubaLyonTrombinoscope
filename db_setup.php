@@ -378,6 +378,22 @@ try {
         closed_at DATETIME DEFAULT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     try { $pdo->query("SELECT groupe FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN groupe VARCHAR(100) DEFAULT NULL AFTER description"); }
+    // Périodicité du Khatm : 'ponctuelle' (par défaut) ou 'semaine' / 'quinzaine' / 'mois'
+    try { $pdo->query("SELECT periodicite FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN periodicite VARCHAR(20) NOT NULL DEFAULT 'ponctuelle' AFTER groupe"); }
+    // Réallouer automatiquement les mêmes Juz aux mêmes membres à la période suivante
+    try { $pdo->query("SELECT realloc_meme_membre FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN realloc_meme_membre TINYINT(1) NOT NULL DEFAULT 0 AFTER periodicite"); }
+    // Lien vers la session précédente (chaînage des périodes)
+    try { $pdo->query("SELECT parent_id FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN parent_id INT DEFAULT NULL AFTER realloc_meme_membre"); }
+    // Dates de la période (calendrier des sessions périodiques)
+    try { $pdo->query("SELECT date_debut FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN date_debut DATE DEFAULT NULL AFTER parent_id"); }
+    try { $pdo->query("SELECT date_fin FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN date_fin DATE DEFAULT NULL AFTER date_debut"); }
+    // Identifiant de série (regroupe toutes les périodes d'un même Khatm périodique)
+    try { $pdo->query("SELECT serie_id FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN serie_id INT DEFAULT NULL AFTER date_fin"); }
+    // Lancement : une période/session n'est visible des membres que si lancée (défaut 1 = compat.)
+    try { $pdo->query("SELECT lance FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN lance TINYINT(1) NOT NULL DEFAULT 1 AFTER serie_id"); }
+    // Un seul Juz par membre (1) ou plusieurs autorisés (0). Défaut 0 en base pour
+    // préserver les sessions existantes ; les nouvelles sessions par défaut = 1 (formulaire).
+    try { $pdo->query("SELECT un_juz_par_membre FROM quran_sessions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE quran_sessions ADD COLUMN un_juz_par_membre TINYINT(1) NOT NULL DEFAULT 0 AFTER lance"); }
     // Groupes de lecture (Magal, Gamou, Hebdomadaire… enrichissable)
     $pdo->exec("CREATE TABLE IF NOT EXISTS quran_groupes (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -561,7 +577,7 @@ try {
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_lien_defaut', 'https://us06web.zoom.us/j/81338485985?pwd=RDNzM3hBWkpmdTBCTE0rS1lDS2w5QT09')")->execute(); } catch (Exception $e) {}
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_mode_defaut', 'distance')")->execute(); } catch (Exception $e) {}
 
-    // Validations de présence des membres (Dahira / Guddi Àjjuma publiés)
+    // Validations de présence des membres (Dahira / Guddi Àjjuma / Réunions de commission publiés)
     $pdo->exec("CREATE TABLE IF NOT EXISTS presence_validations (
         id INT AUTO_INCREMENT PRIMARY KEY,
         planning_type VARCHAR(20) NOT NULL,
@@ -569,6 +585,95 @@ try {
         membre_id INT NOT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_presence (planning_type, planning_id, membre_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Réunions de commission (créées par les responsables de commission, ponctuelles ou périodiques)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS commission_reunions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        commission_id INT NOT NULL,
+        titre VARCHAR(200) NOT NULL,
+        description TEXT NULL DEFAULT NULL,
+        date_reunion DATE NOT NULL,
+        heure VARCHAR(20) NOT NULL DEFAULT '20h00',
+        mode VARCHAR(20) NOT NULL DEFAULT 'distance',
+        lieu VARCHAR(255) NULL DEFAULT NULL,
+        lien VARCHAR(500) NULL DEFAULT NULL,
+        periodicite VARCHAR(20) NOT NULL DEFAULT 'ponctuelle',
+        serie_id INT NULL DEFAULT NULL,
+        publie TINYINT(1) NOT NULL DEFAULT 0,
+        cloture TINYINT(1) NOT NULL DEFAULT 0,
+        created_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        INDEX idx_com (commission_id),
+        INDEX idx_date (date_reunion),
+        INDEX idx_serie (serie_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Répétitions de Kurel (créées par les responsables de Kurel, ponctuelles ou périodiques)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_repetitions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        kourel_id INT NOT NULL,
+        titre VARCHAR(200) NOT NULL,
+        description TEXT NULL DEFAULT NULL,
+        date_reunion DATE NOT NULL,
+        heure VARCHAR(20) NOT NULL DEFAULT '20h00',
+        mode VARCHAR(20) NOT NULL DEFAULT 'distance',
+        lieu VARCHAR(255) NULL DEFAULT NULL,
+        lien VARCHAR(500) NULL DEFAULT NULL,
+        periodicite VARCHAR(20) NOT NULL DEFAULT 'ponctuelle',
+        serie_id INT NULL DEFAULT NULL,
+        khassida VARCHAR(255) NULL DEFAULT NULL,
+        melodie VARCHAR(150) NULL DEFAULT NULL,
+        publie TINYINT(1) NOT NULL DEFAULT 0,
+        cloture TINYINT(1) NOT NULL DEFAULT 0,
+        created_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        INDEX idx_kou (kourel_id),
+        INDEX idx_date (date_reunion),
+        INDEX idx_serie (serie_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Migrations : colonnes khassida / melodie (bases existantes)
+    try { $pdo->query("SELECT khassida FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN khassida VARCHAR(255) NULL DEFAULT NULL"); }
+    try { $pdo->query("SELECT melodie FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN melodie VARCHAR(150) NULL DEFAULT NULL"); }
+
+    // Liste des Khassidas de Serigne Touba (partagée entre Kurels)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_khassidas (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nom VARCHAR(200) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_khassida (nom)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Liste des types de mélodie (partagée entre Kurels)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_melodies (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nom VARCHAR(150) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_melodie (nom)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Amorçage : Khassidas les plus récitées en Kurel
+    foreach (['Matlaboul Fawzeyni', 'Mawaahibun Naafih', 'Jazaa\'u Shakuur', 'Midaadi', 'Nahju Qadaa\'il Haaj', 'Munawwarus Suduur', 'Sindidi', 'Massaalik al-Jinaan', 'Jawharun Nafiis', 'Tazawwudus Sighaar'] as $kh) {
+        try { $pdo->prepare("INSERT IGNORE INTO kourel_khassidas (nom) VALUES (?)")->execute([$kh]); } catch (Exception $e) {}
+    }
+    // Amorçage : types de mélodie proposés (modifiables / extensibles)
+    foreach (['Classique', 'Lente (recueillement)', 'Rapide (rythmée)', 'Solennelle', 'Méditative', 'Festive (Gamou / Màggal)', 'Cadence Kurel', 'Psalmodie'] as $mel) {
+        try { $pdo->prepare("INSERT IGNORE INTO kourel_melodies (nom) VALUES (?)")->execute([$mel]); } catch (Exception $e) {}
+    }
+
+    // Avancement d'un Kurel : quelques Khassidas par année, chacune avec sa
+    // mélodie, en attente / en cours / complétée.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_avancements (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        kourel_id INT NOT NULL,
+        annee SMALLINT NOT NULL,
+        khassida VARCHAR(200) NOT NULL,
+        melodie VARCHAR(150) NULL DEFAULT NULL,
+        statut VARCHAR(20) NOT NULL DEFAULT 'attente',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        UNIQUE KEY uniq_kourel_annee_khassida (kourel_id, annee, khassida),
+        INDEX idx_kou_annee (kourel_id, annee)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     // 3. Create uploads directory if it doesn't exist
