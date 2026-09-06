@@ -227,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $envoi = kourel_message_membre(
                     $pdo, $kid, $mid,
                     (string) ($_POST['message'] ?? ''),
-                    (string) ($_POST['khassida'] ?? ''),
+                    (int) ($_POST['avancement_id'] ?? 0),
                     (string) ($_POST['niveau'] ?? '')
                 );
                 if ($envoi['erreur'] !== '') { $error = $envoi['erreur']; }
@@ -654,20 +654,12 @@ $membersJs = array_map(function ($m) {
                             // Le tableau de marche du Kurel : quelques Khassidas par
                             // année, chacune avec sa mélodie et son avancement.
                             $avancements = kourel_avancements($pdo, (int) $k['id']);
-                            $enCours = kourel_khassida_en_cours($pdo, (int) $k['id']);
                             $statuts = kourel_statuts();
-                            // Pour écrire à un membre : les Khassidas du programme,
-                            // à défaut la liste partagée.
-                            $khProgramme = [];
-                            foreach ($avancements as $lignesAnnee) {
-                                foreach ($lignesAnnee as $av) { $khProgramme[$av['khassida']] = true; }
-                            }
-                            $khProgramme = array_keys($khProgramme);
-                            if (empty($khProgramme)) {
-                                foreach ($khassidasList as $kx) { $khProgramme[] = $kx['nom']; }
-                            }
+                            // Un mot à un membre porte sur un travail en cours :
+                            // ce sont ces lignes-là, et elles seules, qu'on propose.
+                            $enCoursListe = kourel_avancements_en_cours($pdo, (int) $k['id']);
                         ?>
-                        <div data-zone="avancement-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                        <div data-zone="avancement-<?php echo (int) $k['id']; ?>" data-zone-liee="message-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
                             <div class="com-sub" style="margin-top:0;">📈 Avancement des Khassidas</div>
                             <?php if (empty($avancements)): ?>
                                 <p class="km-empty">Aucune Khassida au programme pour le moment.</p>
@@ -727,16 +719,16 @@ $membersJs = array_map(function ($m) {
                             <div class="com-sub" style="margin-top:0;">✉️ Écrire à un membre</div>
                             <?php if (empty($membersOfK)): ?>
                                 <p class="km-empty">Ajoutez d'abord des membres à ce Kurel.</p>
+                            <?php elseif (empty($enCoursListe)): ?>
+                                <p class="km-empty">
+                                    Aucune Khassida n'est <strong>🎼 en cours</strong> : marquez-en une ainsi dans
+                                    l'avancement ci-dessus, et vous pourrez écrire à un membre à son sujet.
+                                </p>
                             <?php else: ?>
                                 <p style="color:var(--text-muted); font-size:0.8rem; margin:0 0 0.7rem; line-height:1.5;">
-                                    <?php if ($enCours): ?>
-                                        Khassida en cours : <strong style="color:var(--white);">📜 <?php echo htmlspecialchars($enCours['khassida']); ?></strong>
-                                        <?php if (trim((string) $enCours['melodie']) !== ''): ?>· 🎶 <?php echo htmlspecialchars($enCours['melodie']); ?><?php endif; ?>
-                                        · <?php echo (int) $enCours['annee']; ?>.
-                                    <?php else: ?>
-                                        Aucune Khassida n'est marquée « en cours » : choisissez-en une ci-dessous, ou laissez sans.
-                                    <?php endif; ?>
-                                    Le membre reçoit une notification dans l'application, et un e-mail s'il a une adresse.
+                                    Le mot porte sur une Khassida <strong style="color:var(--white);">en cours</strong> et sur le
+                                    niveau atteint par le membre. Il reçoit une notification dans l'application, et un
+                                    e-mail s'il a une adresse.
                                 </p>
                                 <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap:0.7rem;"
                                       data-confirm="Envoyer ce message au membre choisi, par notification et par e-mail&nbsp;?">
@@ -744,7 +736,7 @@ $membersJs = array_map(function ($m) {
                                     <input type="hidden" name="action" value="message_membre">
                                     <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
                                     <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">👤 Membre <span style="color:var(--danger)">*</span></label><select name="membre_id" class="form-input modern-select" required><?php foreach ($membersOfK as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?></select></div>
-                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📜 Khassida</label><select name="khassida" class="form-input modern-select"><option value="">— Sans Khassida —</option><?php foreach ($khProgramme as $khNom): ?><option value="<?php echo htmlspecialchars($khNom, ENT_QUOTES); ?>"<?php echo ($enCours && $enCours['khassida'] === $khNom) ? ' selected' : ''; ?>><?php echo htmlspecialchars($khNom); ?></option><?php endforeach; ?></select></div>
+                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">🎼 Khassida en cours <span style="color:var(--danger)">*</span></label><select name="avancement_id" class="form-input modern-select" required><?php foreach ($enCoursListe as $ec): ?><option value="<?php echo (int) $ec['id']; ?>"><?php echo htmlspecialchars($ec['khassida'] . (trim((string) $ec['melodie']) !== '' ? ' · ' . $ec['melodie'] : '') . ((int) $ec['annee'] !== (int) date('Y') ? ' · ' . (int) $ec['annee'] : '')); ?></option><?php endforeach; ?></select></div>
                                     <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📈 Niveau du membre</label><select name="niveau" class="form-input modern-select"><option value="">— Sans niveau —</option><?php foreach (kourel_niveaux() as $cle => $lib): ?><option value="<?php echo $cle; ?>"><?php echo $lib; ?></option><?php endforeach; ?></select></div>
                                     <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Message <span style="color:var(--danger)">*</span></label><textarea name="message" class="form-input" rows="3" required placeholder="Ex : Assalamu aleykum, continue à travailler le début de la Khassida, tu y es presque."></textarea></div>
                                     <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">📨 Envoyer le message</button></div>
@@ -890,25 +882,52 @@ $membersJs = array_map(function ($m) {
             for (var i = 0; i < ds.length; i++) { ds[i].open = etats[i]; }
         }
 
-        // Redemande la page au serveur, mais n'en garde que la zone visée.
+        // Remet une zone en place à partir de la page fraîchement lue.
+        function appliquerZone(zone, doc) {
+            var frais = doc.querySelector('[data-zone="' + zone.getAttribute('data-zone') + '"]');
+            if (!frais) { return false; }
+            var etats = etatsDesSections(zone);
+            zone.innerHTML = frais.innerHTML;
+            reposerEtatsDesSections(zone, etats);
+            initFormulairesRepetition(zone);
+            return true;
+        }
+
+        // Redemande la page au serveur, mais n'en garde que la zone visée — et
+        // celles qui en dépendent : marquer une Khassida « en cours » change la
+        // liste proposée pour écrire à un membre.
         function rafraichirZone(zone) {
-            var cle = zone.getAttribute('data-zone');
             return fetch(window.location.href, { credentials: 'same-origin', cache: 'no-store' })
                 .then(function (r) { return r.text(); })
                 .then(function (html) {
                     var doc = new DOMParser().parseFromString(html, 'text/html');
-                    var frais = doc.querySelector('[data-zone="' + cle + '"]');
-                    if (!frais) { window.location.reload(); return; }
-                    var etats = etatsDesSections(zone);
-                    zone.innerHTML = frais.innerHTML;
-                    reposerEtatsDesSections(zone, etats);
-                    initFormulairesRepetition(zone);
-                    // Les compteurs vivent hors de la zone : ils la suivent.
+                    if (!appliquerZone(zone, doc)) { window.location.reload(); return; }
+                    var liees = (zone.getAttribute('data-zone-liee') || '').split(/\s+/);
+                    liees.forEach(function (cle) {
+                        if (!cle) { return; }
+                        var autre = document.querySelector('[data-zone="' + cle + '"]');
+                        if (autre) { appliquerZone(autre, doc); }
+                    });
+                    // Les compteurs vivent hors des zones : ils les suivent.
                     doc.querySelectorAll('[data-compteur]').forEach(function (src) {
                         var cible = document.querySelector('[data-compteur="' + src.getAttribute('data-compteur') + '"]');
                         if (cible) { cible.textContent = src.textContent; }
                     });
                 });
+        }
+        // Ce que la personne avait écrit, pour le retrouver après un échec.
+        function texteSaisi(form) {
+            var garde = {};
+            form.querySelectorAll('textarea, input[type=text], input[type=url]').forEach(function (c) {
+                if (c.name && c.value !== '') { garde[c.name] = c.value; }
+            });
+            return garde;
+        }
+        function reposerTexteSaisi(zone, garde) {
+            Object.keys(garde).forEach(function (nom) {
+                var c = zone.querySelector('[name="' + nom + '"]');
+                if (c && c.value === '') { c.value = garde[nom]; }
+            });
         }
 
         // Envoie le formulaire en arrière-plan, puis refait sa zone.
@@ -931,8 +950,13 @@ $membersJs = array_map(function ($m) {
                     });
                 })
                 .catch(function (e) {
-                    boutons.forEach(function (b) { b.disabled = false; });
+                    // L'échec vient souvent d'une page qui ne montrait plus l'état
+                    // réel : on la remet à jour, en reposant ce qui était écrit.
+                    var saisie = texteSaisi(form);
                     messageDiscret(e.message || "L'action n'a pas abouti.", true);
+                    rafraichirZone(zone)
+                        .then(function () { reposerTexteSaisi(zone, saisie); })
+                        .catch(function () { boutons.forEach(function (b) { b.disabled = false; }); });
                 });
         }
 

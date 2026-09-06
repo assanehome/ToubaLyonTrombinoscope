@@ -83,19 +83,45 @@ function kourel_avancements(PDO $pdo, int $kourel_id): array
 }
 
 /**
- * La Khassida en cours du Kurel : celle marquée « en cours » sur l'année la
- * plus récente. C'est elle dont on parle à un membre. Null si aucune.
+ * Les Khassidas que le Kurel travaille en ce moment : celles marquées
+ * « en cours », année la plus récente d'abord. C'est à l'une d'elles qu'un
+ * message adressé à un membre se rattache.
  */
-function kourel_khassida_en_cours(PDO $pdo, int $kourel_id): ?array
+function kourel_avancements_en_cours(PDO $pdo, int $kourel_id): array
 {
+    if ($kourel_id <= 0) {
+        return [];
+    }
     try {
         $q = $pdo->prepare("
             SELECT id, annee, khassida, melodie, statut
             FROM kourel_avancements
             WHERE kourel_id = ? AND statut = 'en_cours'
-            ORDER BY annee DESC, id DESC
+            ORDER BY annee DESC, khassida ASC
         ");
         $q->execute([$kourel_id]);
+        return $q->fetchAll();
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
+ * Une ligne d'avancement précise de ce Kurel, encore « en cours ».
+ * Null si elle n'existe plus, appartient à un autre Kurel, ou a changé d'état.
+ */
+function kourel_avancement_en_cours(PDO $pdo, int $kourel_id, int $avancement_id): ?array
+{
+    if ($kourel_id <= 0 || $avancement_id <= 0) {
+        return null;
+    }
+    try {
+        $q = $pdo->prepare("
+            SELECT id, annee, khassida, melodie, statut
+            FROM kourel_avancements
+            WHERE id = ? AND kourel_id = ? AND statut = 'en_cours'
+        ");
+        $q->execute([$avancement_id, $kourel_id]);
         $r = $q->fetch();
         return $r ?: null;
     } catch (Exception $e) {
@@ -199,11 +225,18 @@ function kourel_auteur_nom(PDO $pdo): string
  * Renvoie ['erreur' => string, 'message' => string] : l'erreur si l'envoi
  * n'était pas possible, sinon le compte rendu à afficher.
  */
-function kourel_message_membre(PDO $pdo, int $kourel_id, int $membre_id, string $texte, string $khassida, string $niveau): array
+function kourel_message_membre(PDO $pdo, int $kourel_id, int $membre_id, string $texte, int $avancement_id, string $niveau): array
 {
     $texte = trim($texte);
     if ($texte === '') {
         return ['erreur' => "Le message ne peut pas être vide.", 'message' => ''];
+    }
+
+    // Le message parle d'un travail en cours : la ligne est relue en base,
+    // car son état a pu changer depuis l'affichage du formulaire.
+    $avancement = kourel_avancement_en_cours($pdo, $kourel_id, $avancement_id);
+    if ($avancement === null) {
+        return ['erreur' => "Cette Khassida n'est plus « en cours » : la liste vient d'être remise à jour.", 'message' => ''];
     }
     try {
         $q = $pdo->prepare("
@@ -231,7 +264,8 @@ function kourel_message_membre(PDO $pdo, int $kourel_id, int $membre_id, string 
 
     $niveaux = kourel_niveaux();
     $niveau_libelle = $niveaux[$niveau] ?? '';
-    $khassida = trim($khassida);
+    $khassida = (string) $avancement['khassida'];
+    $melodie = trim((string) $avancement['melodie']);
     $destinataire = trim(($membre['prenom'] ?? '') . ' ' . ($membre['nom'] ?? ''));
     if ($destinataire === '') {
         $destinataire = 'Cher membre';
@@ -239,13 +273,12 @@ function kourel_message_membre(PDO $pdo, int $kourel_id, int $membre_id, string 
     $auteur = kourel_auteur_nom($pdo);
     $libelle_kourel = kourel_libelle($kourel_nom);
 
-    // Le contexte en une ligne : la Khassida travaillée et où en est la personne
-    $contexte = '';
-    if ($khassida !== '') {
-        $contexte = '📜 ' . $khassida . ($niveau_libelle !== '' ? ' — ' . $niveau_libelle : '');
-    } elseif ($niveau_libelle !== '') {
-        $contexte = $niveau_libelle;
-    }
+    // Le contexte en une ligne : la Khassida travaillée, sa mélodie, l'année,
+    // et où en est la personne.
+    $contexte = '📜 ' . $khassida
+        . ($melodie !== '' ? ' · 🎶 ' . $melodie : '')
+        . ' · ' . (int) $avancement['annee']
+        . ($niveau_libelle !== '' ? ' — ' . $niveau_libelle : '');
 
     troba_notify_membre(
         $pdo,
@@ -262,11 +295,9 @@ function kourel_message_membre(PDO $pdo, int $kourel_id, int $membre_id, string 
         $corps =
             '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">'
             . '<h2 style="color:#1b4332;">Assalamu aleykum ' . htmlspecialchars($destinataire) . ' 🙏</h2>'
-            . '<p style="color:#333;">Un mot du <strong>' . htmlspecialchars($libelle_kourel) . '</strong> :</p>'
-            . ($contexte !== ''
-                ? '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 16px;color:#1b4332;">'
-                    . htmlspecialchars($contexte) . '</p>'
-                : '')
+            . '<p style="color:#333;">Un mot du <strong>' . htmlspecialchars($libelle_kourel) . '</strong>, au sujet de la Khassida en cours :</p>'
+            . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 16px;color:#1b4332;">'
+                . htmlspecialchars($contexte) . '</p>'
             . '<p style="color:#333;white-space:pre-line;">' . htmlspecialchars($texte) . '</p>'
             . '<p style="color:#555;">— ' . htmlspecialchars($auteur) . '</p>'
             . '<p style="color:#888;font-size:12px;">— Dahira Touba Lyon (Mubawwa-A-Sidqin)</p>'
@@ -282,7 +313,7 @@ function kourel_message_membre(PDO $pdo, int $kourel_id, int $membre_id, string 
 
     return [
         'erreur' => '',
-        'message' => 'Message envoyé à ' . $destinataire . ' : notification'
+        'message' => 'Message envoyé à ' . $destinataire . ' au sujet de « ' . $khassida . ' » : notification'
             . ($courriel_envoye ? ' et e-mail.' : " seule (pas d'adresse e-mail enregistrée)."),
     ];
 }
