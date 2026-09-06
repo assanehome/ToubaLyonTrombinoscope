@@ -82,12 +82,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $mode = ($modeRaw === 'presentiel') ? 'presentiel' : (($modeRaw === 'distance') ? 'distance' : '');
                 $lieu = trim($_POST['lieu'] ?? '');
                 $lien = trim($_POST['lien'] ?? '');
-                $khassida = trim($_POST['khassida'] ?? '');
-                $melodie = trim($_POST['melodie'] ?? '');
+                // La répétition se rattache à une Khassida du programme : ses
+                // libellés sont recopiés depuis la ligne, jamais saisis à part.
+                $avId = (int) ($_POST['avancement_id'] ?? 0);
+                $avLigne = $avId > 0 ? kourel_avancement_du_kourel($pdo, $kid, $avId) : null;
+                $khassida = $avLigne ? (string) $avLigne['khassida'] : '';
+                $melodie = $avLigne ? trim((string) $avLigne['melodie']) : '';
                 $estPeriodique = !empty($_POST['periodique']);
                 $per = ($estPeriodique && in_array(($_POST['periodicite'] ?? ''), ['hebdomadaire', 'quinzaine', 'mensuelle'], true)) ? $_POST['periodicite'] : 'ponctuelle';
                 $dateFin = trim($_POST['date_fin'] ?? '');
-                if ($titre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateDebut)) {
+                if ($avId > 0 && $avLigne === null) {
+                    $error = "Cette Khassida n'est plus au programme du Kurel.";
+                } elseif ($titre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateDebut)) {
                     $error = "Le titre et une date valide sont obligatoires.";
                 } elseif ($dateDebut < date('Y-m-d')) {
                     $error = "La date de la répétition ne peut pas être dans le passé.";
@@ -102,10 +108,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $dates = reunion_generer_dates($dateDebut, ($dateFin !== '' ? $dateFin : $dateDebut), $per);
                     $pdo->beginTransaction();
-                    $ins = $pdo->prepare("INSERT INTO kourel_repetitions (kourel_id, titre, description, date_reunion, heure, mode, lieu, lien, periodicite, khassida, melodie, publie, cloture, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,0,0,?)");
+                    $ins = $pdo->prepare("INSERT INTO kourel_repetitions (kourel_id, titre, description, date_reunion, heure, mode, lieu, lien, periodicite, avancement_id, khassida, melodie, publie, cloture, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,0,?)");
                     $createdIds = [];
                     foreach ($dates as $d) {
-                        $ins->execute([$kid, $titre, ($desc ?: null), $d, $heure, $mode, ($lieu ?: null), ($lien ?: null), $per, ($khassida ?: null), ($melodie ?: null), (!empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null)]);
+                        $ins->execute([$kid, $titre, ($desc ?: null), $d, $heure, $mode, ($lieu ?: null), ($lien ?: null), $per, ($avLigne ? (int) $avLigne['id'] : null), ($khassida ?: null), ($melodie ?: null), (!empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null)]);
                         $createdIds[] = (int) $pdo->lastInsertId();
                     }
                     if (!empty($createdIds)) {
@@ -162,9 +168,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $eMode = ($eModeRaw === 'presentiel') ? 'presentiel' : (($eModeRaw === 'distance') ? 'distance' : '');
                         $eLieu = trim($_POST['lieu'] ?? '');
                         $eLien = trim($_POST['lien'] ?? '');
-                        $eKhassida = trim($_POST['khassida'] ?? '');
-                        $eMelodie = trim($_POST['melodie'] ?? '');
-                        if ($eTitre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eDate)) {
+                        $eAvId = (int) ($_POST['avancement_id'] ?? 0);
+                        $eAvLigne = $eAvId > 0 ? kourel_avancement_du_kourel($pdo, (int) $r['kourel_id'], $eAvId) : null;
+                        $eKhassida = $eAvLigne ? (string) $eAvLigne['khassida'] : '';
+                        $eMelodie = $eAvLigne ? trim((string) $eAvLigne['melodie']) : '';
+                        if ($eAvId > 0 && $eAvLigne === null) {
+                            $error = "Cette Khassida n'est plus au programme du Kurel.";
+                        } elseif ($eTitre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eDate)) {
                             $error = "Le titre et une date valide sont obligatoires.";
                         } elseif ($eDate < date('Y-m-d')) {
                             $error = "La date ne peut pas être dans le passé.";
@@ -177,8 +187,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } elseif ($eMode === 'presentiel' && $eLieu === '') {
                             $error = "L'adresse est obligatoire pour une répétition en présentiel.";
                         } else {
-                            $pdo->prepare("UPDATE kourel_repetitions SET titre = ?, description = ?, date_reunion = ?, heure = ?, mode = ?, lieu = ?, lien = ?, khassida = ?, melodie = ?, updated_at = NOW() WHERE id = ?")
-                                ->execute([$eTitre, ($eDesc ?: null), $eDate, $eHeure, $eMode, ($eLieu ?: null), ($eLien ?: null), ($eKhassida ?: null), ($eMelodie ?: null), $rid]);
+                            $pdo->prepare("UPDATE kourel_repetitions SET titre = ?, description = ?, date_reunion = ?, heure = ?, mode = ?, lieu = ?, lien = ?, avancement_id = ?, khassida = ?, melodie = ?, updated_at = NOW() WHERE id = ?")
+                                ->execute([$eTitre, ($eDesc ?: null), $eDate, $eHeure, $eMode, ($eLieu ?: null), ($eLien ?: null), ($eAvLigne ? (int) $eAvLigne['id'] : null), ($eKhassida ?: null), ($eMelodie ?: null), $rid]);
                             $success = "Répétition modifiée.";
                         }
                     }
@@ -301,7 +311,7 @@ function kourel_member_avatar($m)
 }
 
 // Rendu HTML d'une répétition (carte). $showTitle=false pour une période au sein d'une série.
-$renderRepetitionItem = function ($r, $showTitle = true) use ($pdo, $khassidasList, $melodiesList) {
+$renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
     $rPub = ((int) $r['publie'] === 1);
     $rClo = ((int) $r['cloture'] === 1);
     $rid = (int) $r['id'];
@@ -360,17 +370,16 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo, $khassidasLi
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Date</label><input type="date" name="date_reunion" class="form-input" required min="' . date('Y-m-d') . '" value="' . htmlspecialchars((string) $r['date_reunion'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure</label><input type="time" name="heure" class="form-input" required step="3600" value="' . htmlspecialchars((string) $r['heure'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Mode</label><select name="mode" class="form-input modern-select r-mode" required><option value="distance"' . $optDist . '>💻 À distance (Zoom)</option><option value="presentiel"' . $optPres . '>🏛️ Présentiel</option></select></div>';
-        $curKh = (string) ($r['khassida'] ?? '');
-        $curMel = (string) ($r['melodie'] ?? '');
-        $optsKh = '<option value="">— Aucune —</option>';
-        foreach ($khassidasList as $kx) { $optsKh .= '<option value="' . htmlspecialchars($kx['nom'], ENT_QUOTES) . '"' . ($curKh === $kx['nom'] ? ' selected' : '') . '>' . htmlspecialchars($kx['nom']) . '</option>'; }
-        $optsMel = '<option value="">— Aucune —</option>';
-        foreach ($melodiesList as $ml) { $optsMel .= '<option value="' . htmlspecialchars($ml['nom'], ENT_QUOTES) . '"' . ($curMel === $ml['nom'] ? ' selected' : '') . '>' . htmlspecialchars($ml['nom']) . '</option>'; }
-        // Khassida et mélodie vont de pair : une rangée à deux colonnes
-        $h .= '<div style="grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">';
-        $h .= '<div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📜 Khassida</label><select name="khassida" class="form-input modern-select">' . $optsKh . '</select></div>';
-        $h .= '<div class="form-group" style="margin:0; min-width:0;"><label class="form-label">🎶 Mélodie</label><select name="melodie" class="form-input modern-select">' . $optsMel . '</select></div>';
-        $h .= '</div>';
+        // La Khassida travaillée se choisit dans le programme du Kurel : la
+        // mélodie suit, et la répétition reste rattachée à cette ligne.
+        $curAv = (int) ($r['avancement_id'] ?? 0);
+        $optsAv = '<option value="">— Aucune —</option>';
+        foreach (kourel_avancements_plats($pdo, (int) $r['kourel_id']) as $av) {
+            $optsAv .= '<option value="' . (int) $av['id'] . '"' . ($curAv === (int) $av['id'] ? ' selected' : '') . '>'
+                . htmlspecialchars(kourel_avancement_libelle($av, true)) . '</option>';
+        }
+        $h .= '<div class="form-group" style="grid-column:1/-1; margin:0; min-width:0;"><label class="form-label">📜 Khassida travaillée</label>'
+            . '<select name="avancement_id" class="form-input modern-select">' . $optsAv . '</select></div>';
         $h .= '<div class="form-group r-lien" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
         $h .= '<div class="form-group r-lieu" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
         $h .= '<div style="grid-column:1/-1;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>';
@@ -462,6 +471,9 @@ $membersJs = array_map(function ($m) {
         .kav-nom strong { color: var(--white); font-size: 0.88rem; }
         .kav-melodie { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.1rem; }
         .kav-statut { border-radius: 50px; border: 1px solid; font-size: 0.78rem; font-weight: 700; padding: 0.3rem 0.6rem; cursor: pointer; color-scheme: dark; }
+        .kav-message { flex: 1 1 100%; border-top: 1px dashed var(--glass-border); padding-top: 0.5rem; }
+        .kav-message > summary { cursor: pointer; color: var(--gold); font-weight: 700; font-size: 0.8rem; list-style: none; }
+        .kav-message > summary::-webkit-details-marker { display: none; }
         .kav-statut option { background-color: #0c241a; color: #fff; font-weight: 600; }
         .kav-statut:focus { outline: none; }
     </style>
@@ -563,7 +575,7 @@ $membersJs = array_map(function ($m) {
                         </div>
 
                         <?php $reps = $kRepetitions[$k['id']] ?? []; ?>
-                        <div data-zone="reps-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                        <div data-zone="reps-<?php echo (int) $k['id']; ?>" data-zone-liee="avancement-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
                             <div class="com-sub" style="margin-top:0;">🎵 Répétitions du Kurel</div>
                             <?php if (empty($reps)): ?>
                                 <p class="km-empty">Aucune répétition pour le moment.</p>
@@ -632,11 +644,18 @@ $membersJs = array_map(function ($m) {
                                     <div class="form-group" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_debut" class="form-input" required min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Heure <span style="color:var(--danger)">*</span></label><input type="time" name="heure" class="form-input" required step="3600" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Mode <span style="color:var(--danger)">*</span></label><select name="mode" class="form-input modern-select r-mode" required><option value="distance">💻 À distance (Zoom)</option><option value="presentiel" selected>🏛️ Présentiel</option></select></div>
-                                    <!-- Khassida et mélodie vont de pair : une rangée à deux colonnes,
-                                         que la grille automatique ne séparerait pas toujours au même endroit -->
-                                    <div style="grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; gap:0.7rem;">
-                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📜 Khassida <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label><select name="khassida" class="form-input modern-select"><option value="">— Aucune —</option><?php foreach ($khassidasList as $kx): ?><option value="<?php echo htmlspecialchars($kx['nom'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($kx['nom']); ?></option><?php endforeach; ?></select></div>
-                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">🎶 Mélodie <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label><select name="melodie" class="form-input modern-select"><option value="">— Aucune —</option><?php foreach ($melodiesList as $ml): ?><option value="<?php echo htmlspecialchars($ml['nom'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($ml['nom']); ?></option><?php endforeach; ?></select></div>
+                                    <?php // La Khassida travaillée vient du programme du Kurel : la mélodie suit. ?>
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0; min-width:0;">
+                                        <label class="form-label">📜 Khassida travaillée <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label>
+                                        <select name="avancement_id" class="form-input modern-select">
+                                            <option value="">— Aucune —</option>
+                                            <?php foreach (kourel_avancements_plats($pdo, (int) $k['id']) as $av): ?>
+                                                <option value="<?php echo (int) $av['id']; ?>"><?php echo htmlspecialchars(kourel_avancement_libelle($av, true)); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <?php if (empty(kourel_avancements_plats($pdo, (int) $k['id']))): ?>
+                                            <p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Inscrivez d'abord une Khassida au programme, ci-dessous.</p>
+                                        <?php endif; ?>
                                     </div>
                                     <div class="form-group r-lien" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (répétition à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($repZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
                                     <div class="form-group r-lieu" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">📍 Adresse (présentiel) <span style="color:var(--danger)">*</span></label><input type="text" name="lieu" class="form-input r-lieu-input" value="<?php echo htmlspecialchars($repLieuDefaut); ?>"><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec l'adresse du Dahira — modifiable.</p></div>
@@ -655,11 +674,10 @@ $membersJs = array_map(function ($m) {
                             // année, chacune avec sa mélodie et son avancement.
                             $avancements = kourel_avancements($pdo, (int) $k['id']);
                             $statuts = kourel_statuts();
-                            // Un mot à un membre porte sur un travail en cours :
-                            // ce sont ces lignes-là, et elles seules, qu'on propose.
-                            $enCoursListe = kourel_avancements_en_cours($pdo, (int) $k['id']);
+                            // Combien de répétitions travaillent chaque Khassida.
+                            $repsParAv = kourel_repetitions_par_avancement($pdo, (int) $k['id']);
                         ?>
-                        <div data-zone="avancement-<?php echo (int) $k['id']; ?>" data-zone-liee="message-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                        <div data-zone="avancement-<?php echo (int) $k['id']; ?>" data-zone-liee="reps-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
                             <div class="com-sub" style="margin-top:0;">📈 Avancement des Khassidas</div>
                             <?php if (empty($avancements)): ?>
                                 <p class="km-empty">Aucune Khassida au programme pour le moment.</p>
@@ -671,7 +689,13 @@ $membersJs = array_map(function ($m) {
                                             <div class="kav-ligne">
                                                 <div class="kav-nom">
                                                     <strong>📜 <?php echo htmlspecialchars($av['khassida']); ?></strong>
-                                                    <div class="kav-melodie">🎶 <?php echo htmlspecialchars(trim((string) $av['melodie']) !== '' ? $av['melodie'] : 'mélodie non précisée'); ?></div>
+                                                    <div class="kav-melodie">
+                                                        🎶 <?php echo htmlspecialchars(trim((string) $av['melodie']) !== '' ? $av['melodie'] : 'mélodie non précisée'); ?>
+                                                        <?php $nbReps = (int) ($repsParAv[(int) $av['id']] ?? 0); ?>
+                                                        <?php if ($nbReps > 0): ?>
+                                                            · 🎵 <?php echo $nbReps; ?> répétition<?php echo $nbReps > 1 ? 's' : ''; ?>
+                                                        <?php endif; ?>
+                                                    </div>
                                                 </div>
                                                 <form method="POST" style="margin:0;">
                                                     <?php echo csrf_field(); ?>
@@ -694,6 +718,28 @@ $membersJs = array_map(function ($m) {
                                                     <input type="hidden" name="avancement_id" value="<?php echo (int) $av['id']; ?>">
                                                     <button type="submit" title="Retirer du programme" style="background:none; border:0; color:#ff8a8a; cursor:pointer; font-size:1rem; line-height:1;">🗑️</button>
                                                 </form>
+
+                                                <?php // Le mot à un membre part de la Khassida travaillée en ce moment ?>
+                                                <?php if (kourel_statut_valide($av['statut']) === 'en_cours' && !empty($membersOfK)): ?>
+                                                    <details class="kav-message">
+                                                        <summary>✉️ Écrire à un membre</summary>
+                                                        <p style="color:var(--text-muted); font-size:0.78rem; margin:0.6rem 0 0.5rem; line-height:1.5;">
+                                                            Le mot porte sur cette Khassida et sur le niveau atteint par le membre :
+                                                            il reçoit une notification dans l'application, et un e-mail s'il a une adresse.
+                                                        </p>
+                                                        <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap:0.6rem;"
+                                                              data-confirm="Envoyer ce message au membre choisi, par notification et par e-mail&nbsp;?">
+                                                            <?php echo csrf_field(); ?>
+                                                            <input type="hidden" name="action" value="message_membre">
+                                                            <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
+                                                            <input type="hidden" name="avancement_id" value="<?php echo (int) $av['id']; ?>">
+                                                            <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">👤 Membre <span style="color:var(--danger)">*</span></label><select name="membre_id" class="form-input modern-select" required><?php foreach ($membersOfK as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?></select></div>
+                                                            <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📈 Niveau du membre</label><select name="niveau" class="form-input modern-select"><option value="">— Sans niveau —</option><?php foreach (kourel_niveaux() as $cle => $lib): ?><option value="<?php echo $cle; ?>"><?php echo $lib; ?></option><?php endforeach; ?></select></div>
+                                                            <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Message <span style="color:var(--danger)">*</span></label><textarea name="message" class="form-input" rows="3" required placeholder="Ex : Assalamu aleykum, continue à travailler le début de la Khassida, tu y es presque."></textarea></div>
+                                                            <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">📨 Envoyer le message</button></div>
+                                                        </form>
+                                                    </details>
+                                                <?php endif; ?>
                                             </div>
                                         <?php endforeach; ?>
                                     </div>
@@ -715,34 +761,6 @@ $membersJs = array_map(function ($m) {
                             </details>
                         </div>
 
-                        <div data-zone="message-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
-                            <div class="com-sub" style="margin-top:0;">✉️ Écrire à un membre</div>
-                            <?php if (empty($membersOfK)): ?>
-                                <p class="km-empty">Ajoutez d'abord des membres à ce Kurel.</p>
-                            <?php elseif (empty($enCoursListe)): ?>
-                                <p class="km-empty">
-                                    Aucune Khassida n'est <strong>🎼 en cours</strong> : marquez-en une ainsi dans
-                                    l'avancement ci-dessus, et vous pourrez écrire à un membre à son sujet.
-                                </p>
-                            <?php else: ?>
-                                <p style="color:var(--text-muted); font-size:0.8rem; margin:0 0 0.7rem; line-height:1.5;">
-                                    Le mot porte sur une Khassida <strong style="color:var(--white);">en cours</strong> et sur le
-                                    niveau atteint par le membre. Il reçoit une notification dans l'application, et un
-                                    e-mail s'il a une adresse.
-                                </p>
-                                <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap:0.7rem;"
-                                      data-confirm="Envoyer ce message au membre choisi, par notification et par e-mail&nbsp;?">
-                                    <?php echo csrf_field(); ?>
-                                    <input type="hidden" name="action" value="message_membre">
-                                    <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
-                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">👤 Membre <span style="color:var(--danger)">*</span></label><select name="membre_id" class="form-input modern-select" required><?php foreach ($membersOfK as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?></select></div>
-                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">🎼 Khassida en cours <span style="color:var(--danger)">*</span></label><select name="avancement_id" class="form-input modern-select" required><?php foreach ($enCoursListe as $ec): ?><option value="<?php echo (int) $ec['id']; ?>"><?php echo htmlspecialchars($ec['khassida'] . (trim((string) $ec['melodie']) !== '' ? ' · ' . $ec['melodie'] : '') . ((int) $ec['annee'] !== (int) date('Y') ? ' · ' . (int) $ec['annee'] : '')); ?></option><?php endforeach; ?></select></div>
-                                    <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📈 Niveau du membre</label><select name="niveau" class="form-input modern-select"><option value="">— Sans niveau —</option><?php foreach (kourel_niveaux() as $cle => $lib): ?><option value="<?php echo $cle; ?>"><?php echo $lib; ?></option><?php endforeach; ?></select></div>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Message <span style="color:var(--danger)">*</span></label><textarea name="message" class="form-input" rows="3" required placeholder="Ex : Assalamu aleykum, continue à travailler le début de la Khassida, tu y es presque."></textarea></div>
-                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">📨 Envoyer le message</button></div>
-                                </form>
-                            <?php endif; ?>
-                        </div>
                     </div>
                 <?php endforeach; ?>
                 <div class="empty-state" id="com-noresult" style="display:none;"><div class="empty-state-icon">🔍</div><p>Aucun Kurel ne correspond à votre recherche.</p></div>

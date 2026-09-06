@@ -130,6 +130,98 @@ function kourel_avancement_en_cours(PDO $pdo, int $kourel_id, int $avancement_id
 }
 
 /**
+ * Tout le programme d'un Kurel à plat, année récente d'abord : de quoi
+ * remplir une liste déroulante. Lu une seule fois par requête.
+ */
+function kourel_avancements_plats(PDO $pdo, int $kourel_id): array
+{
+    static $cache = [];
+    if ($kourel_id <= 0) {
+        return [];
+    }
+    if (array_key_exists($kourel_id, $cache)) {
+        return $cache[$kourel_id];
+    }
+    try {
+        $q = $pdo->prepare("
+            SELECT id, annee, khassida, melodie, statut
+            FROM kourel_avancements
+            WHERE kourel_id = ?
+            ORDER BY annee DESC, khassida ASC
+        ");
+        $q->execute([$kourel_id]);
+        $cache[$kourel_id] = $q->fetchAll();
+    } catch (Exception $e) {
+        $cache[$kourel_id] = [];
+    }
+    return $cache[$kourel_id];
+}
+
+/** Une ligne du programme de ce Kurel, quel que soit son état. Null sinon. */
+function kourel_avancement_du_kourel(PDO $pdo, int $kourel_id, int $avancement_id): ?array
+{
+    if ($kourel_id <= 0 || $avancement_id <= 0) {
+        return null;
+    }
+    try {
+        $q = $pdo->prepare("
+            SELECT id, annee, khassida, melodie, statut
+            FROM kourel_avancements
+            WHERE id = ? AND kourel_id = ?
+        ");
+        $q->execute([$avancement_id, $kourel_id]);
+        $r = $q->fetch();
+        return $r ?: null;
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+/**
+ * Combien de répétitions travaillent chaque Khassida du programme.
+ * Renvoie [avancement_id => nombre].
+ */
+function kourel_repetitions_par_avancement(PDO $pdo, int $kourel_id): array
+{
+    if ($kourel_id <= 0) {
+        return [];
+    }
+    try {
+        $q = $pdo->prepare("
+            SELECT avancement_id, COUNT(*) AS nb
+            FROM kourel_repetitions
+            WHERE kourel_id = ? AND avancement_id IS NOT NULL
+            GROUP BY avancement_id
+        ");
+        $q->execute([$kourel_id]);
+        $par = [];
+        foreach ($q->fetchAll() as $l) {
+            $par[(int) $l['avancement_id']] = (int) $l['nb'];
+        }
+        return $par;
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
+ * Le libellé court d'une ligne : « Midaadi · Classique », l'année seulement si
+ * ce n'est pas celle en cours, l'état si on le demande.
+ */
+function kourel_avancement_libelle(array $av, bool $avec_etat = false): string
+{
+    $melodie = trim((string) ($av['melodie'] ?? ''));
+    $libelle = (string) $av['khassida']
+        . ($melodie !== '' ? ' · ' . $melodie : '')
+        . ((int) ($av['annee'] ?? 0) !== (int) date('Y') ? ' · ' . (int) $av['annee'] : '');
+    if ($avec_etat) {
+        $etat = kourel_statuts()[kourel_statut_valide($av['statut'] ?? null)];
+        $libelle = $etat['icone'] . ' ' . $libelle;
+    }
+    return $libelle;
+}
+
+/**
  * Inscrit une Khassida au programme d'une année.
  * Renvoie un message d'erreur, ou '' si tout s'est bien passé.
  */
@@ -172,10 +264,20 @@ function kourel_avancement_statut(PDO $pdo, int $id, int $kourel_id, string $sta
     }
 }
 
-/** Retire une Khassida du programme d'une année. */
+/**
+ * Retire une Khassida du programme d'une année. Les répétitions qui la
+ * travaillaient sont détachées : elles gardent leur libellé, mais ne
+ * renvoient plus vers une ligne disparue.
+ */
 function kourel_avancement_supprimer(PDO $pdo, int $id, int $kourel_id): bool
 {
     try {
+        try {
+            $pdo->prepare("UPDATE kourel_repetitions SET avancement_id = NULL WHERE avancement_id = ? AND kourel_id = ?")
+                ->execute([$id, $kourel_id]);
+        } catch (Exception $e) {
+            // Colonne pas encore créée : il n'y a rien à détacher
+        }
         $pdo->prepare("DELETE FROM kourel_avancements WHERE id = ? AND kourel_id = ?")->execute([$id, $kourel_id]);
         return true;
     } catch (Exception $e) {

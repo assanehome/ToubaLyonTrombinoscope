@@ -637,6 +637,10 @@ try {
     // Migrations : colonnes khassida / melodie (bases existantes)
     try { $pdo->query("SELECT khassida FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN khassida VARCHAR(255) NULL DEFAULT NULL"); }
     try { $pdo->query("SELECT melodie FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN melodie VARCHAR(150) NULL DEFAULT NULL"); }
+    // Rattachement à une ligne d'avancement : la répétition travaille une
+    // Khassida du programme du Kurel. Les colonnes khassida / melodie restent
+    // renseignées, pour que les répétitions déjà saisies gardent leur libellé.
+    try { $pdo->query("SELECT avancement_id FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN avancement_id INT NULL DEFAULT NULL"); }
 
     // Liste des Khassidas de Serigne Touba (partagée entre Kurels)
     $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_khassidas (
