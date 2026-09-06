@@ -176,6 +176,24 @@ $trobaCsrf = csrf_token();
 
             <?php if ($isAdmin): ?>
 
+                <?php
+                // Sections d'administration reprises dans le tiroir : sur téléphone
+                // la barre latérale disparaît, et les pages qui n'en ont pas — dont
+                // l'accueil — n'en gardaient aucune trace. Elles sont rendues ici,
+                // pour toutes les pages qui incluent cet en-tête.
+                require_once __DIR__ . '/admin_menu_data.php';
+                if (!isset($pdo)) {
+                    try { require_once __DIR__ . '/db_setup.php'; } catch (Throwable $e) { /* menu sans badge */ }
+                }
+                $hdrAdminItems = troba_admin_menu_items($pdo ?? null);
+                ?>
+                <div class="hdr-nav-admin" id="hdrNavAdmin">
+                    <div class="hdr-nav-admin-title">Administration</div>
+                    <?php foreach ($hdrAdminItems as $hdrHref => $hdrLabel): ?>
+                        <a href="<?php echo htmlspecialchars($hdrHref); ?>"<?php echo $currentPage === $hdrHref ? ' class="active"' : ''; ?>><?php echo $hdrLabel; ?></a>
+                    <?php endforeach; ?>
+                </div>
+
                 <div class="hdr-player-card hdr-player-card--admin">
                     <svg class="hdr-player-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     <span class="hdr-player-name">Administrateur</span>
@@ -186,6 +204,24 @@ $trobaCsrf = csrf_token();
                 </a>
 
             <?php elseif ($isPlayer): ?>
+
+                <?php
+                // Sections de l'espace membre reprises dans le tiroir : sur
+                // téléphone la barre latérale disparaît, et les pages qui n'en
+                // ont pas n'en gardaient aucune trace. Rendues ici pour toutes
+                // les pages membre qui incluent cet en-tête.
+                require_once __DIR__ . '/member_menu_data.php';
+                if (!isset($pdo)) {
+                    try { require_once __DIR__ . '/db_setup.php'; } catch (Throwable $e) { /* menu sans badge */ }
+                }
+                $hdrMemberItems = troba_member_menu_items($pdo ?? null);
+                ?>
+                <div class="hdr-nav-admin" id="hdrNavAdmin">
+                    <div class="hdr-nav-admin-title">Espace membre</div>
+                    <?php foreach ($hdrMemberItems as $hdrHref => $hdrLabel): ?>
+                        <a href="<?php echo htmlspecialchars($hdrHref); ?>"<?php echo $currentPage === $hdrHref ? ' class="active"' : ''; ?>><?php echo $hdrLabel; ?></a>
+                    <?php endforeach; ?>
+                </div>
 
                 <div class="hdr-player-card">
                     <span class="hdr-player-name"><?php echo htmlspecialchars($_SESSION['player_name'] ?? 'Joueur'); ?></span>
@@ -368,6 +404,21 @@ $trobaCsrf = csrf_token();
 
 <div class="hdr-backdrop" id="hdr-backdrop" aria-hidden="true"></div>
 
+<?php // Bouton de retour vers l'accueil de l'espace membre (sur toutes les pages membre) ?>
+<?php if ($isPlayer && !$isAdmin && !in_array($currentPage, ['index.php', 'login.php', 'admin_login.php'], true)): ?>
+<div class="home-return-bar">
+    <a href="index.php" class="btn btn-secondary btn-sm home-return-btn">🏠 Retour à l'espace membre</a>
+</div>
+<style>
+    .home-return-bar { max-width: 1100px; margin: 0.9rem auto 0; padding: 0 1rem; }
+    .home-return-btn { border-color: var(--accent); color: var(--accent); white-space: nowrap; }
+    @media (max-width: 600px) {
+        .home-return-bar { display: flex; justify-content: center; }
+        .home-return-btn { width: 100%; max-width: 360px; justify-content: center; text-align: center; }
+    }
+</style>
+<?php endif; ?>
+
 <?php if ($notifCloche): ?>
 <!-- Bandeau d'invitation aux notifications push (comme Daara) -->
 <div class="notif-invite" id="trobaInvitePush" hidden>
@@ -406,6 +457,15 @@ $trobaCsrf = csrf_token();
     });
 
     backdrop.addEventListener('click', closeMenu);
+
+    // Clic sur un lien du tiroir : fermer le menu comme pour une navigation.
+    // Indispensable pour les liens-ancres de la même page (ex. Trombinoscope
+    // « admin_dashboard.php#trombi ») qui ne rechargent pas la page.
+    if (nav) {
+        nav.querySelectorAll('a[href]').forEach(function (a) {
+            a.addEventListener('click', function () { closeMenu(); });
+        });
+    }
 
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape') closeMenu();
@@ -534,18 +594,17 @@ $trobaCsrf = csrf_token();
             var a = document.createElement('a');
             a.className = 'hdr-notif-item' + (n.non_lu ? ' non-lu' : '');
             // Clic → si un lien est associé (page de détail Dahira / Guddi),
-            // on ouvre le lien ; sinon on supprime la notification.
+            // on ouvre le lien ; sinon on masque simplement la notification
+            // dans ce panneau. Dans les deux cas la notification n'est PAS
+            // supprimée : elle reste visible sur le tableau de bord (index).
             if (n.lien) {
                 a.href = n.lien;
                 a.target = '_self';
-                a.addEventListener('click', function () {
-                    supprimerNotif(n.id, a);
-                });
             } else {
                 a.href = '#';
                 a.addEventListener('click', function (ev) {
                     ev.preventDefault();
-                    supprimerNotif(n.id, a);
+                    masquerLocal(a);
                 });
             }
             var t = document.createElement('strong');
@@ -559,6 +618,22 @@ $trobaCsrf = csrf_token();
             a.appendChild(d);
             liste.appendChild(a);
         });
+    }
+
+    // Masque une notification dans ce panneau uniquement, sans la supprimer en
+    // base : elle continue d'apparaître sur le tableau de bord (index).
+    function masquerLocal(el) {
+        if (el && el.parentNode) {
+            el.parentNode.removeChild(el);
+        }
+        var restants = liste.querySelectorAll('.hdr-notif-item').length;
+        if (restants === 0) {
+            liste.textContent = '';
+            var p = document.createElement('p');
+            p.className = 'hdr-notif-vide';
+            p.textContent = 'Aucune notification pour le moment.';
+            liste.appendChild(p);
+        }
     }
 
     // Supprime une notification : retire l'élément de la liste affichée puis
@@ -791,3 +866,9 @@ $trobaCsrf = csrf_token();
 })();
 </script>
 <?php endif; ?>
+
+<?php /* Popup d'agrandissement des photos (miniatures) — sur toutes les pages qui incluent l'en-tête */ ?>
+<?php include __DIR__ . '/photo_lightbox.php'; ?>
+
+<?php /* Actualisation par glissement vers le bas — sur toutes les pages qui incluent l'en-tête */ ?>
+<?php include __DIR__ . '/pull_refresh.php'; ?>

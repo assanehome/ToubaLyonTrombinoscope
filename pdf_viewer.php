@@ -204,7 +204,36 @@ if (strpos($file, 'Coran_pdf/') !== 0 || strpos($file, '..') !== false) {
             if (e.key === 'ArrowRight') showNextPage();
             if (e.key === 'ArrowLeft') showPrevPage();
         });
-        
+
+        // Navigation par glissement horizontal (mobile) : glisser vers la
+        // gauche = page suivante, vers la droite = page précédente. On ignore
+        // le geste vertical (défilement) et le geste à deux doigts (zoom), et
+        // on laisse le panoramique fonctionner quand la page est zoomée.
+        (function () {
+            const zone = document.getElementById('viewer-container');
+            if (!zone) return;
+            let x0 = 0, y0 = 0, suivi = false;
+            zone.addEventListener('touchstart', (e) => {
+                if (e.touches.length !== 1) { suivi = false; return; }
+                x0 = e.touches[0].clientX;
+                y0 = e.touches[0].clientY;
+                suivi = true;
+            }, { passive: true });
+            zone.addEventListener('touchend', (e) => {
+                if (!suivi) return;
+                suivi = false;
+                const t = e.changedTouches && e.changedTouches[0];
+                if (!t) return;
+                const dx = t.clientX - x0;
+                const dy = t.clientY - y0;
+                // Uniquement un geste franchement horizontal
+                if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+                // Page zoomée qui déborde : on laisse le panoramique horizontal
+                if (zone.scrollWidth > zone.clientWidth + 4) return;
+                if (dx < 0) { showNextPage(); } else { showPrevPage(); }
+            }, { passive: true });
+        })();
+
         function goBack() {
             if (window.history.length > 1) {
                 window.history.back();

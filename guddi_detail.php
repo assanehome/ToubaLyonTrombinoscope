@@ -66,6 +66,8 @@ $modeDefaut = dahira_param($pdo, 'guddi_mode_defaut', 'distance');
 $date = $seance['date_guddi'];
 $actif = ((int)($seance['actif'] ?? 1)) === 1;
 $cloture = ((int)($seance['cloture'] ?? 0)) === 1;
+$publie = ((int)($seance['publie'] ?? 0)) === 1;
+$passe = $date < date('Y-m-d');
 $mode = (string)($seance['mode'] ?? '');
 if ($mode === '') { $mode = $modeDefaut; }
 $theme = (string)($seance['theme'] ?? '');
@@ -73,6 +75,14 @@ $presentateur = (string)($seance['presentateur'] ?? '');
 $livre = (string)($seance['livre'] ?? '');
 $pdfPath = (string)($seance['pdf_path'] ?? '');
 $nbParticipants = $seance['nb_participants'] ?? null;
+// Statut « Modifié » : la séance a été mise à jour après sa création
+$updatedAt = (string)($seance['updated_at'] ?? '');
+$createdAt = (string)($seance['created_at'] ?? '');
+$estModifie = ($updatedAt !== '' && $createdAt !== '' && $updatedAt > $createdAt) || ($updatedAt !== '' && $createdAt === '');
+// Lien de participation (Zoom) : celui de la séance, sinon le lien par défaut des paramètres
+$lienZoom = (string)($seance['lien'] ?? '');
+if ($lienZoom === '') { $lienZoom = dahira_param($pdo, 'guddi_lien_defaut', ''); }
+$lienZoom = trim($lienZoom);
 
 // Nombre de participants : présences validées par les membres (sinon saisie manuelle)
 $nbPresences = 0;
@@ -149,6 +159,48 @@ if ($membreId > 0) {
         /* Carte de validation de présence : bouton doré avec léger survol */
         .gd-presence .btn-primary { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
         .gd-presence .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); filter: brightness(1.05); }
+        /* Centrage du contenu de la carte de présence sur mobile */
+        @media (max-width: 480px) {
+            .gd-presence { text-align: center; }
+            .gd-presence .btn { width: 100%; }
+        }
+        /* ── Carte « Participer » + gros bouton Zoom ── */
+        .gd-zoom-btn {
+            display: flex; align-items: center; justify-content: center; gap: 0.9rem;
+            width: 100%;
+            background: linear-gradient(135deg, #2d8cff 0%, #1a63d0 100%);
+            color: #fff;
+            font-weight: 800;
+            font-size: 1.25rem;
+            letter-spacing: 0.01em;
+            border: 0;
+            border-radius: 18px;
+            padding: 1.2rem 1.4rem;
+            text-decoration: none;
+            box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+            transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease;
+            animation: gdZoomPulse 2.6s ease-in-out infinite;
+        }
+        @keyframes gdZoomPulse {
+            0%, 100% { box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2); }
+            50% { box-shadow: 0 18px 42px rgba(45,140,255,0.6), inset 0 1px 0 rgba(255,255,255,0.2); }
+        }
+        .gd-zoom-btn:hover { transform: translateY(-2px); filter: brightness(1.08); animation-play-state: paused; }
+        .gd-zoom-btn:active { transform: translateY(1px) scale(0.99); }
+        .gd-zoom-btn .zoom-ic {
+            width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+            background: rgba(255,255,255,0.22);
+            display: inline-flex; align-items: center; justify-content: center;
+        }
+        .gd-zoom-btn .zoom-lbl { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+        .gd-zoom-btn .zoom-lbl small { font-size: 0.78rem; font-weight: 600; opacity: 0.85; }
+        .gd-zoom-hint { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.6rem; text-align: center; }
+        /* ── Badges de statut ── */
+        .pl-badge { font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 6px; }
+        .pl-badge-ok { background: rgba(37,211,102,0.15); color: #7bd8a6; border: 1px solid rgba(37,211,102,0.3); }
+        .pl-badge-no { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--glass-border); }
+        .pl-badge-annul { background: rgba(191,33,33,0.15); color: #fca5a5; border: 1px solid rgba(191,33,33,0.4); }
+        .pl-badge-pub { background: rgba(45,140,255,0.15); color: #8ec5ff; border: 1px solid rgba(45,140,255,0.4); }
     </style>
 </head>
 <body>
@@ -158,7 +210,7 @@ if ($membreId > 0) {
             <?php if ($__guAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } ?>
 
             <div class="admin-content">
-                <a href="<?php echo $__guAdmin ? 'admin_guddi.php' : 'index.php'; ?>" class="gd-back btn btn-secondary btn-sm">← Retour<?php echo $__guAdmin ? ' au planning' : ''; ?></a>
+                <?php if ($__guAdmin): ?><a href="admin_guddi.php" class="gd-back btn btn-secondary btn-sm">← Retour au planning</a><?php endif; ?>
                 <h1 class="admin-page-title">💎 Détail Guddi Àjjuma</h1>
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
@@ -172,16 +224,18 @@ if ($membreId > 0) {
                             <small>🕐 à partir de <?php echo htmlspecialchars($heure); ?></small>
                         </div>
                         <div class="gd-badges">
-                            <?php if ($cloture): ?>
-                                <span class="pl-badge pl-badge-ok" style="font-size:0.8rem; padding:0.3rem 0.7rem;">✅ Clôturée<?php echo !empty($nbParticipants) ? ' · ' . (int)$nbParticipants . ' pers.' : ''; ?></span>
-                            <?php elseif ($actif): ?>
-                                <span class="pl-badge pl-badge-no" style="font-size:0.8rem; padding:0.3rem 0.7rem;">💎 Terminé</span>
-                            <?php else: ?>
+                            <?php $etat = dahira_event_etat($date, $heure); ?>
+                            <?php if (!$actif): ?>
                                 <span class="pl-badge pl-badge-annul" style="font-size:0.8rem; padding:0.3rem 0.7rem;">‼️ Annulé</span>
+                            <?php elseif ($cloture): ?>
+                                <span class="pl-badge pl-badge-ok" style="font-size:0.8rem; padding:0.3rem 0.7rem;">✅ Clôturée<?php echo !empty($nbParticipants) ? ' · ' . (int)$nbParticipants . ' pers.' : ''; ?></span>
+                            <?php elseif ($etat === 'termine'): ?>
+                                <span class="pl-badge pl-badge-no" style="font-size:0.8rem; padding:0.3rem 0.7rem;">🕌 Terminée</span>
+                            <?php elseif ($etat === 'encours'): ?>
+                                <span class="pl-badge pl-badge-ok badge-live" style="font-size:0.8rem; padding:0.3rem 0.7rem;">En cours</span>
+                            <?php else: ?>
+                                <span class="pl-badge" style="font-size:0.8rem; padding:0.3rem 0.7rem; background:rgba(45,140,255,0.15); color:#8ec5ff; border:1px solid rgba(45,140,255,0.4);">🗓️ À venir</span>
                             <?php endif; ?>
-                            <span class="pl-badge" style="font-size:0.8rem; padding:0.3rem 0.7rem; background:rgba(212,175,55,0.12); color:#ffd873; border:1px solid rgba(212,175,55,0.35);">
-                                <?php echo $mode === 'presentiel' ? '🏛️ En présentiel' : '💻 À distance (Zoom)'; ?>
-                            </span>
                         </div>
                     </div>
 
@@ -197,21 +251,31 @@ if ($membreId > 0) {
                     <?php if ($membreId > 0 && ((int)($seance['publie'] ?? 0)) === 1): ?>
                     <div class="glass-card gd-presence gd-anim gd-anim-3" style="margin-bottom:1.4rem; border:2px solid rgba(212,175,55,0.45);">
                         <h3 style="color:var(--white); margin-bottom:0.6rem;">✅ Validez votre présence</h3>
-                        <?php if ($date <= date('Y-m-d')): ?>
-                            <?php if ($presenceFaite): ?>
-                                <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Jazakallahou Khair</div>
-                                <button type="button" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;" onclick="annulerPresence('guddi', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
-                            <?php else: ?>
-                                <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('guddi', <?php echo (int)$id; ?>, this)">✅ J'étais présent(e)</button>
-                            <?php endif; ?>
+                        <?php if ($presenceFaite): ?>
+                            <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Diadieuf</div>
+                            <button type="button" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;" onclick="annulerPresence('guddi', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
+                        <?php elseif (dahira_presence_ouverte($date, $heure)): ?>
+                            <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('guddi', <?php echo (int)$id; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
-                            <div style="color:var(--text-muted); font-size:0.85rem;">🔔 Vous pourrez valider votre présence le jour même.</div>
+                            <div style="color:var(--text-muted); font-size:0.85rem;">🔔 La validation sera possible à partir de <?php echo htmlspecialchars($heure); ?> le <?php echo date('d/m/Y', strtotime($date)); ?>.</div>
                         <?php endif; ?>
                     </div>
                     <?php elseif ($membreId > 0 && ((int)($seance['publie'] ?? 0)) !== 1): ?>
                     <div class="gd-anim gd-anim-3" style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">💤 Ce Guddi Àjjuma n'est pas encore publié : la validation de présence n'est pas disponible.</div>
                     <?php elseif ($membreId === 0): ?>
                     <div class="gd-anim gd-anim-3" style="margin-bottom:1.4rem; color:var(--text-muted); font-size:0.85rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
+                    <?php endif; ?>
+
+                    <!-- Participer : lien Zoom (mode distance) -->
+                    <?php if ($mode === 'distance' && $lienZoom !== ''): ?>
+                    <div class="glass-card gd-anim gd-anim-3" style="margin-bottom:1.4rem; border:2px solid rgba(45,140,255,0.5);">
+                        <h3 style="color:var(--white); margin-bottom:0.8rem;"><?php echo $cloture ? '💻 Revoir / participer' : '💻 Participer à cette séance'; ?></h3>
+                        <a class="gd-zoom-btn" href="<?php echo htmlspecialchars($lienZoom); ?>" target="_blank" rel="noopener">
+                            <span class="zoom-ic"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" aria-hidden="true"><path d="M17.96 8.55V7.3c0-1.9-1.55-3.45-3.45-3.45H7.29c-1.9 0-3.45 1.55-3.45 3.45v9.4c0 1.9 1.55 3.45 3.45 3.45h7.22c1.9 0 3.45-1.55 3.45-3.45v-1.25l4.5 3.35v-14.7l-4.5 3.35Z" fill="#fff"/></svg></span>
+                            <span class="zoom-lbl">Rejoindre en Zoom<small>Réunion à distance</small></span>
+                        </a>
+                        <div class="gd-zoom-hint"><?php echo $cloture ? 'La séance est clôturée — vous pouvez toujours rejoindre le lien de la réunion.' : '🕐 à partir de ' . htmlspecialchars($heure) . ' · le lien s\'ouvre dans un nouvel onglet'; ?></div>
+                    </div>
                     <?php endif; ?>
 
                     <!-- Informations -->
@@ -224,10 +288,12 @@ if ($membreId > 0) {
                             <div class="k">🎤 Présentateur</div>
                             <div class="v"><?php echo $presentateur !== '' ? htmlspecialchars($presentateur) : '—'; ?></div>
                         </div>
+                        <?php if ($mode === 'presentiel' && $lieuDahira !== ''): ?>
                         <div class="glass-card gd-item">
                             <div class="k">📍 Lieu</div>
-                            <div class="v"><?php echo $mode === 'presentiel' && $lieuDahira !== '' ? htmlspecialchars($lieuDahira) : '—'; ?></div>
+                            <div class="v"><?php echo htmlspecialchars($lieuDahira); ?></div>
                         </div>
+                        <?php endif; ?>
                         <div class="glass-card gd-item">
                             <div class="k">📖 Livre étudié</div>
                             <div class="v"><?php echo $livre !== '' ? htmlspecialchars($livre) : '—'; ?></div>
@@ -274,11 +340,26 @@ if ($membreId > 0) {
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.ok) { window.location.reload(); }
+                    else if (window.modernAlert) { window.modernAlert(d.msg || 'Erreur.', 'Erreur'); }
                     else { alert(d.msg || 'Erreur.'); }
                 })
-                .catch(function () { alert('Une erreur est survenue. Réessayez.'); });
+                .catch(function () {
+                    if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.', 'Erreur'); }
+                    else { alert('Une erreur est survenue. Réessayez.'); }
+                });
         }
         function annulerPresence(type, id, btn) {
+            if (window.modernConfirm) {
+                window.modernConfirm(
+                    'Voulez-vous vraiment <strong>annuler votre présence</strong> au Guddi Àjjuma ?<br><br><span style="color:var(--text-muted); font-size:0.85rem;">Vous ne serez plus compté(e) comme présent(e) pour cet événement.</span>',
+                    function () { annulerPresenceOk(type, id); },
+                    { danger: true, bouton: 'Oui, annuler', titre: '↩️ Annuler ma présence' }
+                );
+            } else {
+                annulerPresenceOk(type, id);
+            }
+        }
+        function annulerPresenceOk(type, id) {
             var corps = new URLSearchParams();
             corps.set('action', 'cancel');
             corps.set('type', type);
@@ -288,9 +369,13 @@ if ($membreId > 0) {
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.ok) { window.location.reload(); }
+                    else if (window.modernAlert) { window.modernAlert(d.msg || 'Erreur.'); }
                     else { alert(d.msg || 'Erreur.'); }
                 })
-                .catch(function () { alert('Une erreur est survenue. Réessayez.'); });
+                .catch(function () {
+                    if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.'); }
+                    else { alert('Une erreur est survenue. Réessayez.'); }
+                });
         }
     </script>
 </body>

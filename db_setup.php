@@ -609,6 +609,8 @@ try {
         INDEX idx_date (date_reunion),
         INDEX idx_serie (serie_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    try { $pdo->query("SELECT annule FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN annule TINYINT(1) NOT NULL DEFAULT 0"); }
+    try { $pdo->query("SELECT debut_notifie FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN debut_notifie TINYINT(1) NOT NULL DEFAULT 0"); }
 
     // Répétitions de Kurel (créées par les responsables de Kurel, ponctuelles ou périodiques)
     $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_repetitions (
@@ -634,9 +636,11 @@ try {
         INDEX idx_date (date_reunion),
         INDEX idx_serie (serie_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-    // Migrations : colonnes khassida / melodie (bases existantes)
+    // Migrations : colonnes khassida / melodie / annule (bases existantes)
     try { $pdo->query("SELECT khassida FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN khassida VARCHAR(255) NULL DEFAULT NULL"); }
     try { $pdo->query("SELECT melodie FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN melodie VARCHAR(150) NULL DEFAULT NULL"); }
+    try { $pdo->query("SELECT annule FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN annule TINYINT(1) NOT NULL DEFAULT 0"); }
+    try { $pdo->query("SELECT debut_notifie FROM kourel_repetitions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE kourel_repetitions ADD COLUMN debut_notifie TINYINT(1) NOT NULL DEFAULT 0"); }
     // Rattachement à une ligne d'avancement : la répétition travaille une
     // Khassida du programme du Kurel. Les colonnes khassida / melodie restent
     // renseignées, pour que les répétitions déjà saisies gardent leur libellé.

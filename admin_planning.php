@@ -6,8 +6,7 @@
  *   - définir les paramètres du groupe (lieu, horaires, lien WhatsApp) ;
  *   - générer les dimanches de Dahira (un dimanche sur deux) sur une période ;
  *   - saisir le programme détaillé de chaque séance ;
- *   - préparer le message WhatsApp (lien wa.me) et l'e-mail aux membres ;
- *   - générer une image (SVG) du programme, à joindre au message.
+ *   - préparer le message WhatsApp (lien wa.me) et l'e-mail aux membres.
  */
 require_once __DIR__ . '/planning_guard.php'; // admins + responsables Secrétariat Général
 require_once __DIR__ . '/db_setup.php';
@@ -60,6 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Lien du groupe WhatsApp : clé partagée avec wird_admin (wa_group_link)
             $waGroupLink = trim($_POST['groupe_wa'] ?? '');
             dahira_set_param($pdo, 'wa_group_link', $waGroupLink);
+            // Texte de bas de page (signature) ajouté aux messages WhatsApp et e-mails
+            dahira_set_param($pdo, 'dahira_signature', trim($_POST['signature'] ?? ''));
             $success = "Paramètres du Dahira enregistrés.";
         }
 
@@ -212,10 +213,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $row = $st->fetch();
                 if (!$row) {
                     $error = "Ce dimanche n'existe plus.";
+                } elseif ((int) ($row['publie'] ?? 0) !== 1) {
+                    $error = "Publiez d'abord ce Dahira sur l'accueil membre avant d'envoyer l'annonce par e-mail.";
                 } else {
                     $lieu = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
                     $debut = dahira_param($pdo, 'dahira_debut', '17h00');
                     $fin = dahira_param($pdo, 'dahira_fin', '20h30');
+                    $signatureMail = dahira_param($pdo, 'dahira_signature', DAHIRA_SIGNATURE_DEFAUT);
                     $date = $row['date_dahira'];
                     $programme = (string) ($row['programme'] ?? '');
                     $destinataires = dahira_destinataires($pdo, $commissionId);
@@ -223,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = "Aucun membre à prévenir (aucun membre validé rattaché à la commission).";
                     } else {
                         $sujet = '📅 Dahira — ' . dahira_date_longue($date);
-                        $corps = dahira_email_annonce($date, $lieu, $debut, $fin, $programme);
+                        $corps = dahira_email_annonce($date, $lieu, $debut, $fin, $programme, $signatureMail);
                         $sent = 0;
                         foreach ($destinataires as $m) {
                             $nom = trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? ''));
@@ -251,6 +255,7 @@ $debut = dahira_param($pdo, 'dahira_debut', '17h00');
 $fin = dahira_param($pdo, 'dahira_fin', '20h30');
 $groupeWa = dahira_param($pdo, 'wa_group_link', '');
 $programmeDefaut = dahira_param($pdo, 'dahira_programme_defaut', '');
+$signature = dahira_param($pdo, 'dahira_signature', DAHIRA_SIGNATURE_DEFAUT);
 
 $plannings = [];
 try {
@@ -474,7 +479,8 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                 <div class="glass-card" style="margin-bottom:1.5rem; border:2px solid rgba(212,175,55,0.55); background:linear-gradient(160deg, rgba(212,175,55,0.09) 0%, rgba(255,255,255,0.02) 100%);">
                     <?php if ($prochain):
                         $pdate = $prochain['date_dahira'];
-                        $waMsg = dahira_message_annonce($pdate, $lieu, $debut, $fin, (string)($prochain['programme'] ?? ''));
+                        $lienDahira = dahira_base_url() . '/dahira_detail.php?id=' . (int)$prochain['id'];
+                        $waMsg = dahira_message_annonce($pdate, $lieu, $debut, $fin, (string)($prochain['programme'] ?? ''), $lienDahira, $signature);
                         $waLink = dahira_wa_link(null, $waMsg);
                     ?>
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1.5rem; flex-wrap:wrap;">
@@ -489,19 +495,19 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                                 <div style="font-size:0.82rem; color:var(--text-muted); margin-top:0.3rem; white-space:pre-line;">📍 <?php echo htmlspecialchars($lieu); ?></div>
                             </div>
                             <div style="display:flex; flex-direction:column; gap:0.55rem; min-width:240px;">
-                                <?php echo dahira_wa_button($waLink, 'Partager au groupe WhatsApp'); ?>
-                                <?php if ($groupeWa !== ''): ?>
+                                <?php echo dahira_wa_button($waLink, 'Partager au groupe WhatsApp', false, ((int)($prochain['publie'] ?? 0)) !== 1); ?>
+                                <?php if ($groupeWa !== '' && ((int)($prochain['publie'] ?? 0)) === 1): ?>
                                     <button type="button" class="btn btn-sm" style="background:#128C7E; border:1px solid #128C7E; color:#fff; font-weight:700;" onclick="shareGroup(<?php echo htmlspecialchars(json_encode($waMsg), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($groupeWa), ENT_QUOTES); ?>)">🟢 Groupe (copier)</button>
                                 <?php endif; ?>
                                 <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="Envoyer l'annonce du Dahira du <?php echo date('d/m/Y', strtotime($pdate)); ?> par e-mail à <?php echo $nbMembres; ?> membre(s) ?">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="send_email">
                                     <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
-                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;" <?php echo $nbMembres === 0 ? 'disabled' : ''; ?>>
+                                    <?php $annonceDisabled = $nbMembres === 0 || ((int)($prochain['publie'] ?? 0)) !== 1; ?>
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;<?php echo $annonceDisabled ? ' opacity:0.4; filter:grayscale(0.5); cursor:not-allowed;' : ''; ?>" <?php echo $annonceDisabled ? 'disabled' : ''; ?> title="<?php echo ((int)($prochain['publie'] ?? 0)) !== 1 ? 'Disponible une fois le Dahira publié' : ''; ?>">
                                         📧 Envoyer par e-mail (<?php echo $nbMembres; ?> membre<?php echo $nbMembres > 1 ? 's' : ''; ?>)
                                     </button>
                                 </form>
-                                <a href="planning_dahira_image.php?id=<?php echo (int)$prochain['id']; ?>" target="_blank" class="btn btn-secondary btn-sm" style="width:100%; text-align:center; border-color:var(--accent); color:var(--accent);">🖼️ Voir l'image du programme</a>
                                 <a href="dahira_detail.php?id=<?php echo (int)$prochain['id']; ?>" class="btn btn-secondary btn-sm" style="width:100%; text-align:center; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
                             </div>
                         </div>
@@ -527,7 +533,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                             <?php echo csrf_field(); ?>
                             <input type="hidden" name="action" value="toggle_publie">
                             <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
-                            <button type="submit" class="btn btn-secondary btn-sm" style="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'border-color:rgba(37,211,102,0.6); color:#7bd8a6;' : 'border-color:var(--accent); color:var(--accent);'; ?>"><?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? '🟢 Publié' : '⚪ Publier'; ?></button>
+                            <button type="submit" class="btn btn-secondary btn-sm" style="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'background:#c62828; border-color:#c62828; color:#fff;' : 'background:#1f9d55; border-color:#1f9d55; color:#fff;'; ?>"><?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? '� Annuler la publication' : '⚪ Publier'; ?></button>
                         </form>
                         <details style="margin-top:0.9rem;" class="pl-details">
                             <summary>Voir / copier le message WhatsApp</summary>
@@ -555,6 +561,11 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                                 <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Ce modèle peut être chargé d'un clic dans « Prochain Dahira » via le bouton « Charger le programme par défaut ».</p>
                             </div>
                             <div class="form-group" style="grid-column:1 / -1;"><label class="form-label">Lien du groupe WhatsApp (facultatif)</label><input type="url" name="groupe_wa" class="form-input" value="<?php echo htmlspecialchars($groupeWa); ?>" placeholder="https://chat.whatsapp.com/…"></div>
+                            <div class="form-group" style="grid-column:1 / -1;">
+                                <label class="form-label">✍️ Bas de page (signature) des messages</label>
+                                <textarea name="signature" class="form-input" rows="2" placeholder="<?php echo htmlspecialchars(DAHIRA_SIGNATURE_DEFAUT); ?>"><?php echo htmlspecialchars($signature); ?></textarea>
+                                <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Ajouté automatiquement à la fin des messages WhatsApp et des e-mails d'annonce.</p>
+                            </div>
                         </div>
                         <div style="margin-top:0.9rem;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>
                     </form>

@@ -101,9 +101,41 @@ $profession = (string)($membre['profession'] ?? '');
 $secteur = (string)($membre['secteur_activite'] ?? '');
 $annee = (string)($membre['annee_integration'] ?? '');
 $type = (string)($membre['type_adhesion'] ?? '');
-$telephone = (string)($membre['telephone'] ?? '');
 $photo = (string)($membre['photo_path'] ?? '');
 $score = (int)($membre['score'] ?? 0);
+
+// Commissions & Kurels du membre (membre / responsable)
+$commissionsMembre = [];
+$commissionsResp   = [];
+$kourelsMembre     = [];
+$kourelsResp       = [];
+try {
+    $st = $pdo->prepare(
+        "SELECT c.id, c.nom FROM commission_membres cm JOIN commissions c ON c.id = cm.commission_id WHERE cm.membre_id = ? ORDER BY c.nom ASC"
+    );
+    $st->execute([$id]);
+    $commissionsMembre = $st->fetchAll();
+
+    $st = $pdo->prepare(
+        "SELECT c.id, c.nom FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE cg.membre_id = ? ORDER BY c.nom ASC"
+    );
+    $st->execute([$id]);
+    $commissionsResp = $st->fetchAll();
+
+    $st = $pdo->prepare(
+        "SELECT k.id, k.nom FROM kourel_membres km JOIN kourels k ON k.id = km.kourel_id WHERE km.membre_id = ? ORDER BY k.nom ASC"
+    );
+    $st->execute([$id]);
+    $kourelsMembre = $st->fetchAll();
+
+    $st = $pdo->prepare(
+        "SELECT k.id, k.nom FROM kourel_gestionnaires kg JOIN kourels k ON k.id = kg.kourel_id WHERE kg.membre_id = ? ORDER BY k.nom ASC"
+    );
+    $st->execute([$id]);
+    $kourelsResp = $st->fetchAll();
+} catch (Exception $e) {
+    // silencieux : si les tables n'existent pas encore, on n'affiche rien
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -134,27 +166,69 @@ $score = (int)($membre['score'] ?? 0);
             animation: mdFlow 4.5s linear infinite;
         }
         @keyframes mdFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* Photo au format trombinoscope : carte ratio 3/4, photo en couverture */
         .md-photo {
-            width: 120px; height: 120px; border-radius: 50%;
-            overflow: hidden; border: 3px solid var(--gold);
+            position: relative;
+            max-width: 320px;
             margin: 0 auto 0.9rem;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-            background: #081c15;
+            border-radius: 20px;
+            overflow: hidden;
+            aspect-ratio: 3 / 4;
+            border: 1px solid var(--glass-border);
+            background: var(--primary);
+            box-shadow: 0 18px 40px rgba(0,0,0,0.4);
         }
+        .md-photo-container { position: absolute; inset: 0; overflow: hidden; }
         .md-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .md-photo .md-initial {
-            width: 100%; height: 100%;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 2.6rem; font-weight: 800; color: var(--gold);
+        .md-photo::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top,
+                rgba(8, 28, 21, 0.92) 0%,
+                rgba(8, 28, 21, 0.35) 40%,
+                transparent 65%);
+            z-index: 1;
         }
-        .md-name { font-size: 1.6rem; font-weight: 800; color: var(--white); margin: 0; }
-        .md-civ { margin-top: 0.4rem; }
+        .md-photo .md-initial {
+            position: absolute;
+            inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 4rem; font-weight: 800; color: var(--gold);
+        }
+        .md-photo-caption {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            padding: 1.25rem 1.1rem 1rem;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            text-align: left;
+        }
+        .md-name { font-size: 1.2rem; font-weight: 700; color: var(--white); margin: 0; text-transform: capitalize; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+        .md-civ { margin-top: 0.1rem; }
         .md-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
         .md-item { border-radius: 14px; padding: 1rem 1.1rem; }
         .md-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .md-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
         .md-item .v a { color: var(--accent); }
         .md-back { display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1rem; }
+        /* Chips Commissions / Kurels */
+        .md-affil { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+        .md-chip {
+            display: inline-flex; align-items: center; gap: 0.35rem;
+            background: rgba(45,106,79,0.18);
+            border: 1px solid rgba(45,106,79,0.4);
+            color: var(--white);
+            font-size: 0.8rem; font-weight: 600;
+            padding: 0.35rem 0.8rem; border-radius: 50px;
+        }
+        .md-chip--resp {
+            background: rgba(212,175,55,0.16);
+            border-color: rgba(212,175,55,0.45);
+            color: var(--accent);
+        }
         /* Animations d'entrée */
         @keyframes mdCardIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
         .md-anim { animation: mdCardIn 0.45s cubic-bezier(0.22,1,0.36,1) both; }
@@ -172,7 +246,7 @@ $score = (int)($membre['score'] ?? 0);
             <?php if ($__mdAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } ?>
 
             <div class="admin-content">
-                <a href="<?php echo $__mdAdmin ? 'admin_dashboard.php#trombi' : 'index.php'; ?>" class="md-back btn btn-secondary btn-sm">← Retour au trombinoscope</a>
+                <a href="<?php echo $__mdAdmin ? 'admin_dashboard.php#trombi' : 'trombinoscope.php'; ?>" class="md-back btn btn-secondary btn-sm">← Retour au trombinoscope</a>
                 <h1 class="admin-page-title">🖼️ Fiche membre</h1>
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
@@ -183,15 +257,19 @@ $score = (int)($membre['score'] ?? 0);
                     <div class="md-hero md-anim md-anim-1">
                         <div class="md-photo">
                             <?php if ($photo !== ''): ?>
-                                <img src="uploads/<?php echo htmlspecialchars($photo); ?>" alt="Photo de <?php echo htmlspecialchars($nomComplet); ?>">
+                                <div class="md-photo-container">
+                                    <img src="uploads/<?php echo htmlspecialchars($photo); ?>" alt="Photo de <?php echo htmlspecialchars($nomComplet); ?>">
+                                </div>
                             <?php else: ?>
                                 <div class="md-initial"><?php echo htmlspecialchars(mb_strtoupper(mb_substr($nomComplet, 0, 1))); ?></div>
                             <?php endif; ?>
+                            <div class="md-photo-caption">
+                                <h2 class="md-name"><?php echo htmlspecialchars($nomComplet); ?></h2>
+                                <?php if ($civilite !== ''): ?>
+                                    <span class="member-civilite-badge md-civ"><?php echo htmlspecialchars($civilite); ?></span>
+                                <?php endif; ?>
+                            </div>
                         </div>
-                        <h2 class="md-name"><?php echo htmlspecialchars($nomComplet); ?></h2>
-                        <?php if ($civilite !== ''): ?>
-                            <span class="member-civilite-badge md-civ"><?php echo htmlspecialchars($civilite); ?></span>
-                        <?php endif; ?>
                         <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.5rem;">🏆 <?php echo $score; ?> pts</div>
                     </div>
 
@@ -202,11 +280,7 @@ $score = (int)($membre['score'] ?? 0);
                             <div class="v"><?php echo $emailMembre !== '' ? '<a href="mailto:' . htmlspecialchars($emailMembre) . '">' . htmlspecialchars($emailMembre) . '</a>' : '—'; ?></div>
                         </div>
                         <div class="glass-card md-item">
-                            <div class="k">📞 Téléphone</div>
-                            <div class="v"><?php echo $telephone !== '' ? htmlspecialchars($telephone) : '—'; ?></div>
-                        </div>
-                        <div class="glass-card md-item">
-                            <div class="k">📍 Commune</div>
+                            <div class="k"> Commune</div>
                             <div class="v"><?php echo $commune !== '' ? htmlspecialchars($commune) : '—'; ?></div>
                         </div>
                         <div class="glass-card md-item">
@@ -226,6 +300,27 @@ $score = (int)($membre['score'] ?? 0);
                             <div class="v"><?php echo $type !== '' ? htmlspecialchars($type) : '—'; ?></div>
                         </div>
                     </div>
+
+                    <!-- Commissions & Kurels du membre -->
+                    <?php if (!empty($commissionsMembre) || !empty($commissionsResp) || !empty($kourelsMembre) || !empty($kourelsResp)): ?>
+                    <div class="glass-card md-anim md-anim-3" style="margin-bottom:1.4rem;">
+                        <h3 style="color:var(--white); margin:0 0 0.9rem; font-size:1.05rem;">🤝 Commissions & Kurels</h3>
+                        <div class="md-affil">
+                            <?php foreach ($commissionsResp as $c): ?>
+                                <span class="md-chip md-chip--resp" title="Responsable de la commission">👑 <?php echo htmlspecialchars($c['nom']); ?></span>
+                            <?php endforeach; ?>
+                            <?php foreach ($commissionsMembre as $c): ?>
+                                <span class="md-chip" title="Membre de la commission">⚙️ <?php echo htmlspecialchars($c['nom']); ?></span>
+                            <?php endforeach; ?>
+                            <?php foreach ($kourelsResp as $k): ?>
+                                <span class="md-chip md-chip--resp" title="Responsable du Kurel">👑 Kurel · <?php echo htmlspecialchars($k['nom']); ?></span>
+                            <?php endforeach; ?>
+                            <?php foreach ($kourelsMembre as $k): ?>
+                                <span class="md-chip" title="Membre du Kurel">🕌 Kurel · <?php echo htmlspecialchars($k['nom']); ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
 
                     <!-- Envoi de message au membre -->
                     <?php if ($emailMembre !== ''): ?>

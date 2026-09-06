@@ -270,6 +270,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $row = $st->fetch();
                 if (!$row) {
                     $error = "Ce jeudi n'existe plus.";
+                } elseif ($type === 'annonce' && (int) ($row['publie'] ?? 0) !== 1) {
+                    $error = "Publiez d'abord ce Guddi Àjjuma sur l'accueil membre avant d'envoyer l'annonce par e-mail.";
                 } else {
                     $date = $row['date_guddi'];
                     $heure = dahira_param($pdo, 'guddi_heure', '20h00');
@@ -750,8 +752,8 @@ if ($commissionId > 0) {
                                 </form>
                             </div>
                             <div style="display:flex; flex-direction:column; gap:0.55rem; min-width:240px;">
-                                <?php echo dahira_wa_button(dahira_wa_link(null, $waMsg), $prochainActif ? 'Partager sur WhatsApp' : 'Annulation WhatsApp'); ?>
-                                <?php if ($groupeWa !== ''): ?>
+                                <?php echo dahira_wa_button(dahira_wa_link(null, $waMsg), $prochainActif ? 'Partager sur WhatsApp' : 'Annulation WhatsApp', false, ((int)($prochain['publie'] ?? 0)) !== 1); ?>
+                                <?php if ($groupeWa !== '' && ((int)($prochain['publie'] ?? 0)) === 1): ?>
                                     <button type="button" class="btn btn-sm" style="background:#128C7E; border:1px solid #128C7E; color:#fff; font-weight:700;" onclick="shareGroup(<?php echo htmlspecialchars(json_encode($waMsg), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($groupeWa), ENT_QUOTES); ?>)">🟢 Groupe (copier)</button>
                                 <?php endif; ?>
                                 <?php if ($prochainActif): ?>
@@ -760,7 +762,8 @@ if ($commissionId > 0) {
                                     <input type="hidden" name="action" value="send_email">
                                     <input type="hidden" name="type" value="annonce">
                                     <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
-                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;" <?php echo $nbMembres === 0 ? 'disabled' : ''; ?>>
+                                    <?php $annonceDisabled = $nbMembres === 0 || ((int)($prochain['publie'] ?? 0)) !== 1; ?>
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;<?php echo $annonceDisabled ? ' opacity:0.4; filter:grayscale(0.5); cursor:not-allowed;' : ''; ?>" <?php echo $annonceDisabled ? 'disabled' : ''; ?> title="<?php echo ((int)($prochain['publie'] ?? 0)) !== 1 ? 'Disponible une fois le Guddi Àjjuma publié' : ''; ?>">
                                         📧 Envoyer l'annonce (<?php echo $nbMembres; ?>)
                                     </button>
                                 </form>
@@ -839,7 +842,7 @@ if ($commissionId > 0) {
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="toggle_publie">
                                     <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
-                                    <button type="submit" class="btn btn-secondary btn-sm" style="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'border-color:rgba(37,211,102,0.6); color:#7bd8a6;' : 'border-color:var(--accent); color:var(--accent);'; ?>"><?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? '🟢 Publié' : '⚪ Publier'; ?></button>
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'background:#c62828; border-color:#c62828; color:#fff;' : 'background:#1f9d55; border-color:#1f9d55; color:#fff;'; ?>"><?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? '� Annuler la publication' : '⚪ Publier'; ?></button>
                                 </form>
                             </div>
                         <details style="margin-top:0.9rem;" class="pl-details">

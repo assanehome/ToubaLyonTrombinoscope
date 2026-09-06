@@ -60,6 +60,7 @@ if (!$dahira) {
 $lieu = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
 $debut = dahira_param($pdo, 'dahira_debut', '17h00');
 $fin = dahira_param($pdo, 'dahira_fin', '20h30');
+$signature = dahira_param($pdo, 'dahira_signature', DAHIRA_SIGNATURE_DEFAUT);
 
 $date = $dahira['date_dahira'];
 $cloture = ((int)($dahira['cloture'] ?? 0)) === 1;
@@ -143,6 +144,11 @@ if ($membreId > 0) {
         /* Carte de validation de présence : bouton doré avec léger survol */
         .dh-presence .btn-primary { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
         .dh-presence .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); filter: brightness(1.05); }
+        /* Centrage du contenu de la carte de présence sur mobile */
+        @media (max-width: 480px) {
+            .dh-presence { text-align: center; }
+            .dh-presence .btn { width: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -152,7 +158,7 @@ if ($membreId > 0) {
             <?php if ($__dhAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } ?>
 
             <div class="admin-content">
-                <a href="<?php echo $__dhAdmin ? 'admin_planning.php' : 'index.php'; ?>" class="dh-back btn btn-secondary btn-sm">← Retour</a>
+                <?php if ($__dhAdmin): ?><a href="admin_planning.php" class="dh-back btn btn-secondary btn-sm">← Retour</a><?php endif; ?>
                 <h1 class="admin-page-title">🕌 Détail Dahira</h1>
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
@@ -166,10 +172,15 @@ if ($membreId > 0) {
                             <small>🕐 de <?php echo htmlspecialchars($debut); ?> à <?php echo htmlspecialchars($fin); ?></small>
                         </div>
                         <div class="dh-badges">
+                            <?php $etat = dahira_event_etat($date, $debut, $fin); ?>
                             <?php if ($cloture): ?>
                                 <span class="pl-badge pl-badge-ok" style="font-size:0.8rem; padding:0.3rem 0.7rem;">✅ Clôturé<?php echo !empty($nbParticipants) ? ' · ' . (int)$nbParticipants . ' pers.' : ''; ?></span>
-                            <?php else: ?>
+                            <?php elseif ($etat === 'termine'): ?>
                                 <span class="pl-badge pl-badge-no" style="font-size:0.8rem; padding:0.3rem 0.7rem;">🕌 Terminé</span>
+                            <?php elseif ($etat === 'encours'): ?>
+                                <span class="pl-badge badge-live" style="font-size:0.8rem; padding:0.3rem 0.7rem; background:rgba(37,211,102,0.18); color:#7bd8a6; border:1px solid rgba(37,211,102,0.5);">En cours</span>
+                            <?php else: ?>
+                                <span class="pl-badge" style="font-size:0.8rem; padding:0.3rem 0.7rem; background:rgba(45,140,255,0.15); color:#8ec5ff; border:1px solid rgba(45,140,255,0.4);">🗓️ À venir</span>
                             <?php endif; ?>
                             <?php if ($publie): ?>
                                 <span class="pl-badge" style="font-size:0.8rem; padding:0.3rem 0.7rem; background:rgba(37,211,102,0.12); color:#7bd8a6; border:1px solid rgba(37,211,102,0.3);">🟢 Publié</span>
@@ -189,15 +200,13 @@ if ($membreId > 0) {
                     <?php if ($membreId > 0 && $publie): ?>
                     <div class="glass-card dh-presence dh-anim dh-anim-3" style="margin-bottom:1.4rem; border:2px solid rgba(212,175,55,0.45);">
                         <h3 style="color:var(--white); margin-bottom:0.6rem;">✅ Validez votre présence</h3>
-                        <?php if ($date <= date('Y-m-d')): ?>
-                            <?php if ($presenceFaite): ?>
-                                <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Jazakallahou Khair</div>
-                                <button type="button" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;" onclick="annulerPresence('dahira', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
-                            <?php else: ?>
-                                <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('dahira', <?php echo (int)$id; ?>, this)">✅ J'étais présent(e)</button>
-                            <?php endif; ?>
+                        <?php if ($presenceFaite): ?>
+                            <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Diadieuf</div>
+                            <button type="button" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;" onclick="annulerPresence('dahira', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
+                        <?php elseif (dahira_presence_ouverte($date, $debut)): ?>
+                            <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('dahira', <?php echo (int)$id; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
-                            <div style="color:var(--text-muted); font-size:0.85rem;">🔔 Vous pourrez valider votre présence le jour même.</div>
+                            <div style="color:var(--text-muted); font-size:0.85rem;">🔔 La validation sera possible à partir de <?php echo htmlspecialchars($debut); ?> le <?php echo date('d/m/Y', strtotime($date)); ?>.</div>
                         <?php endif; ?>
                     </div>
                     <?php elseif ($membreId > 0 && !$publie): ?>
@@ -230,6 +239,13 @@ if ($membreId > 0) {
                     </div>
                     <?php endif; ?>
 
+                    <?php if (trim($signature) !== ''): ?>
+                    <!-- Bas de page (signature du Dahira) — format identique au programme -->
+                    <div class="glass-card dh-anim dh-anim-5" style="margin-bottom:1.4rem;">
+                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.85rem; color:var(--white); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:0.9rem;"><?php echo htmlspecialchars(trim($signature)); ?></pre>
+                    </div>
+                    <?php endif; ?>
+
                     <!-- Actions -->
                     <div class="dh-anim dh-anim-5" style="display:flex; gap:0.6rem; flex-wrap:wrap;">
                         <a href="<?php echo $__dhAdmin ? 'admin_planning.php' : 'index.php'; ?>" class="btn btn-secondary btn-sm">← Retour</a>
@@ -256,11 +272,26 @@ if ($membreId > 0) {
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.ok) { window.location.reload(); }
+                    else if (window.modernAlert) { window.modernAlert(d.msg || 'Erreur.', 'Erreur'); }
                     else { alert(d.msg || 'Erreur.'); }
                 })
-                .catch(function () { alert('Une erreur est survenue. Réessayez.'); });
+                .catch(function () {
+                    if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.', 'Erreur'); }
+                    else { alert('Une erreur est survenue. Réessayez.'); }
+                });
         }
         function annulerPresence(type, id, btn) {
+            if (window.modernConfirm) {
+                window.modernConfirm(
+                    'Voulez-vous vraiment <strong>annuler votre présence</strong> au Dahira ?<br><br><span style="color:var(--text-muted); font-size:0.85rem;">Vous ne serez plus compté(e) comme présent(e) pour cet événement.</span>',
+                    function () { annulerPresenceOk(type, id); },
+                    { danger: true, bouton: 'Oui, annuler', titre: '↩️ Annuler ma présence' }
+                );
+            } else {
+                annulerPresenceOk(type, id);
+            }
+        }
+        function annulerPresenceOk(type, id) {
             var corps = new URLSearchParams();
             corps.set('action', 'cancel');
             corps.set('type', type);
@@ -270,9 +301,13 @@ if ($membreId > 0) {
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.ok) { window.location.reload(); }
+                    else if (window.modernAlert) { window.modernAlert(d.msg || 'Erreur.'); }
                     else { alert(d.msg || 'Erreur.'); }
                 })
-                .catch(function () { alert('Une erreur est survenue. Réessayez.'); });
+                .catch(function () {
+                    if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.'); }
+                    else { alert('Une erreur est survenue. Réessayez.'); }
+                });
         }
     </script>
 </body>

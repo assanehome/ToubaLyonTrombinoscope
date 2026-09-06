@@ -158,17 +158,22 @@ try {
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <form action="admin_admins.php" method="POST" style="display:inline;">
+                                        <?php $mmNom = htmlspecialchars(addslashes($mm['prenom'] . ' ' . $mm['nom']), ENT_QUOTES); ?>
+                                        <?php if ($isAdm): ?>
+                                        <form action="admin_admins.php" method="POST" style="display:inline;" data-confirm="Retirer le rôle d'administrateur à <?php echo $mmNom; ?> ?" data-confirm-danger="1">
                                             <?php echo csrf_field(); ?>
                                             <input type="hidden" name="member_id" value="<?php echo (int)$mm['id']; ?>">
-                                            <?php if ($isAdm): ?>
-                                                <input type="hidden" name="action" value="revoke">
-                                                <button type="submit" class="btn btn-secondary btn-sm" style="color:var(--warning); border-color:var(--warning);">Retirer le rôle</button>
-                                            <?php else: ?>
-                                                <input type="hidden" name="action" value="grant">
-                                                <button type="submit" class="btn btn-primary btn-sm">Donner le rôle</button>
-                                            <?php endif; ?>
+                                            <input type="hidden" name="action" value="revoke">
+                                            <button type="submit" class="btn btn-secondary btn-sm" style="color:var(--warning); border-color:var(--warning);">Retirer le rôle</button>
                                         </form>
+                                        <?php else: ?>
+                                        <form action="admin_admins.php" method="POST" style="display:inline;" data-confirm="Donner le rôle d'administrateur à <?php echo $mmNom; ?> ?">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="member_id" value="<?php echo (int)$mm['id']; ?>">
+                                            <input type="hidden" name="action" value="grant">
+                                            <button type="submit" class="btn btn-primary btn-sm">Donner le rôle</button>
+                                        </form>
+                                        <?php endif; ?>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
@@ -253,5 +258,6 @@ try {
             apply();
         })();
     </script>
+    <?php include __DIR__ . '/modern_popup.php'; ?>
 </body>
 </html>

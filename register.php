@@ -154,6 +154,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <form action="register.php" method="POST" enctype="multipart/form-data">
                 <div class="form-group">
+                    <label class="form-label">Photo de profil <span style="color:var(--danger)">*</span></label>
+                    <div class="file-upload-wrapper">
+                        <div class="file-upload-box" id="upload-box">
+                            <svg class="file-upload-icon" width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                            <p class="file-upload-text" id="upload-text">Glissez-déposez ou <span>parcourez</span> pour choisir une photo</p>
+                            <input type="file" id="photo-input" name="photo" class="file-upload-input" accept="image/png, image/jpeg, image/webp" required>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: center;">
+                        <img id="photo-preview" class="file-preview" alt="Aperçu de la photo">
+                    </div>
+                </div>
+
+                <div class="form-group">
                     <label for="civilite" class="form-label">Civilité <span style="color:var(--danger)">*</span></label>
                     <select id="civilite" name="civilite" class="form-input modern-select" required>
                         <option value="Goor Yalla" <?php echo ($civilite === 'Goor Yalla') ? 'selected' : ''; ?>>Goor Yalla (Homme)</option>
@@ -231,7 +245,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="form-group">
                     <label for="annee_integration" class="form-label">Année d'intégration au Dahira <span style="color:var(--danger)">*</span></label>
-                    <input type="text" id="annee_integration" name="annee_integration" class="form-input" inputmode="numeric" placeholder="Ex: 2022" value="<?php echo htmlspecialchars($annee_integration); ?>" required>
+                    <select id="annee_integration" name="annee_integration" class="form-input modern-select" required>
+                        <option value="">— Choisir l'année —</option>
+                        <?php for ($y = (int) date('Y'); $y >= 2000; $y--): ?>
+                            <option value="<?php echo $y; ?>" <?php echo ((string) $annee_integration === (string) $y) ? 'selected' : ''; ?>><?php echo $y; ?></option>
+                        <?php endfor; ?>
+                    </select>
                 </div>
 
                 <div class="form-group">
@@ -249,20 +268,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <textarea id="commentaires" name="commentaires" class="form-input" rows="3"><?php echo htmlspecialchars($commentaires); ?></textarea>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Photo de profil <span style="color:var(--danger)">*</span></label>
-                    <div class="file-upload-wrapper">
-                        <div class="file-upload-box" id="upload-box">
-                            <svg class="file-upload-icon" width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            <p class="file-upload-text" id="upload-text">Glissez-déposez ou <span>parcourez</span> pour choisir une photo</p>
-                            <input type="file" id="photo-input" name="photo" class="file-upload-input" accept="image/png, image/jpeg, image/webp" required>
-                        </div>
-                    </div>
-                    <div style="display: flex; justify-content: center;">
-                        <img id="photo-preview" class="file-preview" alt="Aperçu de la photo">
-                    </div>
-                </div>
-
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Envoyer mon inscription</button>
             </form>
         </div>
@@ -270,35 +275,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <!-- Modern Notification Modal -->
     <?php if (!empty($success) || !empty($error)): ?>
-    <div id="notification-modal" class="modal-overlay active" style="display: flex;">
-        <div class="modal-card glass-card">
-            <div class="modal-header">
-                <?php if (!empty($success)): ?>
-                    <h3 class="gold-text">Inscription Réussie</h3>
-                <?php else: ?>
-                    <h3 style="color: var(--danger);">Une erreur est survenue</h3>
-                <?php endif; ?>
-            </div>
-            <div class="modal-body">
-                <p>
-                    <?php 
-                        if (!empty($success)) {
-                            echo htmlspecialchars($success);
-                        } else {
-                            echo htmlspecialchars($error);
-                        }
-                    ?>
-                </p>
-            </div>
-            <div class="modal-footer">
-                <?php if (!empty($success)): ?>
-                    <a href="index.php" class="btn btn-primary btn-sm">Retour à l'accueil</a>
-                <?php else: ?>
-                    <button onclick="closeNotificationModal()" class="btn btn-primary btn-sm">Réessayer</button>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
+    <script>
+        (function () {
+            var msg = <?php echo json_encode(!empty($success) ? $success : $error, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+            var titre = <?php echo json_encode(!empty($success) ? 'Inscription réussie' : 'Une erreur est survenue', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+            var opts = {};
+            <?php if (!empty($success)): ?>opts.success = true;<?php endif; ?>
+            <?php if (!empty($error) && empty($success)): ?>opts.danger = true;<?php endif; ?>
+            var onClose = null;
+            <?php if (!empty($success)): ?>onClose = function () { window.location.href = 'index.php'; };<?php endif; ?>
+            window.modernAlert(msg, titre, onClose, opts);
+        })();
+    </script>
     <?php endif; ?>
 
     <footer class="app-footer">
@@ -306,15 +294,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </footer>
 
     <script>
-        function closeNotificationModal() {
-            const modal = document.getElementById('notification-modal');
-            if (modal) {
-                modal.classList.remove('active');
-                setTimeout(() => {
-                    modal.style.display = 'none';
-                }, 300);
-            }
-        }
         const fileInput = document.getElementById('photo-input');
         const uploadBox = document.getElementById('upload-box');
         const uploadText = document.getElementById('upload-text');

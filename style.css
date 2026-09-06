@@ -5,6 +5,24 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
+/* Badge « En cours » : pastille animée (pulsation) */
+@keyframes badgeLivePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0.55); }
+    50% { box-shadow: 0 0 0 7px rgba(37,211,102,0); }
+}
+.badge-live { animation: badgeLivePulse 1.7s ease-in-out infinite; }
+.badge-live::before {
+    content: '';
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #2ec77a;
+    margin-right: 5px;
+    vertical-align: middle;
+    animation: badgeLiveDot 1.7s ease-in-out infinite;
+}
+@keyframes badgeLiveDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
 :root {
     /* Primary Color Palette - Premium Spirit */
     --primary: #1b4332;
@@ -129,6 +147,22 @@ h3 {
     font-size: 0.95rem;
 }
 
+/* Bouton désactivé : rendu grisé et non cliquable (ex. action indisponible
+   tant que l'événement n'est pas publié). */
+.btn:disabled,
+.btn[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(0.5);
+    box-shadow: none;
+}
+.btn:disabled:hover,
+.btn[disabled]:hover {
+    transform: none;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--glass-border);
+}
+
 .btn-primary {
     background: var(--accent);
     color: var(--secondary);
@@ -178,6 +212,14 @@ h3 {
 .btn-sm {
     padding: 0.5rem 1.25rem;
     font-size: 0.85rem;
+}
+
+/* Sur mobile : boutons d'action pleine largeur et centrés (cohérent sur toute l'app) */
+@media (max-width: 600px) {
+    .modal-footer { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+    .modal-footer .btn { width: 100%; justify-content: center; }
+    .form-actions { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+    .form-actions .btn { width: 100%; justify-content: center; }
 }
 
 /* ══════════════════════════════════════════════
@@ -592,7 +634,12 @@ h3 {
         position: fixed;
         top: 0;
         right: 0;
-        bottom: 0;
+        /* Hauteur en unités d'écran, et non « bottom:0 » : l'en-tête porte un
+           backdrop-filter, ce qui en fait le bloc de référence des éléments
+           fixes qu'il contient. Sinon le tiroir n'occupe que la hauteur de la
+           barre et le menu (avec les sections admin/membre) est coupé. */
+        height: 100vh;
+        height: 100dvh;
         width: min(300px, 82vw);
         background: rgba(5, 18, 13, 0.97);
         backdrop-filter: blur(32px);
@@ -604,6 +651,10 @@ h3 {
         gap: 0.75rem;
         padding: 6.5rem 1.5rem 2.5rem 1.5rem;
         z-index: 999;
+        /* Le tiroir défile s'il dépasse la hauteur de l'écran */
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
         transform: translateX(100%);
         transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     }
@@ -1751,14 +1802,30 @@ footer {
     .admin-table td { padding: 0.7rem 0.75rem; font-size: 0.88rem; }
     .table-photo { width: 40px; height: 40px; }
 
-    /* Onglets : défilables horizontalement sans déborder */
+    /* Mobile : plus des onglets mais deux vrais boutons, un par ligne, pleine largeur */
     .dashboard-tabs {
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        gap: 0.5rem;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.6rem;
+        border-bottom: none;      /* on retire le soulignement d'onglets */
+        padding-bottom: 0;
     }
-    .tab-btn { flex-shrink: 0; white-space: nowrap; padding: 0.6rem 1rem; font-size: 0.9rem; }
+    .tab-btn {
+        width: 100%;
+        justify-content: center;
+        white-space: normal;
+        padding: 0.85rem 1rem;
+        font-size: 0.95rem;
+        border: 1px solid var(--glass-border);
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 12px;
+        color: var(--white);
+    }
+    .tab-btn.active {
+        border-color: var(--accent);
+        background: rgba(212, 175, 55, 0.15);
+        color: var(--accent);
+    }
 
     /* Sections : padding réduit, en-têtes empilés */
     .dashboard-section { padding: 1.25rem 1rem; }
@@ -1825,13 +1892,24 @@ select option:hover {
 .admin-menu-links a:hover { color:var(--white); background:rgba(255,255,255,0.04); }
 .admin-menu-links a.active { background:rgba(212,175,55,0.12); color:var(--accent); border:1px solid rgba(212,175,55,0.2); }
 .admin-menu-toggle { display:none; width:100%; align-items:center; justify-content:space-between; gap:0.75rem; background:rgba(212,175,55,0.1); border:1px solid rgba(212,175,55,0.3); color:var(--accent); font-weight:700; font-family:inherit; font-size:0.9rem; padding:0.75rem 1.1rem; border-radius:12px; cursor:pointer; }
-@media (max-width: 900px) {
+/* Liens du menu latéral clonés dans le tiroir d'en-tête : masqués en bureau */
+.hdr-nav-admin { display:none; }
+/* ── Menu de gauche façon Daara ──
+   Bureau (> 768px) : barre latérale complète.
+   Mobile (≤ 768px, même point de rupture que le burger) : la barre latérale
+   disparaît et ses entrées passent dans le tiroir de l'en-tête (#hdr-nav) —
+   un seul menu à ouvrir, pas de bouton « ☰ » intermédiaire. */
+@media (max-width: 768px) {
     .dashboard-layout { display:block; margin-top:1rem; }
-    .admin-sidebar { position:static; margin-bottom:1.25rem; padding:0; background:transparent; border:none; gap:0; }
-    .admin-sidebar-user { display:none; }
-    .admin-menu-toggle { display:flex; margin-bottom:0.75rem; }
-    .admin-menu-links { display:none; }
-    .admin-menu-links.open { display:flex; }
+    .admin-sidebar { display:none; }
+    .admin-menu-toggle { display:none; }
+    /* Le tiroir peut devenir long : rendu défilable */
+    .hdr-nav { overflow-y:auto; }
+    .hdr-nav-admin { display:flex; flex-direction:column; gap:0.3rem; width:100%; margin:0.35rem 0; padding-top:0.85rem; border-top:1px solid rgba(255,255,255,0.08); }
+    .hdr-nav-admin-title { display:block; font-size:0.7rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--accent); padding:0 0.3rem 0.15rem; }
+    .hdr-nav-admin a { display:block; padding:0.7rem 1.15rem; border-radius:12px; border:1px solid rgba(255,255,255,0.03); color:var(--text-muted); font-size:0.9rem; font-weight:600; text-decoration:none; transition:var(--transition); }
+    .hdr-nav-admin a:hover { color:var(--white); background:rgba(255,255,255,0.05); }
+    .hdr-nav-admin a.active { color:var(--accent); background:rgba(212,175,55,0.12); border-color:rgba(212,175,55,0.2); }
 }
 /* ── Correctif mobile : éviter tout débordement horizontal (titre d'en-tête long) ── */
 @media (max-width: 560px) {

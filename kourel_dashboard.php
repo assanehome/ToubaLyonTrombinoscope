@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->commit();
                     $success = count($dates) > 1 ? (count($dates) . " répétitions créées (série périodique).") : "Répétition créée.";
                 }
-            } elseif (in_array($action, ['publish_repetition', 'unpublish_repetition', 'close_repetition', 'reopen_repetition', 'delete_repetition', 'delete_repetition_serie', 'edit_repetition', 'repetition_avancement'], true)) {
+            } elseif (in_array($action, ['publish_repetition', 'unpublish_repetition', 'close_repetition', 'reopen_repetition', 'delete_repetition', 'delete_repetition_serie', 'edit_repetition', 'repetition_avancement', 'cancel_repetition', 'duplicate_repetition'], true)) {
                 $rid = (int) ($_POST['repetition_id'] ?? 0);
                 $r = null;
                 if ($rid > 0) {
@@ -211,6 +211,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($action === 'reopen_repetition') {
                     $pdo->prepare("UPDATE kourel_repetitions SET cloture = 0, updated_at = NOW() WHERE id = ?")->execute([$rid]);
                     $success = "Répétition rouverte.";
+                } elseif ($action === 'cancel_repetition') {
+                    $pdo->prepare("UPDATE kourel_repetitions SET annule = 1, updated_at = NOW() WHERE id = ?")->execute([$rid]);
+                    $r['annule'] = 1;
+                    $n = repetition_notifier_annulation($pdo, $r);
+                    $success = "Répétition annulée. $n membre(s) du Kurel notifié(s).";
+                } elseif ($action === 'duplicate_repetition') {
+                    $ins = $pdo->prepare("INSERT INTO kourel_repetitions (kourel_id, titre, description, date_reunion, heure, mode, lieu, lien, periodicite, khassida, melodie, publie, cloture, annule, created_by) VALUES (?,?,?,?,?,?,?,?, 'ponctuelle', ?, ?, 0, 0, 0, ?)");
+                    $ins->execute([(int) $r['kourel_id'], (string) $r['titre'], ($r['description'] ?? null), (string) $r['date_reunion'], (string) $r['heure'], (string) $r['mode'], ($r['lieu'] ?? null), ($r['lien'] ?? null), ($r['khassida'] ?? null), ($r['melodie'] ?? null), (!empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null)]);
+                    $newId = (int) $pdo->lastInsertId();
+                    $pdo->prepare("UPDATE kourel_repetitions SET serie_id = ? WHERE id = ?")->execute([$newId, $newId]);
+                    $success = "Répétition dupliquée (nouveau brouillon en attente de publication).";
                 } elseif ($action === 'delete_repetition') {
                     $pdo->prepare("DELETE FROM kourel_repetitions WHERE id = ?")->execute([$rid]);
                     $pdo->prepare("DELETE FROM presence_validations WHERE planning_type = 'repetition' AND planning_id = ?")->execute([$rid]);
@@ -333,6 +344,23 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
     $rid = (int) $r['id'];
     $rDateFr = date('d/m/Y', strtotime($r['date_reunion']));
     $csrf = csrf_field();
+    $rAnn = ((int) ($r['annule'] ?? 0) === 1);
+    if ($rAnn) {
+        $knom = repetition_kourel_nom($pdo, (int) $r['kourel_id']);
+        $waLink = 'https://wa.me/?text=' . rawurlencode(repetition_message_annulation($r, $knom));
+        $h = '<div style="border:1px solid rgba(191,33,33,0.4); border-radius:12px; padding:0.7rem 0.9rem; background:rgba(191,33,33,0.06);">';
+        $h .= '<div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">';
+        $h .= '<div style="color:#fff; font-weight:700;">🎼 ' . htmlspecialchars($r['titre']) . '</div>';
+        $h .= '<span class="badge" style="background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">🚫 Annulée</span>';
+        $h .= '</div>';
+        $h .= '<div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.3rem;">🗓️ ' . $rDateFr . ' · 🕐 ' . htmlspecialchars($r['heure']) . '</div>';
+        $h .= '<div class="km-actions" style="border-top:0; padding-top:0.6rem; margin-top:0.4rem;">';
+        $h .= '<a href="' . htmlspecialchars($waLink, ENT_QUOTES) . '" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 WhatsApp annulation</a>';
+        $h .= '<form method="POST" style="margin:0;" data-confirm="Dupliquer cette répétition en un nouveau brouillon ?">' . $csrf . '<input type="hidden" name="action" value="duplicate_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-secondary btn-sm">📄 Dupliquer</button></form>';
+        $h .= '<form method="POST" style="margin:0;" data-confirm="Supprimer définitivement cette répétition ?" data-confirm-danger="1">' . $csrf . '<input type="hidden" name="action" value="delete_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-danger btn-sm">Supprimer</button></form>';
+        $h .= '</div></div>';
+        return $h;
+    }
     $estSerie = ($r['periodicite'] ?? 'ponctuelle') !== 'ponctuelle';
     $canPublish = $estSerie ? !repetition_precedente_non_cloturee($pdo, $r) : true;
     $nextToPublish = $estSerie ? repetition_prochaine_a_publier($pdo, $r) : null;
@@ -373,10 +401,12 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
             . ($melTexte !== '' ? ' · 🎶 ' . htmlspecialchars($melTexte) : '') . '</div>';
     }
     $h .= '<div class="km-actions" style="border-top:0; padding-top:0.6rem; margin-top:0.4rem;">';
-    $h .= '<a href="repetition_detail.php?id=' . $rid . '" class="btn btn-secondary btn-sm">📊 Détail</a>';
-    if (!$rPub && !$rClo) {
-        $h .= '<button type="button" class="btn btn-secondary btn-sm" style="border-color:#7dd3fc; color:#7dd3fc;" onclick="toggleRepEdit(' . $rid . ')">✏️ Modifier</button>';
+    // Partage WhatsApp uniquement si la répétition est publiée
+    if ($rPub) {
+        $waShare = 'https://wa.me/?text=' . rawurlencode(repetition_message_partage($r, repetition_kourel_nom($pdo, (int) $r['kourel_id']), dahira_base_url() . '/repetition_detail.php?id=' . $rid));
+        $h .= '<a href="' . htmlspecialchars($waShare, ENT_QUOTES) . '" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 WhatsApp</a>';
     }
+    // Publier / Dépublier juste après WhatsApp
     if (!$rClo) {
         if (!$rPub) {
             if ($canPublish) {
@@ -387,15 +417,23 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
         } else {
             $h .= '<form method="POST" style="margin:0;" data-confirm="Dépublier cette répétition ? Elle sera masquée aux membres." data-confirm-danger="1">' . $csrf . '<input type="hidden" name="action" value="unpublish_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-secondary btn-sm" style="color:var(--warning); border-color:var(--warning);">⏳ Dépublier</button></form>';
         }
+    }
+    $h .= '<a href="repetition_detail.php?id=' . $rid . '" class="btn btn-secondary btn-sm">📊 Détail</a>';
+    if (!$rPub && !$rClo) {
+        $h .= '<button type="button" class="btn btn-secondary btn-sm" style="border-color:#7dd3fc; color:#7dd3fc;" onclick="toggleRepEdit(' . $rid . ')">✏️ Modifier</button>';
+    }
+    if (!$rClo) {
         $h .= '<form method="POST" style="margin:0;" data-confirm="Clôturer cette répétition ?">' . $csrf . '<input type="hidden" name="action" value="close_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><input type="hidden" name="publish_next" value="0"><button type="submit" class="btn btn-secondary btn-sm">Clôturer</button></form>';
         if ($nextToPublish) {
             $nextDateFr = date('d/m/Y', strtotime($nextToPublish['date_reunion']));
             $h .= '<form method="POST" style="margin:0;" data-confirm="Clôturer cette répétition et publier la suivante (' . $nextDateFr . ') en notifiant les membres ?">' . $csrf . '<input type="hidden" name="action" value="close_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><input type="hidden" name="publish_next" value="1"><button type="submit" class="btn btn-primary btn-sm" style="background:rgba(125,211,252,0.15); border:1px solid rgba(125,211,252,0.5); color:#7dd3fc;">Clôturer + publier la suivante</button></form>';
         }
+        $waAnn = 'https://wa.me/?text=' . rawurlencode(repetition_message_annulation($r, repetition_kourel_nom($pdo, (int) $r['kourel_id'])));
+        $h .= '<form id="cancel-rep-' . $rid . '" method="POST" style="margin:0;">' . $csrf . '<input type="hidden" name="action" value="cancel_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="button" class="btn btn-danger btn-sm" onclick="annulerRepetition(' . $rid . ', ' . htmlspecialchars(json_encode($waAnn), ENT_QUOTES) . ')">🚫 Annuler</button></form>';
     } else {
         $h .= '<form method="POST" style="margin:0;">' . $csrf . '<input type="hidden" name="action" value="reopen_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-secondary btn-sm">Rouvrir</button></form>';
     }
-    $h .= '<form method="POST" style="margin:0;" data-confirm="Supprimer définitivement cette répétition ?" data-confirm-danger="1">' . $csrf . '<input type="hidden" name="action" value="delete_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-danger btn-sm">Supprimer</button></form>';
+    $h .= '<form method="POST" style="margin:0;" data-confirm="Supprimer définitivement cette répétition ?" data-confirm-danger="1">' . $csrf . '<input type="hidden" name="action" value="delete_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '"><button type="submit" class="btn btn-secondary btn-sm" style="color:var(--danger); border-color:var(--danger);">🗑️ Supprimer</button></form>';
     $h .= '</div>'; // fin actions
     if (!$rPub && !$rClo) {
         $mv = (string) $r['mode'];
@@ -407,7 +445,10 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
         $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Titre</label><input type="text" name="titre" class="form-input" required value="' . htmlspecialchars((string) $r['titre'], ENT_QUOTES) . '"></div>';
         $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2">' . htmlspecialchars((string) ($r['description'] ?? '')) . '</textarea></div>';
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Date</label><input type="date" name="date_reunion" class="form-input" required min="' . date('Y-m-d') . '" value="' . htmlspecialchars((string) $r['date_reunion'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
-        $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure</label><input type="time" name="heure" class="form-input" required step="3600" value="' . htmlspecialchars(dahira_heure_hm((string) $r['heure']), ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
+        $curH = dahira_heure_hm((string) $r['heure']);
+        $optsH = '<option value="">— Heure —</option>';
+        for ($hh = 7; $hh <= 23; $hh++) { $hv = sprintf('%02d:00', $hh); $optsH .= '<option value="' . $hv . '"' . ($curH === $hv ? ' selected' : '') . '>' . $hv . '</option>'; }
+        $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure</label><select name="heure" class="form-input modern-select" required>' . $optsH . '</select></div>';
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Mode</label><select name="mode" class="form-input modern-select r-mode" required><option value="distance"' . $optDist . '>💻 À distance (Zoom)</option><option value="presentiel"' . $optPres . '>🏛️ Présentiel</option></select></div>';
         $h .= '<div class="form-group r-lien" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
         $h .= '<div class="form-group r-lieu" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
@@ -455,7 +496,11 @@ $membersJs = array_map(function ($m) {
         .km-chip .km-name { font-size: 0.85rem; color: var(--white); font-weight: 600; }
         .km-empty { color: var(--text-muted); font-size: 0.86rem; font-style: italic; margin-bottom: 0.75rem; }
         .km-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; border-top: 1px solid var(--glass-border); padding-top: 1rem; margin-top: 0.5rem; }
-        @media (max-width: 600px) { .km-actions .btn { flex: 1 1 100%; width: 100%; justify-content: center; } }
+        @media (max-width: 600px) {
+            .km-actions { flex-direction: column; align-items: stretch; }
+            .km-actions > *, .km-actions form { width: 100%; }
+            .km-actions .btn, .km-actions span.btn { width: 100%; justify-content: center; text-align: center; }
+        }
         .com-filters { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
         .com-filters input { flex: 1 1 240px; border-radius: 50px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 1rem; }
         .com-filters input:focus { outline: none; border-color: var(--accent); }
@@ -616,7 +661,11 @@ $membersJs = array_map(function ($m) {
                         </div>
                         </details>
 
-                        <?php $reps = $kRepetitions[$k['id']] ?? []; ?>
+                        <?php
+                            $repsAll = $kRepetitions[$k['id']] ?? [];
+                            $reps = array_values(array_filter($repsAll, function ($x) { return (int) ($x['annule'] ?? 0) !== 1; }));
+                            $repsAnn = array_values(array_filter($repsAll, function ($x) { return (int) ($x['annule'] ?? 0) === 1; }));
+                        ?>
                         <div data-zone="reps-<?php echo (int) $k['id']; ?>" data-zone-liee="avancement-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
                             <div class="com-sub" style="margin-top:0;">🎵 Répétitions du Kurel</div>
                             <?php if (empty($reps)): ?>
@@ -675,7 +724,17 @@ $membersJs = array_map(function ($m) {
                                 <?php endforeach; ?>
                                 </div>
                             <?php endif; ?>
-                            <details>
+                            <?php if (!empty($repsAnn)): ?>
+                            <details class="com-reu-group" style="margin-bottom:0.75rem;">
+                                <summary style="cursor:pointer; color:#fca5a5; font-weight:700; font-size:0.85rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">🚫 Répétitions annulées <span style="color:var(--text-muted); font-weight:600;">(<?php echo count($repsAnn); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                                <div style="display:flex; flex-direction:column; gap:0.5rem; margin-top:0.5rem;">
+                                    <?php foreach ($repsAnn as $r): ?>
+                                        <?php echo $renderRepetitionItem($r, true); ?>
+                                    <?php endforeach; ?>
+                                </div>
+                            </details>
+                            <?php endif; ?>
+                            <details style="border:1px solid var(--glass-border); border-radius:12px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Créer une répétition</summary>
                                 <form method="POST" class="repetition-create-form kourel-cadre" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
@@ -684,7 +743,7 @@ $membersJs = array_map(function ($m) {
                                     <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required placeholder="Ex: Répétition hebdomadaire du Kurel"></div>
                                     <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"></textarea></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_debut" class="form-input" required min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
-                                    <div class="form-group" style="margin:0;"><label class="form-label">Heure <span style="color:var(--danger)">*</span></label><input type="time" name="heure" class="form-input" required step="3600" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Heure <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): $hv = sprintf('%02d:00', $hh); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endfor; ?></select></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Mode <span style="color:var(--danger)">*</span></label><select name="mode" class="form-input modern-select r-mode" required><option value="distance">💻 À distance (Zoom)</option><option value="presentiel" selected>🏛️ Présentiel</option></select></div>
                                     <?php // La Khassida travaillée vient du programme du Kurel : la mélodie suit. ?>
                                     <div class="form-group" style="grid-column:1 / -1; margin:0; min-width:0;">
@@ -1257,6 +1316,16 @@ $membersJs = array_map(function ($m) {
         function toggleRepEdit(id) {
             var el = document.getElementById('rep-edit-' + id);
             if (el) { el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none'; }
+        }
+        // Annulation : confirmation avec option d'ouvrir WhatsApp (message d'annulation)
+        function annulerRepetition(id, waLink) {
+            var submit = function () { var f = document.getElementById('cancel-rep-' + id); if (f) { f.submit(); } };
+            if (window.modernConfirm) {
+                window.modernConfirm('Annuler cette répétition et notifier les membres du Kurel ?', submit, {
+                    danger: true, bouton: 'Annuler',
+                    extra: { label: '🟢 Annuler + WhatsApp', style: 'background:#25D366;border:1px solid #25D366;color:#053b21;font-weight:700;', onOk: function () { try { window.open(waLink, '_blank'); } catch (e) {} submit(); } }
+                });
+            } else { submit(); }
         }
         // Appelée au chargement, puis sur chaque zone remise en place : les
         // écouteurs d'un formulaire remplacé sont partis avec l'ancien noeud.

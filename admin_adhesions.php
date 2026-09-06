@@ -272,6 +272,7 @@ function filter_select($id, $label, $options) {
                                         <div class="table-actions">
                                             <a href="profile.php?id=<?php echo (int)$a['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">Voir</a>
                                             <a href="membre.php?id=<?php echo (int)$a['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">Modifier</a>
+                                            <?php if ($a['status'] !== 'approved'): ?>
                                             <button type="button"
                                                 onclick='showSuivi(<?php echo json_encode([
                                                     "id" => (int)$a["id"],
@@ -284,6 +285,7 @@ function filter_select($id, $label, $options) {
                                                     "test_kourel" => $a["test_kourel"],
                                                 ], JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>)'
                                                 class="btn btn-secondary btn-sm">Suivi</button>
+                                            <?php endif; ?>
                                             <?php if ($a['status'] !== 'approved'): ?>
                                                 <button onclick="handleAction('approve', <?php echo $a['id']; ?>, '<?php echo addslashes(htmlspecialchars($name)); ?>')" class="btn btn-primary btn-sm" style="background:var(--success); box-shadow:none;">Valider</button>
                                             <?php else: ?>

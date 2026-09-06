@@ -10,6 +10,10 @@
  * WhatsApp Business) ; envoi e-mail via le client SMTP autonome du site.
  */
 
+// Texte de bas de page (signature) par défaut, ajouté aux messages WhatsApp et e-mails.
+// Modifiable dans admin_planning.php (paramètre « dahira_signature »).
+const DAHIRA_SIGNATURE_DEFAUT = 'Sëriñ Muntaxaa Mbakke Yalla nafi Yagg lòolu te wer.🙏🏾';
+
 // ---------------------------------------------------------------------------
 // Dates
 // ---------------------------------------------------------------------------
@@ -26,6 +30,54 @@ function dahira_jour_fr(string $date): string
 function dahira_date_longue(string $date): string
 {
     return dahira_jour_fr($date) . ' ' . date('d/m/Y', strtotime($date));
+}
+
+/** Convertit une heure saisie (« 17h00 », « 17h », « 17:30 ») en « HH:MM ». */
+function dahira_heure_hm(string $heure): string
+{
+    $h = str_replace(['h', 'H'], ':', trim($heure));
+    if (preg_match('/^(\d{1,2}):?(\d{0,2})/', $h, $m)) {
+        $hh = str_pad($m[1], 2, '0', STR_PAD_LEFT);
+        $mm = ($m[2] !== '') ? str_pad($m[2], 2, '0', STR_PAD_LEFT) : '00';
+        return $hh . ':' . $mm;
+    }
+    return '00:00';
+}
+
+/**
+ * État temporel d'un événement : 'avenir', 'encours' ou 'termine'.
+ * Utilise l'heure de début et, si fournie, l'heure de fin. Sans heure de fin,
+ * l'événement est « en cours » le jour même après le début, « terminé » le lendemain.
+ */
+function dahira_event_etat(string $date, string $heureDebut, ?string $heureFin = null): string
+{
+    $now = time();
+    $start = strtotime($date . ' ' . dahira_heure_hm($heureDebut));
+    if ($start === false) {
+        if ($date < date('Y-m-d')) { return 'termine'; }
+        if ($date > date('Y-m-d')) { return 'avenir'; }
+        return 'encours';
+    }
+    if ($now < $start) { return 'avenir'; }
+    if ($heureFin !== null && trim($heureFin) !== '') {
+        $end = strtotime($date . ' ' . dahira_heure_hm($heureFin));
+        if ($end !== false) { return $now > $end ? 'termine' : 'encours'; }
+    }
+    // Pas d'heure de fin : en cours le jour même, terminé une fois le jour passé
+    return $date < date('Y-m-d') ? 'termine' : 'encours';
+}
+
+/**
+ * La validation de présence est-elle ouverte ? Vrai seulement à partir de
+ * l'heure de début de l'événement (date + heure de début déjà atteinte).
+ */
+function dahira_presence_ouverte(string $date, string $heureDebut): bool
+{
+    $ts = strtotime($date . ' ' . dahira_heure_hm($heureDebut));
+    if ($ts === false) {
+        return $date <= date('Y-m-d');
+    }
+    return time() >= $ts;
 }
 
 /** Prochains dimanches (un dimanche sur deux) entre deux dates. */
@@ -93,11 +145,22 @@ function dahira_wa_link(?string $phone, string $message, string $default_country
         : 'https://wa.me/?text=' . $text;
 }
 
-/** Bouton WhatsApp vert, ouvrant un nouvel onglet. */
-function dahira_wa_button(string $link, string $label = 'Partager sur WhatsApp', bool $small = false): string
+/**
+ * Bouton WhatsApp vert, ouvrant un nouvel onglet.
+ * Si $disabled est vrai, le bouton est affiché grisé et non cliquable
+ * (ex. tant que l'événement n'est pas publié).
+ */
+function dahira_wa_button(string $link, string $label = 'Partager sur WhatsApp', bool $small = false, bool $disabled = false): string
 {
     $padding = $small ? '0.3rem 0.7rem' : '0.6rem 1.1rem';
     $font = $small ? '0.76rem' : '0.9rem';
+    if ($disabled) {
+        return '<span title="Disponible une fois l\'événement publié" aria-disabled="true"'
+            . ' style="display:inline-flex;align-items:center;gap:0.4rem;background:rgba(37,211,102,0.22);'
+            . 'color:rgba(255,255,255,0.5);font-weight:700;font-size:' . $font . ';padding:' . $padding . ';'
+            . 'border-radius:50px;white-space:nowrap;cursor:not-allowed;opacity:0.65;">'
+            . '<span>🟢</span><span>' . htmlspecialchars($label) . '</span></span>';
+    }
     return '<a href="' . htmlspecialchars($link) . '" target="_blank" rel="noopener"'
         . ' style="display:inline-flex;align-items:center;gap:0.4rem;background:#25D366;color:#06281a;'
         . 'font-weight:700;font-size:' . $font . ';padding:' . $padding . ';border-radius:50px;'
@@ -117,29 +180,36 @@ function dahira_wa_button(string $link, string $label = 'Partager sur WhatsApp',
  *    Programme joint ci-dessus.
  *    Sëriñ Muntaxaa Mbakke Yalla nafi Yagg lòolu te wer. »
  */
-function dahira_message_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = ''): string
+function dahira_message_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = '', string $lien = '', string $signature = ''): string
 {
+    if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
+
     $msg = "As-salaamu haleykum,\n\n"
         . "Un Dahira aura lieu ce " . dahira_date_longue($date) . " :\n";
 
     if (trim($lieu) !== '') {
         $msg .= "\n📍 Lieu :\n" . trim($lieu) . "\n";
     }
-    $msg .= "\n🕐 De " . trim($debut) . " à " . trim($fin) . ".\n\n"
-        . "Programme joint ci-dessus.\n\n"
-        . "Sëriñ Muntaxaa Mbakke Yalla nafi Yagg lòolu te wer.";
+    $msg .= "\n🕐 De " . trim($debut) . " à " . trim($fin) . ".";
+    $msg .= "\n📋 Commission Secrétariat Général.";
 
     if (trim($programme) !== '') {
         $msg .= "\n\n🗓️ *Programme :*\n" . trim($programme);
     }
+    if (trim($lien) !== '') {
+        $msg .= "\n\n👉 Détails et présence :\n" . trim($lien);
+    }
+    // Bas de page (signature) à la toute fin du message
+    $msg .= "\n\n" . trim($signature);
     return $msg;
 }
 
 /**
  * Corps HTML d'un e-mail annonçant un Dahira.
  */
-function dahira_email_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = ''): string
+function dahira_email_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = '', string $signature = ''): string
 {
+    if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
     $date_fr = date('d/m/Y', strtotime($date));
     $jour = dahira_jour_fr($date);
 
@@ -148,7 +218,7 @@ function dahira_email_annonce(string $date, string $lieu, string $debut, string 
         . '<p style="color:#333;">Un <strong>Dahira</strong> aura lieu ce Dimanche '
         . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> :</p>'
         . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 16px;color:#1b4332;">'
-        . '📍 ' . nl2br(htmlspecialchars(trim($lieu))) . '<br>🕐 De <strong>' . htmlspecialchars($debut) . '</strong> à <strong>' . htmlspecialchars($fin) . '</strong></p>';
+        . '📍 ' . nl2br(htmlspecialchars(trim($lieu))) . '<br>🕐 De <strong>' . htmlspecialchars($debut) . '</strong> à <strong>' . htmlspecialchars($fin) . '</strong><br>📋 Commission Secrétariat Général</p>';
 
     if (trim($programme) !== '') {
         $inner .= '<h3 style="color:#1b4332;margin:20px 0 8px;">🗓️ Programme</h3>'
@@ -156,7 +226,7 @@ function dahira_email_annonce(string $date, string $lieu, string $debut, string 
             . htmlspecialchars(trim($programme)) . '</div>';
     }
 
-    $inner .= '<p style="color:#333;margin-top:18px;">Sëriñ Muntaxaa Mbakke Yalla nafi Yagg lòolu te wer. 🤲</p>'
+    $inner .= '<p style="color:#333;margin-top:18px;">' . nl2br(htmlspecialchars(trim($signature))) . '</p>'
         . '<p style="color:#888;font-size:12px;">— Dahira Touba Lyon (Mubawwa-A-Sidqin)</p>'
         . '</div>';
 

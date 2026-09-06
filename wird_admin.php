@@ -7,9 +7,29 @@ require_once __DIR__ . '/wird_guard.php';   // $__isAdmin, $__isCulteManager, $p
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/dahira_emails.php'; // dahira_base_url(), send_smtp_mail()
 require_once __DIR__ . '/notification_helper.php'; // cloche notifications
+require_once __DIR__ . '/wird_period_helper.php';  // libellé de période
 
 $error = '';
 $success = '';
+
+/** Date de fin d'une période selon sa périodicité (bornes incluses). */
+function wird_period_end(string $debut, string $per): string
+{
+    $d = new DateTime($debut);
+    if ($per === 'semaine') { $d->modify('+6 days'); }
+    elseif ($per === 'quinzaine') { $d->modify('+13 days'); }
+    elseif ($per === 'mois') { $d->modify('+1 month')->modify('-1 day'); }
+    return $d->format('Y-m-d');
+}
+/** Date de début de la période suivante. */
+function wird_next_start(string $debut, string $per): string
+{
+    $d = new DateTime($debut);
+    if ($per === 'semaine') { $d->modify('+7 days'); }
+    elseif ($per === 'quinzaine') { $d->modify('+14 days'); }
+    elseif ($per === 'mois') { $d->modify('+1 month'); }
+    return $d->format('Y-m-d');
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate()) {
@@ -30,16 +50,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $titre = trim($_POST['titre'] ?? '');
                 $desc = trim($_POST['description'] ?? '');
                 $groupe = trim($_POST['groupe'] ?? '');
+                // Périodicité : ponctuelle (défaut) ou semaine / quinzaine / mois
+                $periodicite = $_POST['periodicite'] ?? 'ponctuelle';
+                if (!in_array($periodicite, ['ponctuelle', 'semaine', 'quinzaine', 'mois'], true)) { $periodicite = 'ponctuelle'; }
+                // Réallocation aux mêmes membres : seulement si périodique
+                $realloc = ($periodicite !== 'ponctuelle' && !empty($_POST['realloc_meme_membre'])) ? 1 : 0;
+                // Nombre de Juz par membre : un seul (défaut) ou plusieurs
+                $unJuz = (($_POST['juz_par_membre'] ?? 'un') === 'plusieurs') ? 0 : 1;
                 if ($titre === '') {
                     $error = "Le titre de la session est obligatoire.";
-                } else {
+                } elseif ($periodicite === 'ponctuelle') {
+                    // Session unique (non datée) — en attente par défaut (non visible des membres)
                     $token = bin2hex(random_bytes(12));
-                    $pdo->prepare("INSERT INTO quran_sessions (titre, description, groupe, token) VALUES (?, ?, ?, ?)")
-                        ->execute([$titre, $desc !== '' ? $desc : null, $groupe !== '' ? $groupe : null, $token]);
+                    $pdo->prepare("INSERT INTO quran_sessions (titre, description, groupe, token, periodicite, realloc_meme_membre, lance, un_juz_par_membre) VALUES (?, ?, ?, ?, 'ponctuelle', 0, 0, ?)")
+                        ->execute([$titre, $desc !== '' ? $desc : null, $groupe !== '' ? $groupe : null, $token, $unJuz]);
                     $newId = (int) $pdo->lastInsertId();
                     $ins = $pdo->prepare("INSERT INTO quran_parts (session_id, numero, statut) VALUES (?, ?, 'libre')");
                     for ($n = 1; $n <= 30; $n++) { $ins->execute([$newId, $n]); }
-                    $success = "Session « " . $titre . " » lancée (30 parties).";
+                    $success = "Session « " . $titre . " » créée (30 parties) — en attente. Lancez-la depuis le suivi pour la rendre visible des membres.";
+                } else {
+                    // Série périodique : générer le calendrier de la date de début à la date de fin
+                    $dateDebut = (string)($_POST['date_debut'] ?? '');
+                    if (!DateTime::createFromFormat('Y-m-d', $dateDebut)) { $dateDebut = date('Y-m-d'); }
+                    $dateFin = (string)($_POST['date_fin'] ?? '');
+                    if (!DateTime::createFromFormat('Y-m-d', $dateFin) || $dateFin < $dateDebut) {
+                        // Date de fin absente/invalide : une seule période
+                        $dateFin = wird_period_end($dateDebut, $periodicite);
+                    }
+                    $pdo->beginTransaction();
+                    $serieId = 0; $prevId = null; $curStart = $dateDebut; $nbPeriodes = 0;
+                    $insPart = $pdo->prepare("INSERT INTO quran_parts (session_id, numero, statut) VALUES (?, ?, 'libre')");
+                    $insSess = $pdo->prepare("INSERT INTO quran_sessions (titre, description, groupe, token, periodicite, realloc_meme_membre, parent_id, date_debut, date_fin, serie_id, lance, un_juz_par_membre) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    // Sécurité : borne haute pour éviter toute boucle excessive
+                    while ($curStart <= $dateFin && $nbPeriodes < 104) {
+                        $curEnd = wird_period_end($curStart, $periodicite);
+                        if ($curEnd > $dateFin) { $curEnd = $dateFin; } // dernière période bornée à la date de fin
+                        $token = bin2hex(random_bytes(12));
+                        // Toutes les périodes démarrent en attente (à lancer depuis le suivi)
+                        $insSess->execute([$titre, $desc !== '' ? $desc : null, $groupe !== '' ? $groupe : null, $token, $periodicite, $realloc, $prevId, $curStart, $curEnd, $serieId ?: null, 0, $unJuz]);
+                        $id = (int) $pdo->lastInsertId();
+                        if ($serieId === 0) { $serieId = $id; $pdo->prepare("UPDATE quran_sessions SET serie_id = ? WHERE id = ?")->execute([$serieId, $id]); }
+                        for ($n = 1; $n <= 30; $n++) { $insPart->execute([$id, $n]); }
+                        $prevId = $id;
+                        $nbPeriodes++;
+                        $curStart = wird_next_start($curStart, $periodicite);
+                    }
+                    $pdo->commit();
+                    $success = "Série « " . $titre . " » créée — " . $nbPeriodes . " période(s) planifiées du " . date('d/m/Y', strtotime($dateDebut)) . " au " . date('d/m/Y', strtotime($dateFin)) . ". Toutes en attente : lancez la 1re période depuis le suivi pour la rendre visible des membres.";
+                }
+            } elseif ($action === 'next_period' && $sid > 0) {
+                // Lancer la période suivante d'une session périodique
+                $srcStmt = $pdo->prepare("SELECT * FROM quran_sessions WHERE id = ?");
+                $srcStmt->execute([$sid]);
+                $src = $srcStmt->fetch();
+                if (!$src) {
+                    $error = "Session introuvable.";
+                } elseif (($src['periodicite'] ?? 'ponctuelle') === 'ponctuelle') {
+                    $error = "Cette session n'est pas périodique.";
+                } else {
+                    $per = (string)$src['periodicite'];
+                    $serie = (int)($src['serie_id'] ?: $src['id']);
+                    if (empty($src['serie_id'])) { $pdo->prepare("UPDATE quran_sessions SET serie_id = ? WHERE id = ?")->execute([$serie, (int)$src['id']]); }
+                    // Prochaine période : lendemain de la dernière date de fin de la série
+                    $lf = $pdo->prepare("SELECT MAX(date_fin) FROM quran_sessions WHERE serie_id = ?");
+                    $lf->execute([$serie]);
+                    $lastFin = $lf->fetchColumn();
+                    if ($lastFin) { $ns = new DateTime($lastFin); $ns->modify('+1 day'); $newStart = $ns->format('Y-m-d'); }
+                    else { $newStart = date('Y-m-d'); }
+                    $newEnd = wird_period_end($newStart, $per);
+                    $token = bin2hex(random_bytes(12));
+                    $pdo->prepare("INSERT INTO quran_sessions (titre, description, groupe, token, periodicite, realloc_meme_membre, parent_id, date_debut, date_fin, serie_id, un_juz_par_membre) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                        ->execute([$src['titre'], $src['description'], $src['groupe'], $token, $src['periodicite'], (int)$src['realloc_meme_membre'], $sid, $newStart, $newEnd, $serie, (int)($src['un_juz_par_membre'] ?? 1)]);
+                    $newId = (int) $pdo->lastInsertId();
+                    // Clôturer la période précédente avant de lancer la suivante
+                    $pdo->prepare("UPDATE quran_sessions SET statut='terminee', closed_at=NOW() WHERE id=?")->execute([$sid]);
+                    if ((int)$src['realloc_meme_membre'] === 1) {
+                        // Réattribuer les mêmes Juz aux mêmes personnes (à relire cette période)
+                        $oldStmt = $pdo->prepare("SELECT numero, membre_id, membre_nom, owner_token FROM quran_parts WHERE session_id = ? AND membre_id IS NOT NULL AND membre_id > 0");
+                        $oldStmt->execute([$sid]);
+                        $assign = [];
+                        foreach ($oldStmt->fetchAll() as $o) { $assign[(int)$o['numero']] = $o; }
+                        $insR = $pdo->prepare("INSERT INTO quran_parts (session_id, numero, statut, membre_id, membre_nom, owner_token, reserved_at) VALUES (?, ?, 'reservee', ?, ?, ?, NOW())");
+                        $insL = $pdo->prepare("INSERT INTO quran_parts (session_id, numero, statut) VALUES (?, ?, 'libre')");
+                        for ($n = 1; $n <= 30; $n++) {
+                            if (isset($assign[$n])) {
+                                $a = $assign[$n];
+                                $insR->execute([$newId, $n, (int)$a['membre_id'], $a['membre_nom'], $a['owner_token']]);
+                            } else {
+                                $insL->execute([$newId, $n]);
+                            }
+                        }
+                        $success = "Période précédente clôturée. Nouvelle période lancée — mêmes Juz réattribués aux mêmes personnes.";
+                    } else {
+                        $insL = $pdo->prepare("INSERT INTO quran_parts (session_id, numero, statut) VALUES (?, ?, 'libre')");
+                        for ($n = 1; $n <= 30; $n++) { $insL->execute([$newId, $n]); }
+                        $success = "Période précédente clôturée. Nouvelle période lancée (30 Juz libres).";
+                    }
                 }
             } elseif ($action === 'close_session' && $sid > 0) {
                 $pdo->prepare("UPDATE quran_sessions SET statut='terminee', closed_at=NOW() WHERE id=?")->execute([$sid]);
@@ -47,6 +153,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($action === 'reopen_session' && $sid > 0) {
                 $pdo->prepare("UPDATE quran_sessions SET statut='en_cours', closed_at=NULL WHERE id=?")->execute([$sid]);
                 $success = "Session rouverte.";
+            } elseif ($action === 'set_launch' && $sid > 0) {
+                // Lancer / annuler le lancement (revenir en attente)
+                $val = ((int)($_POST['val'] ?? 0) === 1) ? 1 : 0;
+                if ($val === 1) {
+                    // Interdire le lancement tant que la période précédente n'est pas clôturée
+                    $blocked = false;
+                    $srow = $pdo->prepare("SELECT serie_id, date_debut FROM quran_sessions WHERE id=?");
+                    $srow->execute([$sid]);
+                    $srow = $srow->fetch();
+                    if ($srow && !empty($srow['serie_id']) && !empty($srow['date_debut'])) {
+                        $pv = $pdo->prepare("SELECT statut FROM quran_sessions WHERE serie_id=? AND id<>? AND (date_debut < ? OR (date_debut = ? AND id < ?)) ORDER BY date_debut DESC, id DESC LIMIT 1");
+                        $pv->execute([(int)$srow['serie_id'], $sid, $srow['date_debut'], $srow['date_debut'], $sid]);
+                        $prevStatut = $pv->fetchColumn();
+                        if ($prevStatut !== false && $prevStatut !== 'terminee') { $blocked = true; }
+                    }
+                    if ($blocked) {
+                        $error = "Impossible de lancer cette période : la période précédente n'est pas encore clôturée.";
+                    } else {
+                        $pdo->prepare("UPDATE quran_sessions SET lance=1, statut='en_cours', closed_at=NULL WHERE id=?")->execute([$sid]);
+                        $success = "Session lancée — visible des membres.";
+                        // Notifier tous les membres (cloche + Web Push) de l'ouverture de la lecture
+                        try {
+                            $ss = $pdo->prepare("SELECT titre, token, periodicite, serie_id, date_debut, date_fin FROM quran_sessions WHERE id=?");
+                            $ss->execute([$sid]);
+                            $ss = $ss->fetch();
+                            if ($ss) {
+                                $perLbl = wird_period_label($pdo, ['id' => $sid] + $ss);
+                                $body = 'La lecture « ' . $ss['titre'] . ' » est ouverte' . ($perLbl !== '' ? ' — ' . $perLbl : '') . '. Choisissez votre Juz et lisez-le. Jërëjëf ! 🤲';
+                                $lnk = 'wird.php?s=' . (int)$sid . '&t=' . $ss['token'];
+                                $nNotif = troba_notify_all_membres($pdo, 'wird_lance', '📖 Lecture du Coran ouverte', $body, $lnk);
+                                $success .= ' ' . (int)$nNotif . ' membre(s) notifié(s).';
+                            }
+                        } catch (Throwable $e) { error_log('Touba Lyon wird_admin notif lancement: ' . $e->getMessage()); }
+                    }
+                } else {
+                    $pdo->prepare("UPDATE quran_sessions SET lance=0 WHERE id=?")->execute([$sid]);
+                    $success = "Lancement annulé — session repassée en attente (masquée aux membres).";
+                }
+            } elseif ($action === 'set_juz_mode' && $sid > 0) {
+                // Modifier l'option « un seul / plusieurs Juz par membre » après création
+                $val = ((int)($_POST['val'] ?? 0) === 1) ? 1 : 0;
+                $sr = $pdo->prepare("SELECT serie_id FROM quran_sessions WHERE id=?");
+                $sr->execute([$sid]);
+                $serieId = (int)($sr->fetchColumn() ?: 0);
+                if ($serieId > 0) {
+                    // Appliquer à toute la série pour rester cohérent
+                    $pdo->prepare("UPDATE quran_sessions SET un_juz_par_membre=? WHERE serie_id=?")->execute([$val, $serieId]);
+                } else {
+                    $pdo->prepare("UPDATE quran_sessions SET un_juz_par_membre=? WHERE id=?")->execute([$val, $sid]);
+                }
+                $success = $val === 1 ? "Réglage appliqué : un seul Juz par membre." : "Réglage appliqué : plusieurs Juz autorisés par membre.";
             } elseif ($action === 'delete_session' && $sid > 0) {
                 $pdo->prepare("DELETE FROM quran_parts WHERE session_id=?")->execute([$sid]);
                 $pdo->prepare("DELETE FROM quran_sessions WHERE id=?")->execute([$sid]);
@@ -61,7 +218,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 require_once __DIR__ . '/send_mail.php';
                 $parts = $pdo->prepare(
                     "SELECT p.id AS part_id, p.numero, p.membre_id, p.membre_nom,
-                            m.email, m.prenom, m.nom, s.titre AS session_titre, s.token
+                            m.email, m.prenom, m.nom, s.titre AS session_titre, s.token,
+                            s.periodicite, s.realloc_meme_membre
                      FROM quran_parts p
                      JOIN quran_sessions s ON s.id = p.session_id
                      LEFT JOIN membres m ON m.id = p.membre_id
@@ -75,10 +233,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $byMembre = [];
                 $sessionTitre = '';
                 $sessionToken = '';
+                $sessionPer = 'ponctuelle';
+                $sessionRealloc = 0;
                 foreach ($parts as $pt) {
                     $sessionTitre = $pt['session_titre'];
                     $sessionToken = $pt['token'];
+                    $sessionPer = (string)($pt['periodicite'] ?? 'ponctuelle');
+                    $sessionRealloc = (int)($pt['realloc_meme_membre'] ?? 0);
                     $byMembre[(int)$pt['membre_id']][] = $pt;
+                }
+                // Encart périodicité (sessions périodiques uniquement) pour l'e-mail
+                $perLabelsMail = ['semaine' => 'chaque semaine (hebdomadaire)', 'quinzaine' => 'toutes les deux semaines', 'mois' => 'chaque mois (mensuelle)'];
+                $periodHtml = '';
+                if ($sessionPer !== 'ponctuelle') {
+                    $periodHtml = '<p style="background:#eef6f1;border:1px solid #2d6a4f;border-radius:10px;padding:10px 14px;color:#1b4332;font-size:14px;">'
+                        . '🔁 <strong>Lecture périodique</strong> : ' . htmlspecialchars($perLabelsMail[$sessionPer] ?? $sessionPer) . '.<br>'
+                        . ($sessionRealloc === 1
+                            ? '👥 Vos Juz vous sont <strong>réattribués automatiquement à chaque période</strong> — merci de les relire et valider à chaque fois.'
+                            : '🆕 À chaque période, les Juz sont remis à zéro (choix libre).')
+                        . '</p>';
                 }
 
                 if (empty($byMembre)) {
@@ -117,6 +290,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 . '<p style="color:#333;">Dans le cadre de la lecture collective du Coran '
                                 . '<strong>' . htmlspecialchars($sessionTitre) . '</strong>, vous avez réservé les Juz suivants :</p>'
                                 . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 16px;font-size:18px;font-weight:bold;color:#1b4332;text-align:center;">Juz ' . $listeJuz . '</p>'
+                                . $periodHtml
                                 . '<p style="color:#333;">Pensez à valider votre lecture pour faire avancer le Khatm. 🤲</p>'
                                 . dahira_email_button($lienBase, 'Valider mes Juz')
                                 . '<p style="color:#888;font-size:12px;">— Dahira Touba Lyon (Mubawwa-A-Sidqin)</p>'
@@ -131,6 +305,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Action non autorisée.";
             }
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
             error_log('Touba Lyon wird_admin: ' . $e->getMessage());
             $error = "Une erreur technique est survenue. Veuillez réessayer plus tard.";
         }
@@ -198,6 +373,34 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
         .wird-stat .l { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.15rem; }
         .wird-collapsible { display: none; }
         .wird-collapsible.open { display: block; }
+        /* Sélecteurs de date : forcer à tenir dans leur colonne (webkit impose une largeur mini) */
+        .wird-date-row input[type="date"] {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+        /* Date de début / date de fin : empilées sur mobile */
+        @media (max-width: 600px) {
+            .wird-date-row { flex-direction: column; }
+            .wird-date-row > div { min-width: 0 !important; width: 100%; }
+            .wird-date-row input[type="date"] { min-width: 0 !important; width: 100% !important; font-size: 0.9rem; padding-left: 0.6rem; padding-right: 0.4rem; }
+            /* En-tête de session : infos centrées, pleine largeur, badges regroupés */
+            .wird-head { flex-direction: column; align-items: center; text-align: center; }
+            .wird-head > div { width: 100%; }
+            .wird-head h3 { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0.3rem; }
+            .wird-head .wird-meta { text-align: center !important; }
+            /* Boutons d'action : empilés, centrés, pleine largeur */
+            .wird-actions { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+            .wird-actions > * { width: 100%; }
+            .wird-actions form { display: block; width: 100%; margin: 0; }
+            .wird-actions .btn { width: 100%; justify-content: center; text-align: center; }
+            /* Lien de partage (copier) : champ + bouton empilés pleine largeur */
+            .wird-link { flex-direction: column; }
+            .wird-link .btn { width: 100%; justify-content: center; }
+        }
     </style>
 </head>
 <body>
@@ -216,9 +419,36 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
             <?php
                 $sessionsEnCours = [];
                 $sessionsCloturees = [];
+                // Les périodes d'une même série périodique sont regroupées : une
+                // seule carte représentative par série (le calendrier complet est
+                // visible dans le suivi). Les sessions ponctuelles restent isolées.
+                $serieBuckets = [];
                 foreach ($sessions as $s) {
-                    if ($s['statut'] === 'en_cours') { $sessionsEnCours[] = $s; }
-                    else { $sessionsCloturees[] = $s; }
+                    $sPer = $s['periodicite'] ?? 'ponctuelle';
+                    if ($sPer === 'ponctuelle' || empty($s['serie_id'])) {
+                        if ($s['statut'] === 'en_cours') { $sessionsEnCours[] = $s; }
+                        else { $sessionsCloturees[] = $s; }
+                    } else {
+                        $serieBuckets[(int)$s['serie_id']][] = $s;
+                    }
+                }
+                foreach ($serieBuckets as $skey => $periods) {
+                    usort($periods, function ($a, $b) {
+                        $da = (string)($a['date_debut'] ?? ''); $db = (string)($b['date_debut'] ?? '');
+                        if ($da === $db) { return ((int)$a['id']) <=> ((int)$b['id']); }
+                        return strcmp($da, $db);
+                    });
+                    $hasEnCours = false;
+                    foreach ($periods as $pp) { if ($pp['statut'] === 'en_cours') { $hasEnCours = true; break; } }
+                    // Représentant : 1re période en cours (par date), sinon la dernière
+                    $rep = null;
+                    foreach ($periods as $pp) { if ($pp['statut'] === 'en_cours') { $rep = $pp; break; } }
+                    if (!$rep) { $rep = $periods[count($periods) - 1]; }
+                    $rep['_serie_count'] = count($periods);
+                    $rep['_serie_start'] = $periods[0]['date_debut'] ?? null;
+                    $rep['_serie_end']   = $periods[count($periods) - 1]['date_fin'] ?? null;
+                    if ($hasEnCours) { $sessionsEnCours[] = $rep; }
+                    else { $sessionsCloturees[] = $rep; }
                 }
                 // Fonction de rendu d'une carte session (réutilisée pour les 2 sections)
                 $renderSessionCard = function ($s) use ($pdo, $prog, $baseUrl, $waGroup) {
@@ -229,22 +459,62 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
                     $pct = round($lues / $tot * 100);
                     $link = $baseUrl . '/wird.php?s=' . (int)$s['id'] . '&t=' . htmlspecialchars($s['token'], ENT_QUOTES);
                     $enCours = ($s['statut'] === 'en_cours');
+                    // Détail de périodicité (sessions périodiques uniquement)
+                    $perLabelsMsg = ['semaine' => 'chaque semaine (hebdomadaire)', 'quinzaine' => 'toutes les deux semaines', 'mois' => 'chaque mois (mensuelle)'];
+                    $perMsg = (string)($s['periodicite'] ?? 'ponctuelle');
+                    $reallocMsg = ((int)($s['realloc_meme_membre'] ?? 0) === 1);
+                    $periodTxt = '';
+                    if ($perMsg !== 'ponctuelle') {
+                        $periodTxt = "\n🔁 *Lecture périodique* : " . ($perLabelsMsg[$perMsg] ?? $perMsg) . ".\n"
+                            . ($reallocMsg
+                                ? "👥 Les mêmes Juz sont réattribués aux mêmes personnes à chaque période.\n"
+                                : "🆕 Les Juz sont remis à zéro (choix libre) à chaque période.\n");
+                    }
                     $shareMsg = "Assalamu aleykum 🙏\n\n"
                         . "📖 *Lecture collective du Coran (Khatm)*\n"
                         . "« " . $s['titre'] . " »\n"
                         . (!empty($s['description']) ? ($s['description'] . "\n") : "")
                         . "\nNous lançons la lecture des *30 Juz* du Saint Coran. 🌙\n"
-                        . "Chaque personne choisit un ou plusieurs Juz, le(s) lit, puis *valide sa lecture* pour compléter le Khatm ensemble.\n\n"
-                        . "👉 Choisissez votre Juz ici :\n" . $link . "\n\n"
+                        . "Chaque personne choisit un ou plusieurs Juz, le(s) lit, puis *valide sa lecture* pour compléter le Khatm ensemble.\n"
+                        . $periodTxt
+                        . "\n👉 Choisissez votre Juz ici :\n" . $link . "\n\n"
                         . "Qu'Allah accepte nos lectures et nos invocations. 🤲\n"
                         . "— Dahira Touba Lyon (Mubawwa-A-Sidqin)";
                     $out = '<div class="glass-card wird-card">';
                     $out .= '<div class="wird-head">';
                     $out .= '<div>';
                     $out .= '<h3>📖 ' . htmlspecialchars($s['titre']) . ' <span class="badge ' . ($enCours ? 'badge-approved' : 'badge-pending') . '" style="margin-left:0.4rem;">' . ($enCours ? 'En cours' : 'Clôturée') . '</span>';
+                    if ($enCours) {
+                        $lanceB = ((int)($s['lance'] ?? 1) === 1);
+                        $out .= '<span class="badge" style="' . ($lanceB ? 'background:rgba(45,106,79,0.25); color:#7bd8a6; border:1px solid rgba(45,106,79,0.5);' : 'background:rgba(255,255,255,0.06); color:var(--text-muted);') . ' margin-left:0.3rem;">' . ($lanceB ? '🚀 Lancée' : '⏳ En attente') . '</span>';
+                    }
                     if (!empty($s['groupe'])) { $out .= '<span class="badge" style="background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.4); margin-left:0.3rem;">' . htmlspecialchars($s['groupe']) . '</span>'; }
+                    $perLabels = ['semaine' => 'Hebdomadaire', 'quinzaine' => 'Quinzaine', 'mois' => 'Mensuelle'];
+                    $per = (string)($s['periodicite'] ?? 'ponctuelle');
+                    if ($per !== 'ponctuelle') {
+                        $reallocOn = ((int)($s['realloc_meme_membre'] ?? 0) === 1);
+                        $out .= '<span class="badge" style="background:rgba(125,211,252,0.15); color:#7dd3fc; border:1px solid rgba(125,211,252,0.4); margin-left:0.3rem;">🔁 ' . htmlspecialchars($perLabels[$per] ?? $per) . ($reallocOn ? ' · mêmes membres' : '') . '</span>';
+                    }
+                    // Série regroupée : badge « N périodes »
+                    if (!empty($s['_serie_count'])) {
+                        $out .= '<span class="badge" style="background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.4); margin-left:0.3rem;">📚 Série · ' . (int)$s['_serie_count'] . ' périodes</span>';
+                    }
+                    // Dates : plage de la série entière si regroupée, sinon la période
+                    $ddeb = !empty($s['_serie_count']) ? ($s['_serie_start'] ?? null) : ($s['date_debut'] ?? null);
+                    $dfin = !empty($s['_serie_count']) ? ($s['_serie_end'] ?? null) : ($s['date_fin'] ?? null);
+                    if (!empty($ddeb)) {
+                        $drTxt = 'du ' . date('d/m/Y', strtotime($ddeb)) . (!empty($dfin) ? ' au ' . date('d/m/Y', strtotime($dfin)) : '');
+                        $out .= '<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted); margin-left:0.3rem;">🗓️ ' . htmlspecialchars($drTxt) . '</span>';
+                    }
+                    $unJ = ((int)($s['un_juz_par_membre'] ?? 0) === 1);
+                    $out .= '<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted); margin-left:0.3rem;">' . ($unJ ? '1 Juz / membre' : 'Multi-Juz') . '</span>';
                     $out .= '</h3>';
                     if (!empty($s['description'])) { $out .= '<div class="wird-meta">' . htmlspecialchars($s['description']) . '</div>'; }
+                    // Période correspondante (courante) pour une série périodique
+                    if ($per !== 'ponctuelle') {
+                        $curPerLbl = wird_period_label($pdo, $s);
+                        if ($curPerLbl !== '') { $out .= '<div class="wird-meta" style="color:#7dd3fc; font-weight:600;">📍 Période en cours : ' . htmlspecialchars($curPerLbl) . '</div>'; }
+                    }
                     $out .= '</div>';
                     $out .= '<div class="wird-meta" style="text-align:right;"><strong class="gold-text">' . $lues . '/' . $tot . '</strong> lues<br>' . $res . ' réservées</div>';
                     $out .= '</div>';
@@ -256,44 +526,16 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
                     $out .= '<div class="wird-stat"><div class="v green">' . $res . '</div><div class="l">Réservés</div></div>';
                     $out .= '<div class="wird-stat"><div class="v">' . $libres . '</div><div class="l">Juz libres</div></div>';
                     $out .= '<div class="wird-stat"><div class="v">' . $pct . '%</div><div class="l">Complété</div></div>';
+                    $out .= '<div class="wird-stat"><div class="v" style="font-size:1rem;">' . wird_duree_jh($s['created_at'] ?? null, $s['closed_at'] ?? null) . '</div><div class="l">Durée</div></div>';
                     $out .= '</div>';
                     $out .= '<div class="wird-link">';
                     $out .= '<input type="text" readonly value="' . $link . '" id="wl-' . (int)$s['id'] . '" onclick="this.select()">';
                     $out .= '<button type="button" class="btn btn-secondary btn-sm" onclick="copyWird(\'wl-' . (int)$s['id'] . '\')">📋 Copier</button>';
                     $out .= '</div>';
                     $out .= '<div class="wird-actions">';
-                    $out .= '<a href="wird.php?s=' . (int)$s['id'] . '&t=' . htmlspecialchars($s['token'], ENT_QUOTES) . '" target="_blank" class="btn btn-primary btn-sm">🔗 Ouvrir</a>';
-                    $out .= '<a href="https://wa.me/?text=' . rawurlencode($shareMsg) . '" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 WhatsApp</a>';
-                    if ($waGroup !== '') {
-                        $out .= '<button type="button" class="btn btn-sm" style="background:#128C7E; border:1px solid #128C7E; color:#fff; font-weight:700;" onclick="shareGroup(' . htmlspecialchars(json_encode($shareMsg), ENT_QUOTES) . ', ' . htmlspecialchars(json_encode($waGroup), ENT_QUOTES) . ')">🟢 Groupe (copier)</button>';
-                    }
+                    // Seuls « Copier » (ci-dessus) et « Suivi » restent sur la carte ;
+                    // toutes les autres actions ont été déplacées dans wird_suivi.php.
                     $out .= '<a href="wird_suivi.php?s=' . (int)$s['id'] . '" class="btn btn-secondary btn-sm">📊 Suivi</a>';
-                    // Notifier Juz à valider
-                    $out .= '<form action="wird_admin.php" method="POST" style="margin:0;" id="notif-form-' . (int)$s['id'] . '">';
-                    $out .= csrf_field();
-                    $out .= '<input type="hidden" name="action" value="notify_to_validate">';
-                    $out .= '<input type="hidden" name="session_id" value="' . (int)$s['id'] . '">';
-                    $out .= '<button type="button" class="btn btn-sm" style="background:#128C7E; border:1px solid #128C7E; color:#fff; font-weight:700;" onclick="confirmNotif(\'notif-form-' . (int)$s['id'] . '\', \'Relancer les Juz à valider\', \'Envoyer une notification (cloche + e-mail) aux ' . (int)$res . ' membre(s) ayant des Juz réservés non validés de la session « ' . addslashes(htmlspecialchars($s['titre'])) . ' » ?\')">🔔 Notifier Juz à valider</button>';
-                    $out .= '</form>';
-                    // Clôturer / Rouvrir
-                    $out .= '<form action="wird_admin.php" method="POST" style="margin:0;" id="sess-form-' . (int)$s['id'] . '">';
-                    $out .= csrf_field();
-                    $out .= '<input type="hidden" name="session_id" value="' . (int)$s['id'] . '">';
-                    if ($enCours) {
-                        $out .= '<input type="hidden" name="action" value="close_session">';
-                        $out .= '<button type="button" class="btn btn-secondary btn-sm" style="color:var(--warning); border-color:var(--warning);" onclick="confirmWird(\'sess-form-' . (int)$s['id'] . '\', \'Clôturer\', \'Clôturer la session « ' . addslashes(htmlspecialchars($s['titre'])) . ' » ? Elle ne sera plus modifiable.\')">Clôturer</button>';
-                    } else {
-                        $out .= '<input type="hidden" name="action" value="reopen_session">';
-                        $out .= '<button type="submit" class="btn btn-secondary btn-sm">Rouvrir</button>';
-                    }
-                    $out .= '</form>';
-                    // Supprimer
-                    $out .= '<form action="wird_admin.php" method="POST" style="margin:0;" id="del-form-' . (int)$s['id'] . '">';
-                    $out .= csrf_field();
-                    $out .= '<input type="hidden" name="action" value="delete_session">';
-                    $out .= '<input type="hidden" name="session_id" value="' . (int)$s['id'] . '">';
-                    $out .= '<button type="button" class="btn btn-danger btn-sm" onclick="confirmWird(\'del-form-' . (int)$s['id'] . '\', \'Supprimer\', \'Supprimer définitivement la session « ' . addslashes(htmlspecialchars($s['titre'])) . ' » et tout son suivi ? Cette action est irréversible.\')">Supprimer</button>';
-                    $out .= '</form>';
                     $out .= '</div>';
                     $out .= '</div>';
                     return $out;
@@ -327,6 +569,38 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
                         </select>
                     </div>
                     <div class="form-group"><label class="form-label">Description (facultatif)</label><input type="text" name="description" class="form-input" placeholder="Intention, date limite…"></div>
+                    <div class="form-group"><label class="form-label">Juz par membre</label>
+                        <select name="juz_par_membre" class="form-input">
+                            <option value="un" selected>Un seul Juz par membre (recommandé)</option>
+                            <option value="plusieurs">Plusieurs Juz autorisés par membre</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label class="form-label">Périodicité</label>
+                        <select name="periodicite" id="wird-periodicite" class="form-input" onchange="wirdTogglePeriod()">
+                            <option value="ponctuelle">Ponctuelle — une seule fois</option>
+                            <option value="semaine" selected>Périodique — chaque semaine</option>
+                            <option value="quinzaine">Périodique — toutes les 2 semaines</option>
+                            <option value="mois">Périodique — chaque mois</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="wird-realloc-group">
+                        <label class="form-label">🗓️ Calendrier de la série</label>
+                        <div class="wird-date-row" style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                            <div style="flex:1; min-width:150px;">
+                                <label style="color:var(--text-muted); font-size:0.8rem; display:block; margin-bottom:0.2rem;">Date de début</label>
+                                <input type="date" name="date_debut" class="form-input" style="width:100%; max-width:100%; box-sizing:border-box;" value="<?php echo date('Y-m-d'); ?>">
+                            </div>
+                            <div style="flex:1; min-width:150px;">
+                                <label style="color:var(--text-muted); font-size:0.8rem; display:block; margin-bottom:0.2rem;">Date de fin</label>
+                                <input type="date" name="date_fin" class="form-input" style="width:100%; max-width:100%; box-sizing:border-box;" value="<?php echo date('Y-m-d', strtotime('+3 weeks')); ?>">
+                            </div>
+                        </div>
+                        <label style="display:flex; align-items:center; gap:0.5rem; color:#fff; font-size:0.9rem; cursor:pointer; margin-top:0.7rem;">
+                            <input type="checkbox" name="realloc_meme_membre" value="1" checked>
+                            Réattribuer automatiquement les mêmes Juz aux mêmes personnes
+                        </label>
+                        <p style="color:var(--text-muted); font-size:0.78rem; margin:0.35rem 0 0;">Un calendrier de N périodes datées est généré ; le suivi affiche l'avancement de chaque période. Décochez la case pour repartir de zéro à chaque nouvelle période.</p>
+                    </div>
                     <button type="submit" class="btn btn-primary" style="width:100%;">Lancer la session</button>
                 </form>
                 <div style="border-top:1px solid var(--glass-border); margin-top:1rem; padding-top:0.85rem;">
@@ -452,6 +726,14 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
             try { navigator.clipboard.writeText(msg); } catch (e) {}
             window.location.href = link;
         }
+        // Afficher l'option de réallocation seulement si la session est périodique
+        function wirdTogglePeriod(){
+            var sel = document.getElementById('wird-periodicite');
+            var grp = document.getElementById('wird-realloc-group');
+            if (!sel || !grp) return;
+            grp.style.display = (sel.value === 'ponctuelle') ? 'none' : 'block';
+        }
+        document.addEventListener('DOMContentLoaded', wirdTogglePeriod);
         function toggleWirdParams(){
             var d = document.getElementById('wird-params'); var c = document.getElementById('wp-caret');
             var show = (d.style.display === 'none' || d.style.display === '');

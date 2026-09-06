@@ -217,6 +217,24 @@ unset($_SESSION['wird_flash']);
             .w-body div[style*="flex"] { margin-top: 0 !important; flex: 0 0 auto; gap: 0.45rem !important; }
             .w-body div[style*="flex"] .btn { flex: 0 0 auto !important; padding: 0.6rem 0.9rem !important; font-size: 0.9rem !important; white-space: nowrap; }
 
+            /* Juz libre : bouton « Choisir » pleine largeur (centré), V1/V2 pleine largeur */
+            .w-part.libre .w-body > .btn:first-of-type { margin-left: 0; width: 100%; }
+            .w-part.libre .w-body div[style*="flex"] { width: 100%; }
+            .w-part.libre .w-body div[style*="flex"] .btn { flex: 1 1 0 !important; }
+
+            /* Juz lu : même présentation que « réservé par moi » (grande photo centrée en haut,
+               détails centrés, boutons pleine largeur) */
+            .w-part.lue { flex-direction: column; align-items: center; text-align: center; gap: 0.2rem; padding: 0.75rem 0.9rem; }
+            .w-part.lue .w-avatar { width: 84px; height: 84px; margin: 0 auto 0.25rem; }
+            .w-part.lue .w-avatar-ini { font-size: 1.9rem; }
+            .w-part.lue .w-body { width: 100%; flex-direction: column; align-items: stretch; gap: 0.35rem; }
+            .w-part.lue .w-juz { text-align: center; font-size: 1.05rem; font-weight: 800; }
+            .w-part.lue .w-who { justify-content: center; flex: 0 0 auto; min-height: 0; margin: 0; }
+            .w-part.lue .w-body .btn { width: 100%; margin-left: 0; }
+            /* V1 et V2 côte à côte sur une seule ligne, pleine largeur */
+            .w-part.lue .w-body div[style*="flex"] { width: 100%; flex-direction: row; gap: 0.5rem !important; margin: 0 !important; }
+            .w-part.lue .w-body div[style*="flex"] .btn { flex: 1 1 0 !important; width: auto; }
+
             /* Juz réservé par MOI : grande photo centrée en haut ; « Juz N » sous la photo ;
                les boutons principaux pleine largeur (un par ligne), V1/V2 sur une même ligne */
             .w-part.mine { flex-direction: column; align-items: center; text-align: center; gap: 0.2rem; padding: 0.75rem 0.9rem; }

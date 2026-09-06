@@ -218,9 +218,12 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                 }
 
                 if (empty($error)) {
+                    // Un compte déjà validé ne repasse jamais en attente lors d'un
+                    // complément / d'une mise à jour de ses informations.
+                    $estApprouve = (($member['status'] ?? '') === 'approved');
                     // Check if identity details or photo were updated
-                    $identityChanged = ($civilite !== $member['civilite'] || $nom !== $member['nom'] || $prenom !== $member['prenom'] || $email !== $member['email'] || $photoUploaded);
-                    
+                    $identityChanged = (!$estApprouve) && ($civilite !== $member['civilite'] || $nom !== $member['nom'] || $prenom !== $member['prenom'] || $email !== $member['email'] || $photoUploaded);
+
                     // Build update query
                     $sql = "UPDATE membres SET civilite = ?, nom = ?, prenom = ?, email = ?, adresse = ?, code_postal = ?, commune = ?, telephone = ?, statut = ?, secteur_activite = ?, profession = ?, annee_integration = ?, commentaires = ?, souhait_commission = ?";
                     $params = [$civilite, $nom, $prenom, $email, ($adresse ?: null), $code_postal, $commune, $telephone, $statut, $secteur_activite, $profession, $annee_integration, ($commentaires ?: null), ($souhait_commission ?: null)];
@@ -688,31 +691,16 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
 
     <!-- Success/Error Notifications Modal -->
     <?php if (!empty($success) || !empty($error)): ?>
-    <div id="notification-modal" class="modal-overlay active" style="display: flex;">
-        <div class="modal-card glass-card">
-            <div class="modal-header">
-                <?php if (!empty($success)): ?>
-                    <h3 class="gold-text">Mise à jour réussie</h3>
-                <?php else: ?>
-                    <h3 style="color: var(--danger);">Une erreur est survenue</h3>
-                <?php endif; ?>
-            </div>
-            <div class="modal-body">
-                <p>
-                    <?php 
-                        if (!empty($success)) {
-                            echo htmlspecialchars($success);
-                        } else {
-                            echo htmlspecialchars($error);
-                        }
-                    ?>
-                </p>
-            </div>
-            <div class="modal-footer">
-                <button onclick="closeNotificationModal()" class="btn btn-primary btn-sm">OK</button>
-            </div>
-        </div>
-    </div>
+    <script>
+        (function () {
+            var msg = <?php echo json_encode(!empty($success) ? $success : $error, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+            var titre = <?php echo json_encode(!empty($success) ? 'Mise à jour réussie' : 'Une erreur est survenue', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+            var opts = {};
+            <?php if (!empty($success)): ?>opts.success = true;<?php endif; ?>
+            <?php if (!empty($error) && empty($success)): ?>opts.danger = true;<?php endif; ?>
+            window.modernAlert(msg, titre, null, opts);
+        })();
+    </script>
     <?php endif; ?>
 
     <?php if ($integrateur): ?>
@@ -787,17 +775,6 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
             if (m) m.addEventListener('click', function (e) { if (e.target === this) closeIntegMail(); });
         })();
 
-
-        function closeNotificationModal() {
-            const modal = document.getElementById('notification-modal');
-            if (modal) {
-                modal.classList.remove('active');
-                setTimeout(() => {
-                    modal.style.display = 'none';
-                }, 300);
-            }
-        }
-        
         const fileInput = document.getElementById('photo-input');
         const uploadBox = document.getElementById('upload-box');
         const uploadText = document.getElementById('upload-text');
@@ -843,5 +820,6 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
     <?php if (!$readonly): ?>
     <script src="modern-select.js"></script>
     <?php endif; ?>
+    <?php include __DIR__ . '/modern_popup.php'; ?>
 </body>
 </html>

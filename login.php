@@ -115,53 +115,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </main>
 
-    <!-- Modern Notification Modal -->
-    <?php if (!empty($info) || !empty($error)): ?>
-    <div id="notification-modal" class="modal-overlay active" style="display: flex;">
-        <div class="modal-card glass-card">
-            <div class="modal-header">
-                <?php if (!empty($info)): ?>
-                    <h3 class="gold-text">Mise à jour réussie</h3>
-                <?php else: ?>
-                    <h3 style="color: var(--danger);">Une erreur est survenue</h3>
-                <?php endif; ?>
-            </div>
-            <div class="modal-body">
-                <p>
-                    <?php 
-                        if (!empty($info)) {
-                            echo htmlspecialchars($info);
-                        } else {
-                            echo htmlspecialchars($error);
-                        }
-                    ?>
-                </p>
-            </div>
-            <div class="modal-footer">
-                <?php if (!empty($info)): ?>
-                    <button onclick="closeNotificationModal()" class="btn btn-primary btn-sm">OK</button>
-                <?php else: ?>
-                    <button onclick="closeNotificationModal()" class="btn btn-primary btn-sm">Réessayer</button>
-                <?php endif; ?>
-            </div>
-        </div>
-    </div>
-    <?php endif; ?>
-
     <footer class="app-footer">
         <p>&copy; 2026 Touba Lyon - Tous droits réservés.</p>
     </footer>
 
+    <?php include __DIR__ . '/modern_popup.php'; ?>
+
+    <?php if (!empty($info) || !empty($error)): ?>
     <script>
-        function closeNotificationModal() {
-            const modal = document.getElementById('notification-modal');
-            if (modal) {
-                modal.classList.remove('active');
-                setTimeout(() => {
-                    modal.style.display = 'none';
-                }, 300);
-            }
-        }
+        (function () {
+            var msg = <?php echo json_encode(!empty($info) ? $info : $error, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+            var titre = <?php echo json_encode(!empty($info) ? 'Mise à jour réussie' : 'Une erreur est survenue', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+            var opts = {};
+            <?php if (!empty($info)): ?>opts.success = true;<?php endif; ?>
+            <?php if (!empty($error) && empty($info)): ?>opts.danger = true;<?php endif; ?>
+            window.modernAlert(msg, titre, null, opts);
+        })();
     </script>
+    <?php endif; ?>
 </body>
 </html>

@@ -94,7 +94,7 @@ $prochainGuddi = null;
 $guddiHeure = '20h00';
 $guddiPresenceFaite = false;
 try {
-    $stG = $pdo->query("SELECT * FROM guddi_plannings WHERE publie = 1 AND date_guddi >= CURDATE() AND actif = 1 ORDER BY date_guddi ASC LIMIT 1");
+    $stG = $pdo->query("SELECT * FROM guddi_plannings WHERE publie = 1 AND actif = 1 AND COALESCE(cloture,0) = 0 ORDER BY (date_guddi >= CURDATE()) DESC, ABS(DATEDIFF(date_guddi, CURDATE())) ASC LIMIT 1");
     $prochainGuddi = $stG->fetch();
     $guddiHeure = dahira_param($pdo, 'guddi_heure', '20h00');
     if ($prochainGuddi && isset($_SESSION['player_id'])) {
@@ -111,7 +111,7 @@ $prochainDahira = null;
 $dahiraHeure = '';
 $dahiraPresenceFaite = false;
 try {
-    $stD = $pdo->query("SELECT * FROM dahira_plannings WHERE publie = 1 AND date_dahira >= CURDATE() AND a_dahira = 1 ORDER BY date_dahira ASC LIMIT 1");
+    $stD = $pdo->query("SELECT * FROM dahira_plannings WHERE publie = 1 AND a_dahira = 1 AND COALESCE(cloture,0) = 0 ORDER BY (date_dahira >= CURDATE()) DESC, ABS(DATEDIFF(date_dahira, CURDATE())) ASC LIMIT 1");
     $prochainDahira = $stD->fetch();
     $dahiraHeure = dahira_param($pdo, 'dahira_debut', '17h00');
     $dahiraFin = dahira_param($pdo, 'dahira_fin', '20h30');
@@ -134,8 +134,8 @@ if (isset($_SESSION['player_id'])) {
              FROM commission_reunions r
              JOIN commission_membres cm ON cm.commission_id = r.commission_id
              LEFT JOIN commissions c ON c.id = r.commission_id
-             WHERE cm.membre_id = ? AND r.publie = 1 AND r.cloture = 0 AND r.date_reunion >= CURDATE()
-             ORDER BY r.date_reunion ASC, r.id ASC"
+             WHERE cm.membre_id = ? AND r.publie = 1 AND r.cloture = 0 AND COALESCE(r.annule,0) = 0
+             ORDER BY (r.date_reunion >= CURDATE()) DESC, r.date_reunion ASC, r.id ASC"
         );
         $rqR->execute([(int) $_SESSION['player_id']]);
         $mesReunions = $rqR->fetchAll();
@@ -153,8 +153,8 @@ if (isset($_SESSION['player_id'])) {
              FROM kourel_repetitions r
              JOIN kourel_membres km ON km.kourel_id = r.kourel_id
              LEFT JOIN kourels k ON k.id = r.kourel_id
-             WHERE km.membre_id = ? AND r.publie = 1 AND r.cloture = 0 AND r.date_reunion >= CURDATE()
-             ORDER BY r.date_reunion ASC, r.id ASC"
+             WHERE km.membre_id = ? AND r.publie = 1 AND r.cloture = 0 AND COALESCE(r.annule,0) = 0
+             ORDER BY (r.date_reunion >= CURDATE()) DESC, r.date_reunion ASC, r.id ASC"
         );
         $rqP->execute([(int) $_SESSION['player_id']]);
         $mesRepetitions = $rqP->fetchAll();
@@ -184,6 +184,21 @@ if (isset($_SESSION['player_id'])) {
     }
 }
 
+// Points de gestion (rôles / responsabilités) pour le « Mode gestion » de l'accueil
+require_once __DIR__ . '/member_menu_data.php';
+$gestionItems = [];
+if (isset($_SESSION['player_id'])) {
+    try { $gestionItems = troba_member_gestion_items($pdo); } catch (Throwable $e) { $gestionItems = []; }
+}
+
+// Notifications « début » des réunions / répétitions (cloche + Web Push, sans e-mail)
+try {
+    require_once __DIR__ . '/reunion_helper.php';
+    require_once __DIR__ . '/repetition_helper.php';
+    reunion_check_debut($pdo);
+    repetition_check_debut($pdo);
+} catch (Throwable $e) { /* best-effort */ }
+
 // Liste des notifications du membre (affichée sur le tableau de bord)
 $dashNotifs = [];
 try {
@@ -212,70 +227,56 @@ try {
             max-width: 820px;
             margin: 0 auto 1.5rem;
             padding: 1.5rem 1.5rem 1.25rem;
-            border-radius: 22px;
-            background: linear-gradient(160deg, rgba(27,67,50,0.6), rgba(8,28,21,0.8));
+            border-radius: 20px;
+            background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
-            border: 1px solid rgba(212,175,55,0.32);
-            box-shadow:
-                0 18px 45px rgba(0,0,0,0.4),
-                inset 0 1px 0 rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.14);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.25);
             overflow: hidden;
-            color: #ffd873;
-        }
-        /* Liseré doré animé en haut de la carte */
-        .w-tovalidate-idx::before {
-            content: '';
-            position: absolute;
-            top: 0; left: -20%; right: -20%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(212,175,55,0.9), rgba(241,210,121,0.95), transparent);
-            background-size: 200% 100%;
-            animation: wtvFlowIdxs 4.5s linear infinite;
+            color: #fff;
         }
         @keyframes wtvFlowIdxs { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         .wtv-idx-top { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
         .wtv-idx-icon {
             width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
             display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
-            background: linear-gradient(135deg, rgba(212,175,55,0.32), rgba(212,175,55,0.08));
-            border: 1px solid rgba(212,175,55,0.4);
-            box-shadow: 0 6px 18px rgba(212,175,55,0.2);
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
         }
         .wtv-idx-titles { display: flex; flex-direction: column; gap: 0.1rem; flex: 1; min-width: 170px; }
         .wtv-idx-title { font-size: 1.05rem; font-weight: 800; color: #fff; letter-spacing: -0.01em; }
-        .wtv-idx-session { font-size: 0.82rem; color: #f1d279; font-weight: 600; }
+        .wtv-idx-session { font-size: 0.82rem; color: rgba(255,255,255,0.7); font-weight: 600; }
         .wtv-idx-cta { margin-left: auto; white-space: nowrap; }
         .wtv-idx-count { font-size: 0.78rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg, #d4af37, #f1d279); border-radius: 50px; padding: 4px 13px; box-shadow: 0 4px 12px rgba(212,175,55,0.35); margin-left: auto; }
         .wtv-idx-list { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1.1rem; }
         /* Regroupement des Juz à valider par Kamil (session) */
         .wtv-idx-groups { display: flex; flex-direction: column; gap: 1rem; margin-top: 1.1rem; }
         .wtv-idx-group + .wtv-idx-group { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.9rem; }
-        .wtv-idx-grouphead { color: #ffd873; font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+        .wtv-idx-grouphead { color: #fff; font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
         .wtv-item-idx {
             display: inline-flex; align-items: center; gap: 0.45rem;
-            background: rgba(212,175,55,0.09);
-            border: 1px solid rgba(212,175,55,0.24);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.12);
             border-radius: 12px;
             padding: 5px 6px;
             animation: wtvChipIdx 0.45s cubic-bezier(0.22,1,0.36,1) both;
             transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
         }
-        .wtv-item-idx:hover { transform: translateY(-2px); border-color: rgba(212,175,55,0.55); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+        .wtv-item-idx:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.28); box-shadow: 0 8px 20px rgba(0,0,0,0.25); }
         @keyframes wtvChipIdx { from { opacity: 0; transform: translateY(10px) scale(0.94); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        .wtv-item-idx .wtv-num { font-weight: 800; font-size: 0.88rem; color: #f1d279; padding: 4px 6px 4px 12px; white-space: nowrap; cursor: pointer; border-radius: 8px; transition: background 0.2s; }
-        .wtv-item-idx .wtv-num:hover { background: rgba(212,175,55,0.14); }
+        .wtv-item-idx .wtv-num { font-weight: 800; font-size: 0.88rem; color: #fff; padding: 4px 6px 4px 12px; white-space: nowrap; cursor: pointer; border-radius: 8px; transition: background 0.2s; }
+        .wtv-item-idx .wtv-num:hover { background: rgba(255,255,255,0.1); }
         .wtv-item-idx .wtv-btn {
-            background: linear-gradient(135deg, #d4af37, #e9c766); color: #0c241a; border: 0; border-radius: 9px;
-            font-weight: 800; font-size: 0.82rem; padding: 7px 13px; cursor: pointer;
+            background: rgba(45,106,79,0.9); color: #fff; border: 0; border-radius: 9px;
+            font-weight: 700; font-size: 0.82rem; padding: 7px 13px; cursor: pointer;
             display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
-            transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease;
-            box-shadow: 0 4px 0 rgba(133,105,18,0.9);
+            transition: transform 0.12s ease, filter 0.2s ease;
         }
-        .wtv-item-idx .wtv-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(133,105,18,0.9); }
+        .wtv-item-idx .wtv-btn:active { transform: translateY(1px); }
         .wtv-item-idx .wtv-btn:hover { filter: brightness(1.12); }
-        .wtv-item-idx .wtv-btn--pdf { background: rgba(212,175,55,0.14); color: #f1d279; border: 1px solid rgba(212,175,55,0.3); box-shadow: none; }
-        .wtv-item-idx .wtv-btn--pdf:hover { background: rgba(212,175,55,0.26); color: #fff; box-shadow: none; }
+        .wtv-item-idx .wtv-btn--pdf { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.16); }
+        .wtv-item-idx .wtv-btn--pdf:hover { background: rgba(255,255,255,0.16); color: #fff; }
         .wtv-idx-hint { margin-top: 0.85rem; font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; }
         .wtv-idx-hint::before { content: '💡'; }
         /* ── Prochaines rencontres : animations comme le suivi Juz ── */
@@ -289,21 +290,11 @@ try {
             animation: rencCardIn 0.45s cubic-bezier(0.22,1,0.36,1) both;
             transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
         }
-        .renc-card:hover { transform: translateY(-3px); border-color: rgba(212,175,55,0.55); box-shadow: 0 10px 24px rgba(0,0,0,0.35); }
+        .renc-card:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.28); box-shadow: 0 10px 24px rgba(0,0,0,0.3); }
         .renc-card:nth-child(1) { animation-delay: 0.08s; }
         .renc-card:nth-child(2) { animation-delay: 0.16s; }
         @keyframes rencCardIn { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        /* Liseré doré animé en haut de la carte « Prochaines rencontres » */
         .renc-wrap { position: relative; overflow: hidden; }
-        .renc-wrap::before {
-            content: '';
-            position: absolute;
-            top: 0; left: -20%; right: -20%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, rgba(212,175,55,0.9), rgba(241,210,121,0.95), transparent);
-            background-size: 200% 100%;
-            animation: rencFlow 4.5s linear infinite;
-        }
         @keyframes rencFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         /* Boutons d'action des cartes : survol animé */
         .renc-card .btn { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
@@ -340,7 +331,7 @@ try {
             display: flex; align-items: center; justify-content: space-between; gap: 1rem;
             width: 100%;
             background: none; border: 0; padding: 0;
-            color: var(--gold); font-weight: 800; font-size: 1.05rem;
+            color: #fff; font-weight: 800; font-size: 1.05rem;
             cursor: pointer;
             text-align: left;
         }
@@ -360,6 +351,8 @@ try {
             .dash-actions { flex-direction: column; align-items: stretch; }
             .dash-actions .btn { width: 100%; }
         }
+        .adm-switch summary::-webkit-details-marker { display: none; }
+        .adm-switch[open] .adm-switch-chevron { transform: rotate(90deg); }
     </style>
 </head>
 <body>
@@ -373,22 +366,46 @@ try {
         <?php // Rôle d'administrateur accordé à ce membre : il ouvre l'autre espace
               // dans la même session, avec le même compte et le même mot de passe. ?>
         <?php if (!empty($me['is_admin'])): ?>
-            <div class="glass-card" style="margin-top: 2rem; padding: 0.9rem 1.15rem; display: flex;
-                        align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
-                        border-color: rgba(212, 175, 55, 0.45);">
-                <div style="font-size: 0.86rem; color: #fff; line-height: 1.5;">
-                    🛡️ Vous êtes aussi <strong>administrateur</strong> du Dahira.
-                    <span style="color: var(--text-muted);">Votre espace membre reste ici.</span>
+            <details class="glass-card adm-switch" style="margin-top: 2rem; padding: 0.75rem 1.15rem; border-color: rgba(212, 175, 55, 0.45);">
+                <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:var(--gold); font-weight:700; font-size:0.9rem;">
+                    🛡️ Mode administration
+                    <span class="adm-switch-chevron" style="margin-left:auto; color:var(--text-muted); transition:transform 0.2s;">▸</span>
+                </summary>
+                <div style="margin-top: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                    <div style="font-size: 0.86rem; color: #fff; line-height: 1.5;">
+                        🛡️ Vous êtes aussi <strong>administrateur</strong> du Dahira.
+                        <span style="color: var(--text-muted);">Votre espace membre reste ici.</span>
+                    </div>
+                    <form action="basculer_admin.php" method="POST" style="margin: 0;">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="vers" value="admin">
+                        <button type="submit" class="btn btn-sm"
+                                style="background: rgba(212, 175, 55, 0.16); border: 1px solid rgba(212, 175, 55, 0.5); color: var(--gold); white-space: nowrap;">
+                            🛡️ Passer en mode administration
+                        </button>
+                    </form>
                 </div>
-                <form action="basculer_admin.php" method="POST" style="margin: 0;">
-                    <?php echo csrf_field(); ?>
-                    <input type="hidden" name="vers" value="admin">
-                    <button type="submit" class="btn btn-sm"
-                            style="background: rgba(212, 175, 55, 0.16); border: 1px solid rgba(212, 175, 55, 0.5); color: var(--gold); white-space: nowrap;">
-                        🛡️ Passer en mode administration
-                    </button>
-                </form>
-            </div>
+            </details>
+        <?php endif; ?>
+
+        <?php // Mode gestion : pour un membre ayant des rôles / responsabilités (hors administrateur complet) ?>
+        <?php if (empty($me['is_admin']) && !empty($gestionItems)): ?>
+            <details class="glass-card adm-switch" style="margin-top: 2rem; padding: 0.75rem 1.15rem; border-color: rgba(212, 175, 55, 0.45);">
+                <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:var(--gold); font-weight:700; font-size:0.9rem;">
+                    🛠️ Mode gestion
+                    <span class="adm-switch-chevron" style="margin-left:auto; color:var(--text-muted); transition:transform 0.2s;">▸</span>
+                </summary>
+                <div style="margin-top: 0.8rem;">
+                    <div style="font-size: 0.86rem; color: #fff; line-height: 1.5; margin-bottom: 0.75rem;">
+                        🛠️ Vous avez des responsabilités au sein du Dahira. Accédez ci-dessous aux espaces de gestion dont vous avez la charge.
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+                        <?php foreach ($gestionItems as $gHref => $gLabel): ?>
+                            <a href="<?php echo htmlspecialchars($gHref); ?>" class="btn btn-sm" style="background: rgba(212, 175, 55, 0.16); border: 1px solid rgba(212, 175, 55, 0.5); color: var(--gold);"><?php echo htmlspecialchars($gLabel); ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </details>
         <?php endif; ?>
 
         <!-- User Welcome Banner -->
@@ -449,7 +466,7 @@ try {
         <!-- Séances publiées : Dahira & Guddi Àjjuma (validation de présence) — avant le Coran -->
         <?php if (!empty($prochainDahira) || !empty($prochainGuddi)): ?>
         <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
-            <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🕌 Prochaines rencontres — validez votre présence</div>
+            <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🕌 Prochaines rencontres — validez votre présence</div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
 
                 <?php if (!empty($prochainDahira)): ?>
@@ -458,7 +475,7 @@ try {
                     $dPassed = dahira_presence_ouverte($dDate, $dahiraHeure);
                 ?>
                 <div class="renc-card">
-                    <div style="font-weight:800; color:var(--accent);">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></div>
+                    <div style="font-weight:800; color:#fff;">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem; white-space:pre-line;">🕐 <?php echo htmlspecialchars($dahiraHeure); ?> à <?php echo htmlspecialchars($dahiraFin); ?><br>📍 <?php echo htmlspecialchars($dahiraLieu); ?></div>
                     <div style="margin-top:0.6rem;"><a href="dahira_detail.php?id=<?php echo (int)$prochainDahira['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
                     <?php if (isset($_SESSION['player_id'])): ?>
@@ -484,7 +501,7 @@ try {
                     if ($gMode === '') { $gMode = dahira_param($pdo, 'guddi_mode_defaut', 'distance'); }
                 ?>
                 <div class="renc-card">
-                    <div style="font-weight:800; color:var(--accent);">💎 Guddi Àjjuma — <?php echo ucfirst(guddi_jour_fr($gDate)) . ' ' . date('d/m/Y', strtotime($gDate)); ?></div>
+                    <div style="font-weight:800; color:#fff;">💎 Guddi Àjjuma — <?php echo ucfirst(guddi_jour_fr($gDate)) . ' ' . date('d/m/Y', strtotime($gDate)); ?></div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🕐 à partir de <?php echo htmlspecialchars($guddiHeure); ?> · <?php echo $gMode === 'presentiel' ? '🏛️ présentiel' : '💻 à distance'; ?></div>
                     <?php if (!empty($prochainGuddi['theme'])): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.2rem;">🎯 <?php echo htmlspecialchars((string)$prochainGuddi['theme']); ?></div><?php endif; ?>
                     <div style="margin-top:0.6rem;"><a href="guddi_detail.php?id=<?php echo (int)$prochainGuddi['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
@@ -510,11 +527,11 @@ try {
         <!-- Réunions de commission publiées (à venir) -->
         <?php if (!empty($mesReunions)): ?>
         <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
-            <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">👥 Réunions de vos commissions</div>
+            <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">👥 Réunions de vos commissions</div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
                 <?php foreach ($mesReunions as $mr): ?>
                 <div class="renc-card">
-                    <div style="font-weight:800; color:var(--accent);">📌 <?php echo htmlspecialchars($mr['titre']); ?></div>
+                    <div style="font-weight:800; color:#fff;">📌 <?php echo htmlspecialchars($mr['titre']); ?></div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">📋 <?php echo htmlspecialchars((string)($mr['commission_nom'] ?? '')); ?><br>🗓️ <?php echo date('d/m/Y', strtotime($mr['date_reunion'])); ?> · 🕐 <?php echo htmlspecialchars($mr['heure']); ?> · <?php echo ((string)$mr['mode'] === 'presentiel') ? '🏛️ présentiel' : '💻 à distance'; ?></div>
                     <div style="margin-top:0.6rem;"><a href="reunion_detail.php?id=<?php echo (int)$mr['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
                 </div>
@@ -526,11 +543,11 @@ try {
         <!-- Répétitions de Kurel publiées (à venir) -->
         <?php if (!empty($mesRepetitions)): ?>
         <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
-            <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🎵 Répétitions de vos Kurels</div>
+            <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🎵 Répétitions de vos Kurels</div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
                 <?php foreach ($mesRepetitions as $mp): ?>
                 <div class="renc-card">
-                    <div style="font-weight:800; color:var(--accent);">🎼 <?php echo htmlspecialchars($mp['titre']); ?></div>
+                    <div style="font-weight:800; color:#fff;">🎼 <?php echo htmlspecialchars($mp['titre']); ?></div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🎵 <?php echo htmlspecialchars((string)($mp['kourel_nom'] ?? '')); ?><br>🗓️ <?php echo date('d/m/Y', strtotime($mp['date_reunion'])); ?> · 🕐 <?php echo htmlspecialchars($mp['heure']); ?> · <?php echo ((string)$mp['mode'] === 'presentiel') ? '🏛️ présentiel' : '💻 à distance'; ?></div>
                     <div style="margin-top:0.6rem;"><a href="repetition_detail.php?id=<?php echo (int)$mp['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
                 </div>
@@ -589,7 +606,7 @@ try {
 
                 <?php if (!empty($wirdSessions)): ?>
                 <div style="margin-top:0.9rem; padding-top:0.8rem; border-top:1px solid rgba(255,255,255,0.08);">
-                    <div style="color:#ffd873; font-size:0.85rem; font-weight:700; margin-bottom:0.4rem;">📚 Autres sessions en cours — choisissez un Juz</div>
+                    <div style="color:#fff; font-size:0.85rem; font-weight:700; margin-bottom:0.4rem;">📚 Autres sessions en cours — choisissez un Juz</div>
                     <?php foreach ($wirdSessions as $w): ?>
                         <?php $wPer = wird_period_label($pdo, $w); ?>
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.06);">

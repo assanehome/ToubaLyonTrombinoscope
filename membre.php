@@ -43,7 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         header('Location: ' . $back . '?deleted=1');
                         exit;
                     } elseif ($action === 'update') {
-                        // Modification des informations : le membre repasse EN ATTENTE.
+                        // Modification des informations par l'admin : le statut est conservé
+                        // (pas de repassage en attente).
                         $nom = trim($_POST['nom'] ?? '');
                         $prenom = trim($_POST['prenom'] ?? '');
                         $email = trim($_POST['email'] ?? '');
@@ -58,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             if ($chk->fetch()) {
                                 $error = "Cette adresse e-mail est déjà utilisée par un autre membre.";
                             } else {
-                                $sql = "UPDATE membres SET civilite=?, nom=?, prenom=?, genre=?, email=?, telephone=?, adresse=?, code_postal=?, commune=?, type_adhesion=?, statut=?, secteur_activite=?, profession=?, test_kourel=?, annee_integration=?, commentaires=?, charte_acceptee=?, status='pending' WHERE id=?";
+                                $sql = "UPDATE membres SET civilite=?, nom=?, prenom=?, genre=?, email=?, telephone=?, adresse=?, code_postal=?, commune=?, type_adhesion=?, statut=?, secteur_activite=?, profession=?, test_kourel=?, annee_integration=?, commentaires=?, charte_acceptee=? WHERE id=?";
                                 $pdo->prepare($sql)->execute([
                                     $civilite, $nom, $prenom, (trim($_POST['genre'] ?? '') ?: null), $email,
                                     (trim($_POST['telephone'] ?? '') ?: null), (trim($_POST['adresse'] ?? '') ?: null),
@@ -68,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     (trim($_POST['test_kourel'] ?? '') ?: null), (trim($_POST['annee_integration'] ?? '') ?: null),
                                     (trim($_POST['commentaires'] ?? '') ?: null), (isset($_POST['charte_acceptee']) ? 1 : 0), $pid
                                 ]);
-                                $success = "Modifications enregistrées. Le membre est repassé en attente de validation.";
+                                $success = "Modifications enregistrées.";
                             }
                         }
                     }
