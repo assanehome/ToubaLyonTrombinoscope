@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->commit();
                     $success = count($dates) > 1 ? (count($dates) . " répétitions créées (série périodique).") : "Répétition créée.";
                 }
-            } elseif (in_array($action, ['publish_repetition', 'unpublish_repetition', 'close_repetition', 'reopen_repetition', 'delete_repetition', 'delete_repetition_serie', 'edit_repetition'], true)) {
+            } elseif (in_array($action, ['publish_repetition', 'unpublish_repetition', 'close_repetition', 'reopen_repetition', 'delete_repetition', 'delete_repetition_serie', 'edit_repetition', 'repetition_avancement'], true)) {
                 $rid = (int) ($_POST['repetition_id'] ?? 0);
                 $r = null;
                 if ($rid > 0) {
@@ -156,6 +156,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $success = "Répétition clôturée et période suivante publiée ($nn membre(s) notifié(s)).";
                         }
                     }
+                } elseif ($action === 'repetition_avancement') {
+                    // Le rattachement se corrige à tout moment : une répétition
+                    // déjà publiée, ou clôturée, peut avoir été rangée sous la
+                    // mauvaise Khassida. Les libellés suivent la ligne choisie.
+                    $avId = (int) ($_POST['avancement_id'] ?? 0);
+                    $ligne = $avId > 0 ? kourel_avancement_du_kourel($pdo, (int) $r['kourel_id'], $avId) : null;
+                    if ($avId > 0 && $ligne === null) {
+                        $error = "Cette Khassida n'est plus au programme du Kurel.";
+                    } else {
+                        $pdo->prepare("UPDATE kourel_repetitions SET avancement_id = ?, khassida = ?, melodie = ?, updated_at = NOW() WHERE id = ?")
+                            ->execute([
+                                $ligne ? (int) $ligne['id'] : null,
+                                $ligne ? (string) $ligne['khassida'] : null,
+                                ($ligne && trim((string) $ligne['melodie']) !== '') ? trim((string) $ligne['melodie']) : null,
+                                $rid,
+                            ]);
+                        $success = $ligne
+                            ? 'Répétition rattachée à « ' . $ligne['khassida'] . ' ».'
+                            : 'Répétition détachée du programme.';
+                    }
                 } elseif ($action === 'edit_repetition') {
                     if ((int) $r['publie'] === 1) {
                         $error = "Dépubliez la répétition avant de la modifier.";
@@ -168,13 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $eMode = ($eModeRaw === 'presentiel') ? 'presentiel' : (($eModeRaw === 'distance') ? 'distance' : '');
                         $eLieu = trim($_POST['lieu'] ?? '');
                         $eLien = trim($_POST['lien'] ?? '');
-                        $eAvId = (int) ($_POST['avancement_id'] ?? 0);
-                        $eAvLigne = $eAvId > 0 ? kourel_avancement_du_kourel($pdo, (int) $r['kourel_id'], $eAvId) : null;
-                        $eKhassida = $eAvLigne ? (string) $eAvLigne['khassida'] : '';
-                        $eMelodie = $eAvLigne ? trim((string) $eAvLigne['melodie']) : '';
-                        if ($eAvId > 0 && $eAvLigne === null) {
-                            $error = "Cette Khassida n'est plus au programme du Kurel.";
-                        } elseif ($eTitre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eDate)) {
+                        if ($eTitre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eDate)) {
                             $error = "Le titre et une date valide sont obligatoires.";
                         } elseif ($eDate < date('Y-m-d')) {
                             $error = "La date ne peut pas être dans le passé.";
@@ -187,8 +201,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } elseif ($eMode === 'presentiel' && $eLieu === '') {
                             $error = "L'adresse est obligatoire pour une répétition en présentiel.";
                         } else {
-                            $pdo->prepare("UPDATE kourel_repetitions SET titre = ?, description = ?, date_reunion = ?, heure = ?, mode = ?, lieu = ?, lien = ?, avancement_id = ?, khassida = ?, melodie = ?, updated_at = NOW() WHERE id = ?")
-                                ->execute([$eTitre, ($eDesc ?: null), $eDate, $eHeure, $eMode, ($eLieu ?: null), ($eLien ?: null), ($eAvLigne ? (int) $eAvLigne['id'] : null), ($eKhassida ?: null), ($eMelodie ?: null), $rid]);
+                            // La Khassida travaillée n'est pas ici : elle se change
+                            // sur la répétition, même publiée (repetition_avancement).
+                            $pdo->prepare("UPDATE kourel_repetitions SET titre = ?, description = ?, date_reunion = ?, heure = ?, mode = ?, lieu = ?, lien = ?, updated_at = NOW() WHERE id = ?")
+                                ->execute([$eTitre, ($eDesc ?: null), $eDate, $eHeure, $eMode, ($eLieu ?: null), ($eLien ?: null), $rid]);
                             $success = "Répétition modifiée.";
                         }
                     }
@@ -329,10 +345,33 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
     else { $h .= '<span class="badge badge-pending">⏳ En attente</span>'; }
     $h .= '</div></div>';
     $h .= '<div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.3rem;">🗓️ ' . $rDateFr . ' · 🕐 ' . htmlspecialchars($r['heure']) . ' · ' . ((string) $r['mode'] === 'presentiel' ? '🏛️ présentiel' : '💻 à distance') . '</div>';
-    $metaKM = [];
-    if (trim((string) ($r['khassida'] ?? '')) !== '') { $metaKM[] = '📜 ' . htmlspecialchars($r['khassida']); }
-    if (trim((string) ($r['melodie'] ?? '')) !== '') { $metaKM[] = '🎶 ' . htmlspecialchars($r['melodie']); }
-    if (!empty($metaKM)) { $h .= '<div style="color:var(--gold); font-size:0.82rem; margin-top:0.2rem;">' . implode(' · ', $metaKM) . '</div>'; }
+    // La Khassida travaillée : choisie dans le programme du Kurel, et
+    // modifiable même après publication — c'est un rangement, pas un
+    // changement de programme de la séance.
+    $programme = kourel_avancements_plats($pdo, (int) $r['kourel_id']);
+    $curAv = (int) ($r['avancement_id'] ?? 0);
+    $khTexte = trim((string) ($r['khassida'] ?? ''));
+    if (!empty($programme)) {
+        $optsAv = '<option value="">— Aucune Khassida —</option>';
+        foreach ($programme as $av) {
+            $optsAv .= '<option value="' . (int) $av['id'] . '"' . ($curAv === (int) $av['id'] ? ' selected' : '') . '>'
+                . htmlspecialchars(kourel_avancement_libelle($av, true)) . '</option>';
+        }
+        $h .= '<form method="POST" style="margin:0.4rem 0 0; display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">' . $csrf
+            . '<input type="hidden" name="action" value="repetition_avancement">'
+            . '<input type="hidden" name="repetition_id" value="' . $rid . '">'
+            . '<span style="color:var(--gold); font-size:0.8rem;">📜 Khassida travaillée</span>'
+            . '<select name="avancement_id" class="krep-av" onchange="envoyerChangement(this)">' . $optsAv . '</select>';
+        // Une Khassida retirée du programme laisse son nom sur la répétition
+        if ($curAv === 0 && $khTexte !== '') {
+            $h .= '<span style="color:var(--text-muted); font-size:0.76rem;">(anciennement 📜 ' . htmlspecialchars($khTexte) . ')</span>';
+        }
+        $h .= '</form>';
+    } elseif ($khTexte !== '') {
+        $melTexte = trim((string) ($r['melodie'] ?? ''));
+        $h .= '<div style="color:var(--gold); font-size:0.82rem; margin-top:0.2rem;">📜 ' . htmlspecialchars($khTexte)
+            . ($melTexte !== '' ? ' · 🎶 ' . htmlspecialchars($melTexte) : '') . '</div>';
+    }
     $h .= '<div class="km-actions" style="border-top:0; padding-top:0.6rem; margin-top:0.4rem;">';
     $h .= '<a href="repetition_detail.php?id=' . $rid . '" class="btn btn-secondary btn-sm">📊 Détail</a>';
     if (!$rPub && !$rClo) {
@@ -368,18 +407,8 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
         $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Titre</label><input type="text" name="titre" class="form-input" required value="' . htmlspecialchars((string) $r['titre'], ENT_QUOTES) . '"></div>';
         $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2">' . htmlspecialchars((string) ($r['description'] ?? '')) . '</textarea></div>';
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Date</label><input type="date" name="date_reunion" class="form-input" required min="' . date('Y-m-d') . '" value="' . htmlspecialchars((string) $r['date_reunion'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
-        $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure</label><input type="time" name="heure" class="form-input" required step="3600" value="' . htmlspecialchars((string) $r['heure'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
+        $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure</label><input type="time" name="heure" class="form-input" required step="3600" value="' . htmlspecialchars(dahira_heure_hm((string) $r['heure']), ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Mode</label><select name="mode" class="form-input modern-select r-mode" required><option value="distance"' . $optDist . '>💻 À distance (Zoom)</option><option value="presentiel"' . $optPres . '>🏛️ Présentiel</option></select></div>';
-        // La Khassida travaillée se choisit dans le programme du Kurel : la
-        // mélodie suit, et la répétition reste rattachée à cette ligne.
-        $curAv = (int) ($r['avancement_id'] ?? 0);
-        $optsAv = '<option value="">— Aucune —</option>';
-        foreach (kourel_avancements_plats($pdo, (int) $r['kourel_id']) as $av) {
-            $optsAv .= '<option value="' . (int) $av['id'] . '"' . ($curAv === (int) $av['id'] ? ' selected' : '') . '>'
-                . htmlspecialchars(kourel_avancement_libelle($av, true)) . '</option>';
-        }
-        $h .= '<div class="form-group" style="grid-column:1/-1; margin:0; min-width:0;"><label class="form-label">📜 Khassida travaillée</label>'
-            . '<select name="avancement_id" class="form-input modern-select">' . $optsAv . '</select></div>';
         $h .= '<div class="form-group r-lien" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
         $h .= '<div class="form-group r-lieu" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
         $h .= '<div style="grid-column:1/-1;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>';
@@ -474,6 +503,17 @@ $membersJs = array_map(function ($m) {
         .kav-message { flex: 1 1 100%; border-top: 1px dashed var(--glass-border); padding-top: 0.5rem; }
         .kav-message > summary { cursor: pointer; color: var(--gold); font-weight: 700; font-size: 0.8rem; list-style: none; }
         .kav-message > summary::-webkit-details-marker { display: none; }
+        /* Réglages du Kurel : un groupe replié, discret */
+        .kourel-params { border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.6rem 0.9rem; margin-top: 0.5rem; }
+        .kourel-params > summary { cursor: pointer; color: var(--gold); font-weight: 700; font-size: 0.85rem; list-style: none; }
+        .kourel-params > summary::-webkit-details-marker { display: none; }
+        .kourel-params[open] > summary { margin-bottom: 0.5rem; }
+        /* Un cadre autour des formulaires de saisie */
+        .kourel-cadre { border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); }
+        /* La Khassida travaillée, sur la répétition */
+        .krep-av { max-width: 100%; border-radius: 50px; border: 1px solid rgba(212,175,55,0.4); background: rgba(212,175,55,0.10); color: var(--gold); font-size: 0.78rem; font-weight: 600; padding: 0.22rem 0.5rem; cursor: pointer; color-scheme: dark; }
+        .krep-av option { background-color: #0c241a; color: #fff; font-weight: 600; }
+        .krep-av:focus { outline: none; border-color: var(--accent); }
         .kav-statut option { background-color: #0c241a; color: #fff; font-weight: 600; }
         .kav-statut:focus { outline: none; }
     </style>
@@ -539,16 +579,11 @@ $membersJs = array_map(function ($m) {
                                 </h3>
                                 <?php if (!empty($k['description'])): ?><p class="k-desc"><?php echo htmlspecialchars($k['description']); ?></p><?php endif; ?>
                             </div>
-                            <?php if ($__isKurelAdmin): ?>
-                            <form action="kourel_dashboard.php" method="POST" id="kdel-form-<?php echo (int) $k['id']; ?>" style="margin:0;">
-                                <?php echo csrf_field(); ?>
-                                <input type="hidden" name="action" value="delete_kourel">
-                                <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
-                                <button type="button" class="btn btn-danger btn-sm" onclick="confirmDeleteKurel(<?php echo (int) $k['id']; ?>, <?php echo htmlspecialchars(json_encode($k['nom']), ENT_QUOTES); ?>)">Supprimer</button>
-                            </form>
-                            <?php endif; ?>
                         </div>
 
+                        <?php // Réglages du Kurel : consultés de loin en loin, donc repliés ?>
+                        <details class="kourel-params">
+                            <summary>⚙️ Paramètres du Kurel</summary>
                         <div class="com-sub">Responsable(s) du Kurel</div>
                         <div class="km-list com-managers-list" id="com-managers-<?php echo (int) $k['id']; ?>">
                             <?php if (empty($managersOfK)): ?>
@@ -571,8 +606,15 @@ $membersJs = array_map(function ($m) {
                             <button type="button" class="btn btn-primary btn-sm" onclick="openComModal('members', <?php echo (int) $k['id']; ?>, <?php echo htmlspecialchars(json_encode($k['nom']), ENT_QUOTES); ?>)">👥 Gérer les membres</button>
                             <?php if ($__isKurelAdmin): ?>
                             <button type="button" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);" onclick="openComModal('managers', <?php echo (int) $k['id']; ?>, <?php echo htmlspecialchars(json_encode($k['nom']), ENT_QUOTES); ?>)">🎖️ Gérer les responsables</button>
+                            <form action="kourel_dashboard.php" method="POST" id="kdel-form-<?php echo (int) $k['id']; ?>" style="margin:0;">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="delete_kourel">
+                                <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
+                                <button type="button" class="btn btn-danger btn-sm" onclick="confirmDeleteKurel(<?php echo (int) $k['id']; ?>, <?php echo htmlspecialchars(json_encode($k['nom']), ENT_QUOTES); ?>)">🗑️ Supprimer le Kurel</button>
+                            </form>
                             <?php endif; ?>
                         </div>
+                        </details>
 
                         <?php $reps = $kRepetitions[$k['id']] ?? []; ?>
                         <div data-zone="reps-<?php echo (int) $k['id']; ?>" data-zone-liee="avancement-<?php echo (int) $k['id']; ?>" style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
@@ -635,7 +677,7 @@ $membersJs = array_map(function ($m) {
                             <?php endif; ?>
                             <details>
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Créer une répétition</summary>
-                                <form method="POST" class="repetition-create-form" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
+                                <form method="POST" class="repetition-create-form kourel-cadre" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="create_repetition">
                                     <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
@@ -748,7 +790,7 @@ $membersJs = array_map(function ($m) {
 
                             <details>
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Ajouter une Khassida au programme</summary>
-                                <form method="POST" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.7rem;">
+                                <form method="POST" class="kourel-cadre" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="avancement_ajouter">
                                     <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
