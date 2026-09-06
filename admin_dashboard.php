@@ -236,6 +236,25 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             <?php include __DIR__ . '/admin_menu.php'; ?>
             <div class="dashboard-main">
 
+        <?php // Membre venu administrer : le chemin du retour reste sous les yeux ?>
+        <?php if (!empty($_SESSION['admin_is_member']) && !empty($_SESSION['player_id'])): ?>
+            <div class="glass-card" style="margin-bottom: 1.25rem; padding: 0.9rem 1.15rem; display: flex;
+                        align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+                        border-color: rgba(45, 106, 79, 0.45);">
+                <div style="font-size: 0.86rem; color: #fff; line-height: 1.5;">
+                    🛡️ Mode administration
+                    <span style="color: var(--text-muted);">· votre espace membre vous attend.</span>
+                </div>
+                <form action="basculer_admin.php" method="POST" style="margin: 0;">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES); ?>">
+                    <input type="hidden" name="vers" value="membre">
+                    <button type="submit" class="btn btn-secondary btn-sm" style="white-space: nowrap;">
+                        ↩ Revenir à l'espace membre
+                    </button>
+                </form>
+            </div>
+        <?php endif; ?>
+
         <!-- Stats Section -->
         <div class="stats-grid">
             <div class="stat-card stat-total">
@@ -750,14 +769,19 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             // Filtres masqués par défaut en mode Trombinoscope
             var panel = document.getElementById('adh-panel'); if (panel) panel.classList.add('is-hidden');
             var tog = document.getElementById('adh-toggle'); if (tog) tog.classList.remove('open');
-            // Activer le lien "Trombinoscope" du menu (comme les autres pages actives)
-            document.querySelectorAll('.admin-menu-links a').forEach(function (a) {
+            // Activer le lien "Trombinoscope" dans les DEUX menus : la barre
+            // latérale (bureau) et le tiroir de l'en-tête (mobile).
+            document.querySelectorAll('.admin-menu-links a, .hdr-nav-admin a').forEach(function (a) {
                 var hh = a.getAttribute('href');
                 if (hh === 'admin_dashboard.php#trombi') { a.classList.add('active'); }
                 else if (hh === 'admin_dashboard.php') { a.classList.remove('active'); }
             });
-            // Fermer le menu mobile (comme les autres liens qui rechargent la page)
+            // Fermer les menus mobiles (ancienne barre repliable + tiroir burger)
             var ml = document.getElementById('adminMenuLinks'); if (ml) ml.classList.remove('open');
+            var hn = document.getElementById('hdr-nav'); if (hn) hn.classList.remove('is-open');
+            var bg = document.getElementById('hdr-backdrop'); if (bg) bg.classList.remove('is-visible');
+            document.body.classList.remove('menu-open');
+            var bu = document.getElementById('hdr-burger'); if (bu) bu.classList.remove('is-open');
             // Mettre à jour le libellé du bouton menu mobile (section active)
             var tglLabel = document.querySelector('.admin-menu-toggle span:first-child');
             if (tglLabel) tglLabel.textContent = '🖼️ Trombinoscope';

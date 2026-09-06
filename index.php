@@ -19,27 +19,54 @@ require_once __DIR__ . '/player_approved_guard.php';
 
 if (isset($_SESSION['player_id'])) {
     try {
-        $stmtScore = $pdo->prepare("SELECT score FROM membres WHERE id = ?");
+        $stmtScore = $pdo->prepare("SELECT * FROM membres WHERE id = ?");
         $stmtScore->execute([$_SESSION['player_id']]);
-        $pScore = $stmtScore->fetchColumn();
-        if ($pScore !== false) {
-            $_SESSION['player_score'] = $pScore;
+        $me = $stmtScore->fetch();
+        if ($me) {
+            $_SESSION['player_score'] = (int)($me['score'] ?? 0);
+            $meCivilite  = (string)($me['civilite'] ?? '');
+            $meCommune   = (string)($me['commune'] ?? '');
+            $meProf      = (string)($me['profession'] ?? '');
+            $meAnnee     = (string)($me['annee_integration'] ?? '');
+            $mePhoto     = (string)($me['photo_path'] ?? '');
+            $mePrenom    = (string)($me['prenom'] ?? '');
+            $meNom       = (string)($me['nom'] ?? '');
+        } else {
+            $me = null; $meCivilite = ''; $meCommune = ''; $meProf = ''; $meAnnee = ''; $mePhoto = ''; $mePrenom = ''; $meNom = '';
         }
     } catch (Exception $e) {
-        // Silent catch
+        $me = null; $meCivilite = ''; $meCommune = ''; $meProf = ''; $meAnnee = ''; $mePhoto = ''; $mePrenom = ''; $meNom = '';
     }
 }
 
 // Lecture du Coran : Juz réservés (non validés) dans une session en cours
 $myWirdParts = [];
 $myWirdSession = null;
+$myWirdGroups = [];
 if (isset($_SESSION['player_id'])) {
     try {
-        $qw = $pdo->prepare("SELECT p.id, p.numero, p.session_id, s.id AS sid, s.titre, s.token FROM quran_parts p JOIN quran_sessions s ON s.id = p.session_id WHERE p.membre_id = ? AND p.statut = 'reservee' AND s.statut = 'en_cours' ORDER BY p.numero ASC");
+        $qw = $pdo->prepare("SELECT p.id, p.numero, p.session_id, s.id AS sid, s.titre, s.token, s.serie_id, s.periodicite, s.date_debut, s.date_fin FROM quran_parts p JOIN quran_sessions s ON s.id = p.session_id WHERE p.membre_id = ? AND p.statut = 'reservee' AND s.statut = 'en_cours' AND s.lance = 1 ORDER BY p.numero ASC");
         $qw->execute([(int) $_SESSION['player_id']]);
         $myWirdParts = $qw->fetchAll();
         if (!empty($myWirdParts)) {
-            $myWirdSession = ['sid' => $myWirdParts[0]['sid'], 'titre' => $myWirdParts[0]['titre'], 'token' => $myWirdParts[0]['token']];
+            require_once __DIR__ . '/wird_period_helper.php';
+            // Regrouper les Juz à valider par Kamil (session)
+            foreach ($myWirdParts as $mp) {
+                $k = (int)$mp['sid'];
+                if (!isset($myWirdGroups[$k])) {
+                    $myWirdGroups[$k] = [
+                        'sid' => $mp['sid'], 'titre' => $mp['titre'], 'token' => $mp['token'],
+                        'periode' => wird_period_label($pdo, ['id' => $mp['sid'], 'serie_id' => $mp['serie_id'], 'periodicite' => $mp['periodicite'], 'date_debut' => $mp['date_debut'], 'date_fin' => $mp['date_fin']]),
+                        'parts' => [],
+                    ];
+                }
+                $myWirdGroups[$k]['parts'][] = $mp;
+            }
+            $r0 = $myWirdParts[0];
+            $myWirdSession = [
+                'sid' => $r0['sid'], 'titre' => $r0['titre'], 'token' => $r0['token'],
+                'periode' => wird_period_label($pdo, ['id' => $r0['sid'], 'serie_id' => $r0['serie_id'], 'periodicite' => $r0['periodicite'], 'date_debut' => $r0['date_debut'], 'date_fin' => $r0['date_fin']]),
+            ];
         }
     } catch (Exception $e) {
         $myWirdParts = [];
@@ -50,10 +77,11 @@ $wirdSessions = [];
 if (isset($_SESSION['player_id'])) {
     try {
         $wirdSessions = $pdo->query(
-            "SELECT s.id, s.titre, s.token, SUM(p.statut='lue') AS lues, SUM(p.statut='libre') AS libres
+            "SELECT s.id, s.titre, s.token, s.serie_id, s.periodicite, s.date_debut, s.date_fin, SUM(p.statut='lue') AS lues, SUM(p.statut='libre') AS libres
              FROM quran_sessions s JOIN quran_parts p ON p.session_id = s.id
-             WHERE s.statut = 'en_cours' GROUP BY s.id, s.titre, s.token HAVING libres > 0 ORDER BY s.created_at DESC"
+             WHERE s.statut = 'en_cours' AND s.lance = 1 GROUP BY s.id, s.titre, s.token, s.serie_id, s.periodicite, s.date_debut, s.date_fin HAVING libres > 0 ORDER BY s.created_at DESC"
         )->fetchAll();
+        if (!empty($wirdSessions)) { require_once __DIR__ . '/wird_period_helper.php'; }
     } catch (Exception $e) {
         $wirdSessions = [];
     }
@@ -97,15 +125,78 @@ try {
     $prochainDahira = null;
 }
 
-try {
-    // Retrieve only approved members qui ont une photo (exclut les adhésions Dahira sans photo)
-    $stmt = $pdo->query("SELECT * FROM membres WHERE status = 'approved' AND photo_path != '' ORDER BY prenom ASC, nom ASC");
-    $members = $stmt->fetchAll();
-} catch (Exception $e) {
-    error_log('Touba Lyon index: ' . $e->getMessage());
-    http_response_code(500);
-    die("Une erreur technique est survenue. Veuillez réessayer plus tard.");
+// Réunions de commission publiées (à venir) des commissions du membre
+$mesReunions = [];
+if (isset($_SESSION['player_id'])) {
+    try {
+        $rqR = $pdo->prepare(
+            "SELECT r.*, c.nom AS commission_nom
+             FROM commission_reunions r
+             JOIN commission_membres cm ON cm.commission_id = r.commission_id
+             LEFT JOIN commissions c ON c.id = r.commission_id
+             WHERE cm.membre_id = ? AND r.publie = 1 AND r.cloture = 0 AND r.date_reunion >= CURDATE()
+             ORDER BY r.date_reunion ASC, r.id ASC"
+        );
+        $rqR->execute([(int) $_SESSION['player_id']]);
+        $mesReunions = $rqR->fetchAll();
+    } catch (Exception $e) {
+        $mesReunions = [];
+    }
 }
+
+// Répétitions de Kurel publiées (à venir) des Kurels du membre
+$mesRepetitions = [];
+if (isset($_SESSION['player_id'])) {
+    try {
+        $rqP = $pdo->prepare(
+            "SELECT r.*, k.nom AS kourel_nom
+             FROM kourel_repetitions r
+             JOIN kourel_membres km ON km.kourel_id = r.kourel_id
+             LEFT JOIN kourels k ON k.id = r.kourel_id
+             WHERE km.membre_id = ? AND r.publie = 1 AND r.cloture = 0 AND r.date_reunion >= CURDATE()
+             ORDER BY r.date_reunion ASC, r.id ASC"
+        );
+        $rqP->execute([(int) $_SESSION['player_id']]);
+        $mesRepetitions = $rqP->fetchAll();
+    } catch (Exception $e) {
+        $mesRepetitions = [];
+    }
+}
+
+// Complétion du profil membre (bannière « compléter vos informations »)
+$profilCompletion = 100;
+$profilManque = false;
+if (isset($_SESSION['player_id'])) {
+    try {
+        $pm = $pdo->prepare("SELECT photo_path, telephone, adresse, code_postal, commune, statut, secteur_activite, profession, annee_integration FROM membres WHERE id = ?");
+        $pm->execute([(int) $_SESSION['player_id']]);
+        $prof = $pm->fetch();
+        if ($prof) {
+            $champsProfil = ['photo_path', 'telephone', 'code_postal', 'commune', 'statut', 'secteur_activite', 'profession', 'annee_integration'];
+            $totalProfil = count($champsProfil);
+            $okProfil = 0;
+            foreach ($champsProfil as $ch) { if (trim((string) ($prof[$ch] ?? '')) !== '') { $okProfil++; } }
+            $profilCompletion = $totalProfil > 0 ? (int) round($okProfil * 100 / $totalProfil) : 100;
+            $profilManque = ($okProfil < $totalProfil);
+        }
+    } catch (Exception $e) {
+        $profilManque = false;
+    }
+}
+
+// Liste des notifications du membre (affichée sur le tableau de bord)
+$dashNotifs = [];
+try {
+    require_once __DIR__ . '/notification_helper.php';
+    if (isset($pdo) && isset($_SESSION['player_id'])) {
+        troba_purge_notifications($pdo);
+        $dashNotifs = troba_notifications_recent($pdo, (int)$_SESSION['player_id'], 5);
+    }
+} catch (Throwable $e) {
+    $dashNotifs = [];
+}
+
+// Le trombinoscope (grille des membres, recherche, filtres) vit désormais dans trombinoscope.php
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -115,14 +206,6 @@ try {
     <title>Dahira - Mubawwa-A-Sidqin - Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
     <style>
-        .filter-container {
-            display: flex;
-            justify-content: center;
-            gap: 0.75rem;
-            margin-top: 1.5rem;
-            margin-bottom: 0.5rem;
-            flex-wrap: wrap;
-        }
         /* ── w-tovalidate-idx : carte moderne "Juz à valider" (couleurs du site) ── */
         .w-tovalidate-idx {
             position: relative;
@@ -165,6 +248,10 @@ try {
         .wtv-idx-cta { margin-left: auto; white-space: nowrap; }
         .wtv-idx-count { font-size: 0.78rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg, #d4af37, #f1d279); border-radius: 50px; padding: 4px 13px; box-shadow: 0 4px 12px rgba(212,175,55,0.35); margin-left: auto; }
         .wtv-idx-list { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1.1rem; }
+        /* Regroupement des Juz à valider par Kamil (session) */
+        .wtv-idx-groups { display: flex; flex-direction: column; gap: 1rem; margin-top: 1.1rem; }
+        .wtv-idx-group + .wtv-idx-group { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 0.9rem; }
+        .wtv-idx-grouphead { color: #ffd873; font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
         .wtv-item-idx {
             display: inline-flex; align-items: center; gap: 0.45rem;
             background: rgba(212,175,55,0.09);
@@ -191,32 +278,6 @@ try {
         .wtv-item-idx .wtv-btn--pdf:hover { background: rgba(212,175,55,0.26); color: #fff; box-shadow: none; }
         .wtv-idx-hint { margin-top: 0.85rem; font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; }
         .wtv-idx-hint::before { content: '💡'; }
-        .filter-btn {
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--white);
-            border: 1px solid var(--glass-border);
-            padding: 0.6rem 1.5rem;
-            border-radius: 50px;
-            font-weight: 600;
-            font-size: 0.95rem;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-        }
-        .filter-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: var(--gold);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(212, 175, 55, 0.15);
-        }
-        .filter-btn.active {
-            background: var(--accent);
-            color: var(--secondary);
-            border-color: var(--accent);
-            font-weight: 700;
-            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
-        }
         /* ── Prochaines rencontres : animations comme le suivi Juz ── */
         .renc-card {
             position: relative;
@@ -248,6 +309,57 @@ try {
         .renc-card .btn { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
         .renc-card .btn:hover { filter: brightness(1.08); }
         .renc-card .btn-primary:active { transform: translateY(2px); }
+        /* Centrage du contenu des cartes de rencontre sur mobile */
+        @media (max-width: 480px) {
+            .renc-card { text-align: center; }
+            .renc-card .btn { width: 100%; }
+        }
+        /* ── Liste des notifications sur le tableau de bord ── */
+        .dash-notif-wrap { position: relative; overflow: hidden; margin-bottom: 1.5rem; padding: 1.4rem 1.5rem; }
+        .dash-notif-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+        .dash-notif-list { display: flex; flex-direction: column; gap: 0.55rem; }
+        .dash-notif-item {
+            display: flex; align-items: flex-start; gap: 0.7rem;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 0.7rem 0.9rem;
+            text-decoration: none;
+            cursor: pointer;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .dash-notif-item:hover { border-color: rgba(212,175,55,0.4); background: rgba(255,255,255,0.05); }
+        .dash-notif-item .ni-ic { font-size: 1.05rem; line-height: 1.3; flex-shrink: 0; }
+        .dash-notif-item .ni-body { flex: 1; min-width: 0; }
+        .dash-notif-item .ni-titre { color: var(--white); font-weight: 700; font-size: 0.88rem; }
+        .dash-notif-item .ni-texte { color: var(--text-muted); font-size: 0.82rem; line-height: 1.4; margin-top: 0.15rem; white-space: pre-line; word-break: break-word; }
+        .dash-notif-item .ni-date { color: rgba(255,255,255,0.32); font-size: 0.7rem; margin-top: 0.25rem; }
+        .dash-notif-item.non-lu { border-left: 3px solid var(--accent); }
+        /* ── Groupe dépliable « Mes notifications » ── */
+        .dash-notif-toggle {
+            display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+            width: 100%;
+            background: none; border: 0; padding: 0;
+            color: var(--gold); font-weight: 800; font-size: 1.05rem;
+            cursor: pointer;
+            text-align: left;
+        }
+        .dash-notif-toggle .nt-chev { transition: transform 0.3s cubic-bezier(0.22,1,0.36,1); color: var(--accent); font-size: 0.85rem; }
+        .dash-notif-toggle.open .nt-chev { transform: rotate(180deg); }
+        .dash-notif-body { overflow: hidden; max-height: 0; transition: max-height 0.45s cubic-bezier(0.22,1,0.36,1), opacity 0.35s ease; opacity: 0; }
+        .dash-notif-body.open { max-height: 1200px; opacity: 1; }
+        .dash-notif-count {
+            background: linear-gradient(135deg, #d4af37, #f1d279); color: #0c241a;
+            border-radius: 50px; padding: 0.15rem 0.65rem; font-size: 0.75rem; font-weight: 800;
+            margin-left: 0.4rem; box-shadow: 0 2px 8px rgba(212,175,55,0.3);
+        }
+        /* Boutons d'action du banner : pleine largeur + centrés sur mobile */
+        .dash-actions { display: flex; align-items: center; justify-content: center; gap: 0.6rem; flex-wrap: wrap; margin-top: 1.1rem; border-top: 1px solid var(--glass-border); padding-top: 1rem; }
+        .dash-actions .btn { flex: 1 1 auto; text-align: center; justify-content: center; }
+        @media (max-width: 520px) {
+            .dash-actions { flex-direction: column; align-items: stretch; }
+            .dash-actions .btn { width: 100%; }
+        }
     </style>
 </head>
 <body>
@@ -258,24 +370,180 @@ try {
         <div class="dashboard-layout">
             <?php include __DIR__ . '/member_menu.php'; ?>
             <div class="dashboard-main">
+        <?php // Rôle d'administrateur accordé à ce membre : il ouvre l'autre espace
+              // dans la même session, avec le même compte et le même mot de passe. ?>
+        <?php if (!empty($me['is_admin'])): ?>
+            <div class="glass-card" style="margin-top: 2rem; padding: 0.9rem 1.15rem; display: flex;
+                        align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+                        border-color: rgba(212, 175, 55, 0.45);">
+                <div style="font-size: 0.86rem; color: #fff; line-height: 1.5;">
+                    🛡️ Vous êtes aussi <strong>administrateur</strong> du Dahira.
+                    <span style="color: var(--text-muted);">Votre espace membre reste ici.</span>
+                </div>
+                <form action="basculer_admin.php" method="POST" style="margin: 0;">
+                    <?php echo csrf_field(); ?>
+                    <input type="hidden" name="vers" value="admin">
+                    <button type="submit" class="btn btn-sm"
+                            style="background: rgba(212, 175, 55, 0.16); border: 1px solid rgba(212, 175, 55, 0.5); color: var(--gold); white-space: nowrap;">
+                        🛡️ Passer en mode administration
+                    </button>
+                </form>
+            </div>
+        <?php endif; ?>
+
         <!-- User Welcome Banner -->
         <?php if (isset($_SESSION['player_id'])): ?>
-            <div class="user-welcome-banner glass-card" style="margin-top: 2rem; margin-bottom: 1rem; padding: 1.25rem 2rem; display: flex; justify-content: space-between; align-items: center; border-radius: 20px; flex-wrap: wrap; gap: 1rem;">
-                <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                    <span style="font-size: 1.15rem; font-weight: 500;">Bienvenue, <strong class="gold-text"><?php echo htmlspecialchars($_SESSION['player_name']); ?></strong> !</span>
-                    <span class="player-score-badge" style="background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: var(--white); font-weight: 800; padding: 0.5rem 1.25rem; border-radius: 50px; font-size: 1rem; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 12px rgba(27,67,50,0.3);">
-                        🏆 <?php echo (int)($_SESSION['player_score'] ?? 0); ?> pts
-                    </span>
+            <div class="user-welcome-banner glass-card" style="margin-top: 2rem; margin-bottom: 1rem; padding: 1.4rem 1.6rem; border-radius: 20px; position: relative; overflow: hidden;">
+                <div style="display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap;">
+                    <!-- Photo / avatar -->
+                    <div style="width: 64px; height: 64px; border-radius: 50%; overflow: hidden; border: 2px solid var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,0.4); flex-shrink: 0; background: var(--primary); display:flex; align-items:center; justify-content:center;">
+                        <?php if ($mePhoto !== ''): ?>
+                            <img src="uploads/<?php echo htmlspecialchars($mePhoto); ?>" alt="Photo de profil" style="width:100%; height:100%; object-fit:cover;">
+                        <?php else: ?>
+                            <span style="font-size:1.6rem; font-weight:800; color:var(--gold); text-transform:uppercase;"><?php echo htmlspecialchars(mb_strtoupper(mb_substr(trim($mePrenom . ' ' . $meNom), 0, 1))); ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <!-- Identité -->
+                    <div style="flex: 1; min-width: 200px;">
+                        <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+                            <span style="font-size: 1.2rem; font-weight: 600;">Bienvenue, <strong class="gold-text"><?php echo htmlspecialchars($_SESSION['player_name']); ?></strong> !</span>
+                            <?php if ($meCivilite !== ''): ?>
+                                <span class="member-civilite-badge" style="opacity:1; transform:none;"><?php echo htmlspecialchars($meCivilite); ?></span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <!-- Score + notifications -->
+                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.5rem;">
+                        <span class="player-score-badge" style="background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: var(--white); font-weight: 800; padding: 0.5rem 1.25rem; border-radius: 50px; font-size: 1rem; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 12px rgba(27,67,50,0.3); white-space: nowrap;">
+                            🏆 <?php echo (int)($_SESSION['player_score'] ?? 0); ?> pts
+                        </span>
+                        <a href="notifications_page.php" style="color: var(--text-muted); text-decoration: none; font-size: 0.82rem; font-weight:600; display:inline-flex; align-items:center; gap:0.35rem;">
+                            🔔 Notifications <?php if (isset($notifNonLues) && $notifNonLues > 0): ?><span style="background: var(--accent); color: var(--secondary); border-radius: 50px; padding: 0.05rem 0.5rem; font-size: 0.75rem; font-weight: 800;"><?php echo (int)$notifNonLues > 99 ? '99+' : (int)$notifNonLues; ?></span><?php endif; ?>
+                        </a>
+                    </div>
                 </div>
-                <a href="kikanla.php" class="btn btn-primary btn-sm">🎮 Jouer à Ki Kan La</a>
+                <div class="dash-actions">
+                    <a href="trombinoscope.php" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">🖼️ Voir le trombinoscope</a>
+                    <a href="kikanla.php" class="btn btn-primary btn-sm">🎮 Jouer à Ki Kan La</a>
+                </div>
             </div>
+        <?php endif; ?>
+
+        <!-- Complétion du profil : inciter à compléter les informations manquantes -->
+        <?php if (isset($_SESSION['player_id']) && $profilManque): ?>
+        <a href="profile.php" class="glass-card" style="display:block; text-decoration:none; margin-bottom:1.25rem; padding:1.1rem 1.35rem; border-radius:16px; border:1px solid rgba(212,175,55,0.4); background:linear-gradient(160deg, rgba(212,175,55,0.12), rgba(255,255,255,0.03));">
+            <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                <div style="font-size:1.6rem;">📝</div>
+                <div style="flex:1; min-width:180px;">
+                    <div style="color:#fff; font-weight:800; font-size:1rem;">Complétez vos informations</div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.15rem;">Votre profil est rempli à <strong style="color:var(--accent);"><?php echo (int) $profilCompletion; ?>%</strong> — quelques champs manquent encore.</div>
+                    <div style="height:8px; border-radius:50px; background:rgba(255,255,255,0.08); margin-top:0.6rem; overflow:hidden;">
+                        <div style="height:100%; width:<?php echo (int) $profilCompletion; ?>%; background:linear-gradient(90deg, #d4af37, #f1d279); border-radius:50px;"></div>
+                    </div>
+                </div>
+                <span class="btn btn-primary btn-sm" style="white-space:nowrap;">Compléter →</span>
+            </div>
+        </a>
+        <?php endif; ?>
+
+        <!-- Séances publiées : Dahira & Guddi Àjjuma (validation de présence) — avant le Coran -->
+        <?php if (!empty($prochainDahira) || !empty($prochainGuddi)): ?>
+        <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🕌 Prochaines rencontres — validez votre présence</div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+
+                <?php if (!empty($prochainDahira)): ?>
+                <?php
+                    $dDate = $prochainDahira['date_dahira'];
+                    $dPassed = dahira_presence_ouverte($dDate, $dahiraHeure);
+                ?>
+                <div class="renc-card">
+                    <div style="font-weight:800; color:var(--accent);">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem; white-space:pre-line;">🕐 <?php echo htmlspecialchars($dahiraHeure); ?> à <?php echo htmlspecialchars($dahiraFin); ?><br>📍 <?php echo htmlspecialchars($dahiraLieu); ?></div>
+                    <div style="margin-top:0.6rem;"><a href="dahira_detail.php?id=<?php echo (int)$prochainDahira['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
+                    <?php if (isset($_SESSION['player_id'])): ?>
+                        <?php if ($dPassed && $dahiraPresenceFaite): ?>
+                            <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Diadieuf</div>
+                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">↩️ Annuler ma présence</button>
+                        <?php elseif ($dPassed): ?>
+                            <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">✅ J'étais présent(e)</button>
+                        <?php else: ?>
+                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Validation possible à partir de <?php echo htmlspecialchars($dahiraHeure); ?> le <?php echo date('d/m/Y', strtotime($dDate)); ?>.</div>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($prochainGuddi)): ?>
+                <?php
+                    $gDate = $prochainGuddi['date_guddi'];
+                    $gPassed = dahira_presence_ouverte($gDate, $guddiHeure);
+                    $gMode = (string)($prochainGuddi['mode'] ?? '');
+                    if ($gMode === '') { $gMode = dahira_param($pdo, 'guddi_mode_defaut', 'distance'); }
+                ?>
+                <div class="renc-card">
+                    <div style="font-weight:800; color:var(--accent);">💎 Guddi Àjjuma — <?php echo ucfirst(guddi_jour_fr($gDate)) . ' ' . date('d/m/Y', strtotime($gDate)); ?></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🕐 à partir de <?php echo htmlspecialchars($guddiHeure); ?> · <?php echo $gMode === 'presentiel' ? '🏛️ présentiel' : '💻 à distance'; ?></div>
+                    <?php if (!empty($prochainGuddi['theme'])): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.2rem;">🎯 <?php echo htmlspecialchars((string)$prochainGuddi['theme']); ?></div><?php endif; ?>
+                    <div style="margin-top:0.6rem;"><a href="guddi_detail.php?id=<?php echo (int)$prochainGuddi['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
+                    <?php if (isset($_SESSION['player_id'])): ?>
+                        <?php if ($gPassed && $guddiPresenceFaite): ?>
+                            <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Diadieuf</div>
+                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">↩️ Annuler ma présence</button>
+                        <?php elseif ($gPassed): ?>
+                            <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">✅ J'étais présent(e)</button>
+                        <?php else: ?>
+                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Validation possible à partir de <?php echo htmlspecialchars($guddiHeure); ?> le <?php echo date('d/m/Y', strtotime($gDate)); ?>.</div>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Réunions de commission publiées (à venir) -->
+        <?php if (!empty($mesReunions)): ?>
+        <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">👥 Réunions de vos commissions</div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+                <?php foreach ($mesReunions as $mr): ?>
+                <div class="renc-card">
+                    <div style="font-weight:800; color:var(--accent);">📌 <?php echo htmlspecialchars($mr['titre']); ?></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">📋 <?php echo htmlspecialchars((string)($mr['commission_nom'] ?? '')); ?><br>🗓️ <?php echo date('d/m/Y', strtotime($mr['date_reunion'])); ?> · 🕐 <?php echo htmlspecialchars($mr['heure']); ?> · <?php echo ((string)$mr['mode'] === 'presentiel') ? '🏛️ présentiel' : '💻 à distance'; ?></div>
+                    <div style="margin-top:0.6rem;"><a href="reunion_detail.php?id=<?php echo (int)$mr['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Répétitions de Kurel publiées (à venir) -->
+        <?php if (!empty($mesRepetitions)): ?>
+        <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🎵 Répétitions de vos Kurels</div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+                <?php foreach ($mesRepetitions as $mp): ?>
+                <div class="renc-card">
+                    <div style="font-weight:800; color:var(--accent);">🎼 <?php echo htmlspecialchars($mp['titre']); ?></div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🎵 <?php echo htmlspecialchars((string)($mp['kourel_nom'] ?? '')); ?><br>🗓️ <?php echo date('d/m/Y', strtotime($mp['date_reunion'])); ?> · 🕐 <?php echo htmlspecialchars($mp['heure']); ?> · <?php echo ((string)$mp['mode'] === 'presentiel') ? '🏛️ présentiel' : '💻 à distance'; ?></div>
+                    <div style="margin-top:0.6rem;"><a href="repetition_detail.php?id=<?php echo (int)$mp['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
         <?php endif; ?>
 
         <?php if (!empty($myWirdParts) || !empty($wirdSessions)): ?>
             <form id="idx-w-form" method="POST" action="wird.php" style="display:none;">
                 <?php echo csrf_field(); ?>
-                <input type="hidden" name="session_id" value="<?php echo (int)$myWirdSession['sid']; ?>">
-                <input type="hidden" name="token" value="<?php echo htmlspecialchars($myWirdSession['token'], ENT_QUOTES); ?>">
+                <input type="hidden" name="session_id" id="idx-wf-sid" value="<?php echo (int)$myWirdSession['sid']; ?>">
+                <input type="hidden" name="token" id="idx-wf-token" value="<?php echo htmlspecialchars($myWirdSession['token'], ENT_QUOTES); ?>">
                 <input type="hidden" name="action" id="idx-wf-action" value="validate">
                 <input type="hidden" name="part_id" id="idx-wf-pid" value="">
                 <input type="hidden" name="ptoken" value="">
@@ -292,22 +560,28 @@ try {
                     <?php endif; ?>
                 </div>
 
-                <?php if (!empty($myWirdParts)): ?>
-                <div class="wtv-idx-list" style="margin-top:0.9rem;">
-                    <div style="color:#ffd873; font-size:0.85rem; font-weight:700; margin-bottom:0.5rem;">📖 Vos Juz à valider — Session : <?php echo htmlspecialchars($myWirdSession['titre']); ?></div>
-                    <?php foreach ($myWirdParts as $mp): ?>
-                    <?php
-                        $n = (int)$mp['numero'];
-                        $n2 = sprintf('%02d', $n);
-                        $v1 = "pdf_viewer.php?file=" . urlencode("Coran_pdf/Version_1/{$n2}.pdf");
-                        $v2 = "pdf_viewer.php?file=" . urlencode("Coran_pdf/Version_2/{$n2}-quran{$n}-ar.pdf");
-                    ?>
-                    <span class="wtv-item-idx">
-                        <span class="wtv-num">Juz <?php echo $n; ?></span>
-                        <button type="button" class="wtv-btn" onclick="idxConfirmValidation(<?php echo (int)$mp['id']; ?>)">✓ Lu</button>
-                        <a href="<?php echo htmlspecialchars($v1); ?>" target="_blank" class="wtv-btn wtv-btn--pdf">V1</a>
-                        <a href="<?php echo htmlspecialchars($v2); ?>" target="_blank" class="wtv-btn wtv-btn--pdf">V2</a>
-                    </span>
+                <?php if (!empty($myWirdGroups)): ?>
+                <div class="wtv-idx-groups">
+                    <?php foreach ($myWirdGroups as $g): ?>
+                    <div class="wtv-idx-group">
+                        <div class="wtv-idx-grouphead">📖 <?php echo htmlspecialchars($g['titre']); ?><?php if (!empty($g['periode'])): ?> <span style="color:#7dd3fc; font-weight:600;">🗓️ <?php echo htmlspecialchars($g['periode']); ?></span><?php endif; ?> <span style="color:var(--text-muted); font-weight:600;">· <?php echo count($g['parts']); ?> Juz</span></div>
+                        <div class="wtv-idx-list" style="margin-top:0.5rem;">
+                            <?php foreach ($g['parts'] as $mp): ?>
+                            <?php
+                                $n = (int)$mp['numero'];
+                                $n2 = sprintf('%02d', $n);
+                                $v1 = "pdf_viewer.php?file=" . urlencode("Coran_pdf/Version_1/{$n2}.pdf");
+                                $v2 = "pdf_viewer.php?file=" . urlencode("Coran_pdf/Version_2/{$n2}-quran{$n}-ar.pdf");
+                            ?>
+                            <span class="wtv-item-idx">
+                                <span class="wtv-num">Juz <?php echo $n; ?></span>
+                                <button type="button" class="wtv-btn" onclick="idxConfirmValidation(<?php echo (int)$mp['id']; ?>, <?php echo (int)$g['sid']; ?>, <?php echo htmlspecialchars(json_encode($g['token']), ENT_QUOTES); ?>)">✓ Lu</button>
+                                <a href="<?php echo htmlspecialchars($v1); ?>" target="_blank" class="wtv-btn wtv-btn--pdf">V1</a>
+                                <a href="<?php echo htmlspecialchars($v2); ?>" target="_blank" class="wtv-btn wtv-btn--pdf">V2</a>
+                            </span>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
                     <?php endforeach; ?>
                 </div>
                 <div class="wtv-idx-hint" style="margin-top:0.7rem;">Cliquez sur ✓ Lu après chaque lecture, ou ouvrez directement le PDF souhaité.</div>
@@ -317,8 +591,9 @@ try {
                 <div style="margin-top:0.9rem; padding-top:0.8rem; border-top:1px solid rgba(255,255,255,0.08);">
                     <div style="color:#ffd873; font-size:0.85rem; font-weight:700; margin-bottom:0.4rem;">📚 Autres sessions en cours — choisissez un Juz</div>
                     <?php foreach ($wirdSessions as $w): ?>
+                        <?php $wPer = wird_period_label($pdo, $w); ?>
                         <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.06);">
-                            <span style="color: #fff;"><strong><?php echo htmlspecialchars($w['titre']); ?></strong> <span style="color: var(--text-muted); font-size: 0.85rem;">· <?php echo (int)$w['lues']; ?>/30 lues · <strong style="color:#ffd873;"><?php echo (int)$w['libres']; ?></strong> Juz libres</span></span>
+                            <span style="color: #fff;"><strong><?php echo htmlspecialchars($w['titre']); ?></strong><?php if ($wPer !== ''): ?> <span style="color:#7dd3fc; font-size:0.85rem; font-weight:600;">🗓️ <?php echo htmlspecialchars($wPer); ?></span><?php endif; ?> <span style="color: var(--text-muted); font-size: 0.85rem;">· <?php echo (int)$w['lues']; ?>/30 lues · <strong style="color:#ffd873;"><?php echo (int)$w['libres']; ?></strong> Juz libres</span></span>
                             <a href="wird.php?s=<?php echo (int)$w['id']; ?>&t=<?php echo htmlspecialchars($w['token'], ENT_QUOTES); ?>" class="btn btn-primary btn-sm" style="white-space:nowrap;">Choisir un Juz</a>
                         </div>
                     <?php endforeach; ?>
@@ -327,127 +602,47 @@ try {
             </div>
         <?php endif; ?>
 
-        <!-- Séances publiées : Dahira & Guddi Àjjuma (validation de présence) -->
-        <?php if (!empty($prochainDahira) || !empty($prochainGuddi)): ?>
-        <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
-            <div style="color: var(--gold); font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🕌 Prochaines rencontres — validez votre présence</div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
-
-                <?php if (!empty($prochainDahira)): ?>
-                <?php
-                    $dDate = $prochainDahira['date_dahira'];
-                    $dPassed = $dDate <= date('Y-m-d');
-                ?>
-                <div class="renc-card">
-                    <div style="font-weight:800; color:var(--accent);">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></div>
-                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem; white-space:pre-line;">🕐 <?php echo htmlspecialchars($dahiraHeure); ?> à <?php echo htmlspecialchars($dahiraFin); ?><br>📍 <?php echo htmlspecialchars($dahiraLieu); ?></div>
-                    <div style="margin-top:0.6rem;"><a href="dahira_detail.php?id=<?php echo (int)$prochainDahira['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
-                    <?php if (isset($_SESSION['player_id'])): ?>
-                        <?php if ($dPassed && $dahiraPresenceFaite): ?>
-                            <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Jazakallahou Khair</div>
-                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">↩️ Annuler ma présence</button>
-                        <?php elseif ($dPassed): ?>
-                            <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">✅ J'étais présent(e)</button>
-                        <?php else: ?>
-                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Vous pourrez valider votre présence le jour même.</div>
-                        <?php endif; ?>
-                    <?php else: ?>
-                        <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
-                    <?php endif; ?>
+        <!-- Notifications actives du membre (groupe dépliable) -->
+        <?php if (!empty($dashNotifs)): ?>
+        <?php $dashNonLues = count(array_filter($dashNotifs, function ($n) { return ($n['read_at'] ?? null) === null; })); ?>
+        <div class="glass-card dash-notif-wrap">
+            <button type="button" class="dash-notif-toggle open" id="dash-notif-toggle" aria-expanded="true" onclick="dashToggleNotifs(this)">
+                <span>🔔 Mes notifications<?php if ($dashNonLues > 0): ?><span class="dash-notif-count"><?php echo $dashNonLues; ?> non lue<?php echo $dashNonLues > 1 ? 's' : ''; ?></span><?php endif; ?></span>
+                <span class="nt-chev">▾</span>
+            </button>
+            <div class="dash-notif-body open" id="dash-notif-body">
+                <div class="dash-notif-list" id="dash-notif-list" style="margin-top:0.9rem;">
+                <?php foreach ($dashNotifs as $n): ?>
+                    <?php
+                        $nId    = (int)$n['id'];
+                        $nTitre = (string)($n['title'] ?? 'Notification');
+                        $nTexte = (string)($n['body'] ?? '');
+                        $nUrl   = (string)($n['url'] ?? '');
+                        $nNonLu = ($n['read_at'] ?? null) === null;
+                        $nDate  = !empty($n['created_at']) ? date('d/m/Y H:i', strtotime((string)$n['created_at'])) : '';
+                        $nKind  = (string)($n['kind'] ?? '');
+                        $nIcon  = '🔔';
+                        if (stripos($nKind, 'guddi') !== false || stripos($nTitre, 'guddi') !== false) { $nIcon = '💎'; }
+                        elseif (stripos($nKind, 'dahira') !== false || stripos($nTitre, 'dahira') !== false) { $nIcon = '🕌'; }
+                        elseif (stripos($nKind, 'kikanla') !== false || stripos($nTitre, 'ki kan la') !== false) { $nIcon = '🎮'; }
+                        elseif (stripos($nKind, 'wird') !== false || stripos($nTitre, 'coran') !== false) { $nIcon = '📖'; }
+                        elseif (stripos($nKind, 'presence') !== false) { $nIcon = '✅'; }
+                    ?>
+                    <a class="dash-notif-item<?php echo $nNonLu ? ' non-lu' : ''; ?>" href="<?php echo $nUrl !== '' ? htmlspecialchars($nUrl) : 'javascript:void(0)'; ?>" data-id="<?php echo $nId; ?>" data-url="<?php echo $nUrl !== '' ? htmlspecialchars($nUrl) : ''; ?>"<?php echo $nUrl === '' ? ' onclick="dashSupprNotif(this); return false;"' : ''; ?>>
+                        <div class="ni-ic"><?php echo $nIcon; ?></div>
+                        <div class="ni-body">
+                            <div class="ni-titre"><?php echo htmlspecialchars($nTitre); ?></div>
+                            <?php if ($nTexte !== ''): ?><div class="ni-texte"><?php echo nl2br(htmlspecialchars($nTexte)); ?></div><?php endif; ?>
+                            <?php if ($nDate !== ''): ?><div class="ni-date">🕐 <?php echo htmlspecialchars($nDate); ?></div><?php endif; ?>
+                        </div>
+                    </a>
+                <?php endforeach; ?>
                 </div>
-                <?php endif; ?>
-
-                <?php if (!empty($prochainGuddi)): ?>
-                <?php
-                    $gDate = $prochainGuddi['date_guddi'];
-                    $gPassed = $gDate <= date('Y-m-d');
-                    $gMode = (string)($prochainGuddi['mode'] ?? '');
-                    if ($gMode === '') { $gMode = dahira_param($pdo, 'guddi_mode_defaut', 'distance'); }
-                ?>
-                <div class="renc-card">
-                    <div style="font-weight:800; color:var(--accent);">💎 Guddi Àjjuma — <?php echo ucfirst(guddi_jour_fr($gDate)) . ' ' . date('d/m/Y', strtotime($gDate)); ?></div>
-                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🕐 à partir de <?php echo htmlspecialchars($guddiHeure); ?> · <?php echo $gMode === 'presentiel' ? '🏛️ présentiel' : '💻 à distance'; ?></div>
-                    <?php if (!empty($prochainGuddi['theme'])): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.2rem;">🎯 <?php echo htmlspecialchars((string)$prochainGuddi['theme']); ?></div><?php endif; ?>
-                    <div style="margin-top:0.6rem;"><a href="guddi_detail.php?id=<?php echo (int)$prochainGuddi['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
-                    <?php if (isset($_SESSION['player_id'])): ?>
-                        <?php if ($gPassed && $guddiPresenceFaite): ?>
-                            <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Jazakallahou Khair</div>
-                            <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">↩️ Annuler ma présence</button>
-                        <?php elseif ($gPassed): ?>
-                            <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">✅ J'étais présent(e)</button>
-                        <?php else: ?>
-                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Vous pourrez valider votre présence le jour même.</div>
-                        <?php endif; ?>
-                    <?php else: ?>
-                        <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
-                    <?php endif; ?>
-                </div>
-                <?php endif; ?>
-
             </div>
         </div>
         <?php endif; ?>
 
-        <!-- Intro Header -->
-        <section class="intro-section">
-            <h1 class="intro-title">Membres de <span class="gold-text">Touba Lyon</span></h1>
-            <p class="intro-desc">Retrouvez l'annuaire illustré de notre communauté — photos, noms et fraternité.</p>
-
-            <!-- Search bar -->
-            <div class="search-container">
-                <svg class="search-icon" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                <input type="text" id="search-input" class="search-input" placeholder="Rechercher un membre par nom ou prénom...">
-            </div>
-
-            <div class="filter-container">
-                <button class="filter-btn active" data-filter="all">Tous</button>
-                <button class="filter-btn" data-filter="Goor Yalla">Goor Yalla</button>
-                <button class="filter-btn" data-filter="Sokhna">Sokhna</button>
-            </div>
-        </section>
-
-        <!-- Grid of Members -->
-        <?php if (empty($members)): ?>
-            <div class="empty-state">
-                <div class="empty-state-icon">👥</div>
-                <h2>Aucun membre validé</h2>
-                <p style="margin-top: 0.5rem; color: var(--text-muted);">
-                    Le Dahira - Mubawwa-A-Sidqin est actuellement vide ou les inscriptions sont en cours de validation.
-                </p>
-                <div style="margin-top: 1.5rem;">
-                    <a href="register.php" class="btn btn-primary">Créer la première inscription</a>
-                </div>
-            </div>
-        <?php else: ?>
-            <div class="trombi-grid" id="trombi-grid">
-                <?php foreach ($members as $m): ?>
-                    <?php 
-                        $fullName = $m['prenom'] . ' ' . $m['nom'];
-                    ?>
-                    <a class="member-card" href="membre_detail.php?id=<?php echo (int)$m['id']; ?>"
-                        data-name="<?php echo htmlspecialchars($fullName); ?>" data-civilite="<?php echo htmlspecialchars($m['civilite'] ?? 'Goor Yalla'); ?>">
-                        <div class="member-photo-container">
-                            <img src="uploads/<?php echo htmlspecialchars($m['photo_path']); ?>" class="member-photo" alt="Photo de <?php echo htmlspecialchars($fullName); ?>" loading="lazy">
-                        </div>
-                        <div class="member-info">
-                            <h3 class="member-name"><?php echo htmlspecialchars($fullName); ?></h3>
-                            <?php if (!empty($m['civilite'])): ?>
-                                <span class="member-civilite-badge"><?php echo htmlspecialchars($m['civilite']); ?></span>
-                            <?php endif; ?>
-                        </div>
-                    </a>
-                <?php endforeach; ?>
-            </div>
-            
-            <!-- No results message -->
-            <div class="empty-state" id="no-results" style="display: none;">
-                <div class="empty-state-icon">🔍</div>
-                <h2>Aucun résultat trouvé</h2>
-                <p style="margin-top: 0.5rem; color: var(--text-muted);">
-                    Aucun membre ne correspond à votre recherche. Essayez d'autres termes.
-                </p>
-            </div>
-        <?php endif; ?>
+        <!-- Le trombinoscope (grille, recherche, filtres) vit désormais dans trombinoscope.php -->
             </div>
         </div>
     </main>
@@ -455,6 +650,8 @@ try {
     <footer class="app-footer">
         <p>&copy; 2026 Touba Lyon - Tous droits réservés.</p>
     </footer>
+
+    <?php include __DIR__ . '/modern_popup.php'; ?>
 
     <!-- Modal de confirmation validation lecture (index.php) -->
     <div id="idx-confirm-modal" class="modal-overlay" style="display:none;">
@@ -469,9 +666,11 @@ try {
     </div>
 
     <script>
-        var idxConfirmPid = 0;
-        function idxConfirmValidation(pid) {
+        var idxConfirmPid = 0, idxConfirmSid = 0, idxConfirmToken = '';
+        function idxConfirmValidation(pid, sid, token) {
             idxConfirmPid = pid;
+            idxConfirmSid = sid || 0;
+            idxConfirmToken = token || '';
             var modal = document.getElementById('idx-confirm-modal');
             modal.style.display = 'flex';
             setTimeout(function() { modal.classList.add('active'); }, 10);
@@ -486,6 +685,8 @@ try {
             idxConfirmBtn.addEventListener('click', function() {
                 if (idxConfirmPid) {
                     document.getElementById('idx-wf-pid').value = idxConfirmPid;
+                    if (idxConfirmSid) { document.getElementById('idx-wf-sid').value = idxConfirmSid; }
+                    if (idxConfirmToken) { document.getElementById('idx-wf-token').value = idxConfirmToken; }
                     document.getElementById('idx-w-form').submit();
                 }
             });
@@ -495,6 +696,47 @@ try {
     <script>
         // Validation de présence (Dahira / Guddi Àjjuma publiés)
         var presenceToken = <?php echo json_encode(isset($trobaCsrf) ? $trobaCsrf : ''); ?>;
+        // Ouverture / fermeture du groupe « Mes notifications »
+        function dashToggleNotifs(btn) {
+            var body = document.getElementById('dash-notif-body');
+            if (!body) { return; }
+            var open = body.classList.toggle('open');
+            btn.classList.toggle('open', open);
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        // Suppression d'une notification (clic sur la carte)
+        function dashSupprNotif(el) {
+            if (!el || !el.getAttribute('data-id')) { return; }
+            var id = el.getAttribute('data-id');
+            var token = presenceToken;
+            if (token === '') {
+                try { token = document.querySelector('meta[name="csrf-token"]').getAttribute('content'); } catch (e) {}
+            }
+            var corps = new URLSearchParams();
+            corps.set('action', 'supprimer');
+            corps.set('id', id);
+            corps.set('csrf_token', token);
+            fetch('notifications.php', { method: 'POST', body: corps })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.ok && el.parentNode) {
+                        el.parentNode.removeChild(el);
+                        var restants = document.querySelectorAll('.dash-notif-item').length;
+                        var wrap = document.getElementById('dash-notif-list');
+                        if (wrap && restants === 0) {
+                            var p = document.createElement('p');
+                            p.style.cssText = 'color:var(--text-muted); font-size:0.85rem; margin:0; text-align:center;';
+                            p.textContent = 'Aucune notification pour le moment.';
+                            wrap.appendChild(p);
+                        }
+                    } else if (window.modernAlert) {
+                        window.modernAlert('Erreur lors de la suppression.', 'Erreur');
+                    }
+                })
+                .catch(function () {
+                    if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.', 'Erreur'); }
+                });
+        }
         function validerPresence(type, id, btn) {
             if (presenceToken === '') {
                 try { presenceToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content'); } catch (e) {}
@@ -508,11 +750,27 @@ try {
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.ok) { window.location.reload(); }
+                    else if (window.modernAlert) { window.modernAlert(d.msg || 'Erreur.', 'Erreur'); }
                     else { alert(d.msg || 'Erreur.'); }
                 })
-                .catch(function () { alert('Une erreur est survenue. Réessayez.'); });
+                .catch(function () {
+                    if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.', 'Erreur'); }
+                    else { alert('Une erreur est survenue. Réessayez.'); }
+                });
         }
         function annulerPresence(type, id, btn) {
+            var label = type === 'dahira' ? 'le Dahira' : 'le Guddi Àjjuma';
+            if (window.modernConfirm) {
+                window.modernConfirm(
+                    'Voulez-vous vraiment <strong>annuler votre présence</strong> à ' + label + ' ?<br><br><span style="color:var(--text-muted); font-size:0.85rem;">Vous ne serez plus compté(e) comme présent(e) pour cet événement.</span>',
+                    function () { annulerPresenceOk(type, id); },
+                    { danger: true, bouton: 'Oui, annuler', titre: '↩️ Annuler ma présence' }
+                );
+            } else {
+                annulerPresenceOk(type, id);
+            }
+        }
+        function annulerPresenceOk(type, id) {
             var corps = new URLSearchParams();
             corps.set('action', 'cancel');
             corps.set('type', type);
@@ -522,62 +780,17 @@ try {
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
                     if (d.ok) { window.location.reload(); }
+                    else if (window.modernAlert) { window.modernAlert(d.msg || 'Erreur.'); }
                     else { alert(d.msg || 'Erreur.'); }
                 })
-                .catch(function () { alert('Une erreur est survenue. Réessayez.'); });
+                .catch(function () {
+                    if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.'); }
+                    else { alert('Une erreur est survenue. Réessayez.'); }
+                });
         }
     </script>
 
-    <script>
-        const searchInput = document.getElementById('search-input');
-        const filterBtns = document.querySelectorAll('.filter-btn');
-        const cards = document.querySelectorAll('.member-card');
-        const grid = document.getElementById('trombi-grid');
-        const noResults = document.getElementById('no-results');
+    <!-- Le pull-to-refresh est désormais inclus globalement via header.php (pull_refresh.php) -->
 
-        let activeFilter = 'all';
-
-        function filterMembers() {
-            const term = searchInput ? searchInput.value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : '';
-            let matchCount = 0;
-
-            cards.forEach(card => {
-                const name = card.getAttribute('data-name').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                const civilite = card.getAttribute('data-civilite');
-
-                const matchesSearch = name.includes(term);
-                const matchesFilter = activeFilter === 'all' || civilite === activeFilter;
-
-                if (matchesSearch && matchesFilter) {
-                    card.style.display = 'flex';
-                    matchCount++;
-                } else {
-                    card.style.display = 'none';
-                }
-            });
-
-            if (matchCount === 0) {
-                grid.style.display = 'none';
-                noResults.style.display = 'block';
-            } else {
-                grid.style.display = 'grid';
-                noResults.style.display = 'none';
-            }
-        }
-
-        if (searchInput) {
-            searchInput.addEventListener('input', filterMembers);
-        }
-
-        filterBtns.forEach(btn => {
-            btn.addEventListener('click', function() {
-                filterBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                activeFilter = btn.getAttribute('data-filter');
-                filterMembers();
-            });
-        });
-
-    </script>
 </body>
 </html>
