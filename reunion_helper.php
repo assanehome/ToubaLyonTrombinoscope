@@ -204,11 +204,12 @@ function reunion_message_partage(array $r, string $commissionNom, string $lien):
     $date = (string) ($r['date_reunion'] ?? '');
     $dateFr = $date !== '' ? date('d/m/Y', strtotime($date)) : '';
     $heure = (string) ($r['heure'] ?? '');
+    $heureFin = trim((string) ($r['heure_fin'] ?? ''));
     $mode = (string) ($r['mode'] ?? 'distance');
     $lieu = trim((string) ($r['lieu'] ?? ''));
     $msg = "As-salaamu haleykum,\n\n📌 *" . (string) ($r['titre'] ?? 'Réunion') . "*";
     if ($commissionNom !== '') { $msg .= "\n📋 Commission " . $commissionNom; }
-    if ($dateFr !== '') { $msg .= "\n🗓️ " . $dateFr . ($heure !== '' ? " à " . $heure : ''); }
+    if ($dateFr !== '') { $msg .= "\n🗓️ " . $dateFr . ($heure !== '' ? ($heureFin !== '' ? " de " . $heure . " à " . $heureFin : " à " . $heure) : ''); }
     $msg .= "\n" . ($mode === 'presentiel' ? ('🏛️ En présentiel' . ($lieu !== '' ? " : " . $lieu : '')) : '💻 À distance (visioconférence)');
     if (trim((string) ($r['description'] ?? '')) !== '') { $msg .= "\n\n📝 " . trim((string) $r['description']); }
     if (trim($lien) !== '') { $msg .= "\n\n👉 Détails : " . trim($lien); }

@@ -131,7 +131,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("DELETE FROM commission_gestionnaires WHERE commission_id = ?")->execute([$cid]);
                 if (is_array($ids) && !empty($ids)) {
                     $ins = $pdo->prepare("INSERT IGNORE INTO commission_gestionnaires (commission_id, membre_id) VALUES (?, ?)");
-                    foreach ($ids as $one) { $one = (int) $one; if ($one > 0) { $ins->execute([$cid, $one]); $demandes[] = $one; } }
+                    // Un responsable est aussi membre de la commission : ajout automatique.
+                    $insMbr = $pdo->prepare("INSERT IGNORE INTO commission_membres (commission_id, membre_id) VALUES (?, ?)");
+                    foreach ($ids as $one) { $one = (int) $one; if ($one > 0) { $ins->execute([$cid, $one]); $insMbr->execute([$cid, $one]); $demandes[] = $one; } }
                 }
                 $pdo->commit();
                 $success = "Les responsables de la commission ont été mis à jour.";
@@ -152,6 +154,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($action === 'add_commission_manager' && $cid > 0 && $mid > 0 && $__isAdmin) {
                 $st = $pdo->prepare("INSERT IGNORE INTO commission_gestionnaires (commission_id, membre_id) VALUES (?, ?)");
                 $st->execute([$cid, $mid]);
+                // Un responsable est aussi membre de la commission : ajout automatique.
+                $pdo->prepare("INSERT IGNORE INTO commission_membres (commission_id, membre_id) VALUES (?, ?)")->execute([$cid, $mid]);
                 $success = "Responsable ajouté.";
                 if ($st->rowCount() > 0) { com_notify_membre_ajout($pdo, $mid, com_commission_nom($pdo, $cid), true); }
             } elseif ($action === 'create_reunion' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
@@ -159,6 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $desc = trim($_POST['description'] ?? '');
                 $dateDebut = trim($_POST['date_debut'] ?? '');
                 $heure = trim($_POST['heure'] ?? '');
+                $heureFin = trim($_POST['heure_fin'] ?? '');
                 $modeRaw = trim($_POST['mode'] ?? '');
                 $mode = ($modeRaw === 'presentiel') ? 'presentiel' : (($modeRaw === 'distance') ? 'distance' : '');
                 $lieu = trim($_POST['lieu'] ?? '');
@@ -172,6 +177,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = "La date de la réunion ne peut pas être dans le passé.";
                 } elseif ($heure === '') {
                     $error = "L'heure est obligatoire.";
+                } elseif ($heureFin !== '' && $heureFin <= $heure) {
+                    $error = "L'heure de fin doit être après l'heure de début.";
                 } elseif ($mode === '') {
                     $error = "Le mode (à distance ou présentiel) est obligatoire.";
                 } elseif ($mode === 'distance' && $lien === '') {
@@ -181,10 +188,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $dates = reunion_generer_dates($dateDebut, ($dateFin !== '' ? $dateFin : $dateDebut), $per);
                     $pdo->beginTransaction();
-                    $ins = $pdo->prepare("INSERT INTO commission_reunions (commission_id, titre, description, date_reunion, heure, mode, lieu, lien, periodicite, publie, cloture, created_by) VALUES (?,?,?,?,?,?,?,?,?,0,0,?)");
+                    $ins = $pdo->prepare("INSERT INTO commission_reunions (commission_id, titre, description, date_reunion, heure, heure_fin, mode, lieu, lien, periodicite, publie, cloture, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,0,0,?)");
                     $createdIds = [];
                     foreach ($dates as $d) {
-                        $ins->execute([$cid, $titre, ($desc ?: null), $d, $heure, $mode, ($lieu ?: null), ($lien ?: null), $per, (!empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null)]);
+                        $ins->execute([$cid, $titre, ($desc ?: null), $d, $heure, ($heureFin ?: null), $mode, ($lieu ?: null), ($lien ?: null), $per, (!empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null)]);
                         $createdIds[] = (int) $pdo->lastInsertId();
                     }
                     if (!empty($createdIds)) {
@@ -238,6 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $eDesc = trim($_POST['description'] ?? '');
                         $eDate = trim($_POST['date_reunion'] ?? '');
                         $eHeure = trim($_POST['heure'] ?? '');
+                        $eHeureFin = trim($_POST['heure_fin'] ?? '');
                         $eModeRaw = trim($_POST['mode'] ?? '');
                         $eMode = ($eModeRaw === 'presentiel') ? 'presentiel' : (($eModeRaw === 'distance') ? 'distance' : '');
                         $eLieu = trim($_POST['lieu'] ?? '');
@@ -248,6 +256,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $error = "La date de la réunion ne peut pas être dans le passé.";
                         } elseif ($eHeure === '') {
                             $error = "L'heure est obligatoire.";
+                        } elseif ($eHeureFin !== '' && $eHeureFin <= $eHeure) {
+                            $error = "L'heure de fin doit être après l'heure de début.";
                         } elseif ($eMode === '') {
                             $error = "Le mode est obligatoire.";
                         } elseif ($eMode === 'distance' && $eLien === '') {
@@ -255,8 +265,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } elseif ($eMode === 'presentiel' && $eLieu === '') {
                             $error = "L'adresse est obligatoire pour une réunion en présentiel.";
                         } else {
-                            $pdo->prepare("UPDATE commission_reunions SET titre = ?, description = ?, date_reunion = ?, heure = ?, mode = ?, lieu = ?, lien = ?, updated_at = NOW() WHERE id = ?")
-                                ->execute([$eTitre, ($eDesc ?: null), $eDate, $eHeure, $eMode, ($eLieu ?: null), ($eLien ?: null), $rid]);
+                            $pdo->prepare("UPDATE commission_reunions SET titre = ?, description = ?, date_reunion = ?, heure = ?, heure_fin = ?, mode = ?, lieu = ?, lien = ?, updated_at = NOW() WHERE id = ?")
+                                ->execute([$eTitre, ($eDesc ?: null), $eDate, $eHeure, ($eHeureFin ?: null), $eMode, ($eLieu ?: null), ($eLien ?: null), $rid]);
                             $success = "Réunion modifiée.";
                         }
                     }
@@ -269,8 +279,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $n = reunion_notifier_annulation($pdo, $r);
                     $success = "Réunion annulée. $n membre(s) de la commission notifié(s).";
                 } elseif ($action === 'duplicate_reunion') {
-                    $ins = $pdo->prepare("INSERT INTO commission_reunions (commission_id, titre, description, date_reunion, heure, mode, lieu, lien, periodicite, publie, cloture, annule, created_by) VALUES (?,?,?,?,?,?,?,?, 'ponctuelle', 0, 0, 0, ?)");
-                    $ins->execute([(int) $r['commission_id'], (string) $r['titre'], ($r['description'] ?? null), (string) $r['date_reunion'], (string) $r['heure'], (string) $r['mode'], ($r['lieu'] ?? null), ($r['lien'] ?? null), (!empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null)]);
+                    $ins = $pdo->prepare("INSERT INTO commission_reunions (commission_id, titre, description, date_reunion, heure, heure_fin, mode, lieu, lien, periodicite, publie, cloture, annule, created_by) VALUES (?,?,?,?,?,?,?,?,?, 'ponctuelle', 0, 0, 0, ?)");
+                    $ins->execute([(int) $r['commission_id'], (string) $r['titre'], ($r['description'] ?? null), (string) $r['date_reunion'], (string) $r['heure'], ($r['heure_fin'] ?? null), (string) $r['mode'], ($r['lieu'] ?? null), ($r['lien'] ?? null), (!empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null)]);
                     $newId = (int) $pdo->lastInsertId();
                     $pdo->prepare("UPDATE commission_reunions SET serie_id = ? WHERE id = ?")->execute([$newId, $newId]);
                     $success = "Réunion dupliquée (nouveau brouillon en attente de publication).";
@@ -382,7 +392,8 @@ try {
         elseif ($rPub) { $h .= '<span class="badge badge-approved">🚀 Publiée</span>'; }
         else { $h .= '<span class="badge badge-pending">⏳ En attente</span>'; }
         $h .= '</div></div>';
-        $h .= '<div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.3rem;">🗓️ ' . $rDateFr . ' · 🕐 ' . htmlspecialchars($r['heure']) . ' · ' . ((string) $r['mode'] === 'presentiel' ? '🏛️ présentiel' : '💻 à distance') . '</div>';
+        $hFinTxt = trim((string) ($r['heure_fin'] ?? '')) !== '' ? ' – ' . htmlspecialchars($r['heure_fin']) : '';
+        $h .= '<div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.3rem;">🗓️ ' . $rDateFr . ' · 🕐 ' . htmlspecialchars($r['heure']) . $hFinTxt . ' · ' . ((string) $r['mode'] === 'presentiel' ? '🏛️ présentiel' : '💻 à distance') . '</div>';
         $h .= '<div class="km-actions" style="border-top:0; padding-top:0.6rem; margin-top:0.4rem;">';
         // Partage WhatsApp uniquement si la réunion est publiée
         if ($rPub) {
@@ -433,8 +444,12 @@ try {
             $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Date</label><input type="date" name="date_reunion" class="form-input" required min="' . date('Y-m-d') . '" value="' . htmlspecialchars((string) $r['date_reunion'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
             $curH = dahira_heure_hm((string) $r['heure']);
             $optsH = '<option value="">— Heure —</option>';
-            for ($hh = 7; $hh <= 23; $hh++) { $hv = sprintf('%02d:00', $hh); $optsH .= '<option value="' . $hv . '"' . ($curH === $hv ? ' selected' : '') . '>' . $hv . '</option>'; }
-            $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure</label><select name="heure" class="form-input modern-select" required>' . $optsH . '</select></div>';
+            for ($hh = 7; $hh <= 23; $hh++) { foreach (['00', '30'] as $mm) { $hv = sprintf('%02d:%s', $hh, $mm); $optsH .= '<option value="' . $hv . '"' . ($curH === $hv ? ' selected' : '') . '>' . $hv . '</option>'; } }
+            $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure de début</label><select name="heure" class="form-input modern-select" required>' . $optsH . '</select></div>';
+            $curHF = dahira_heure_hm((string) ($r['heure_fin'] ?? ''));
+            $optsHF = '<option value="">— Aucune —</option>';
+            for ($hh = 7; $hh <= 23; $hh++) { foreach (['00', '30'] as $mm) { $hv = sprintf('%02d:%s', $hh, $mm); $optsHF .= '<option value="' . $hv . '"' . (($r['heure_fin'] ?? '') !== '' && $curHF === $hv ? ' selected' : '') . '>' . $hv . '</option>'; } }
+            $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure de fin</label><select name="heure_fin" class="form-input modern-select">' . $optsHF . '</select></div>';
             $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Mode</label><select name="mode" class="form-input modern-select r-mode" required><option value="distance"' . $optDist . '>💻 À distance (Zoom)</option><option value="presentiel"' . $optPres . '>🏛️ Présentiel</option></select></div>';
             $h .= '<div class="form-group r-lien" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
             $h .= '<div class="form-group r-lieu" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
@@ -714,7 +729,8 @@ $membersJs = array_map(function ($m) {
                                     <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required placeholder="Ex: Réunion mensuelle de la commission"></div>
                                     <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"></textarea></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_debut" class="form-input" required min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
-                                    <div class="form-group" style="margin:0;"><label class="form-label">Heure <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): $hv = sprintf('%02d:00', $hh); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endfor; ?></select></div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Heure de début <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Heure de fin <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label><select name="heure_fin" class="form-input modern-select"><option value="">— Aucune —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Mode <span style="color:var(--danger)">*</span></label><select name="mode" class="form-input modern-select r-mode" required><option value="">— Choisir —</option><option value="distance">💻 À distance (Zoom)</option><option value="presentiel">🏛️ Présentiel</option></select></div>
                                     <div class="form-group r-lien" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (réunion à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($reunionZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
                                     <div class="form-group r-lieu" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">📍 Adresse (présentiel) <span style="color:var(--danger)">*</span></label><input type="text" name="lieu" class="form-input r-lieu-input" value="<?php echo htmlspecialchars($reunionLieuDefaut); ?>"><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec l'adresse du Dahira — modifiable.</p></div>
@@ -885,9 +901,20 @@ $membersJs = array_map(function ($m) {
             var noRes = document.getElementById('com-noresult');
             var countEl = document.getElementById('com-count');
             function norm(s){ return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }
+            // Restaurer le filtre mémorisé (conservé après une actualisation)
+            try {
+                var savedT = localStorage.getItem('com_filter_search');
+                var savedS = localStorage.getItem('com_filter_select');
+                if (savedT !== null) { input.value = savedT; }
+                if (sel && savedS !== null) { sel.value = savedS; }
+            } catch (e) {}
             function apply() {
                 var term = norm(input.value);
                 var selVal = sel ? sel.value : '';
+                try {
+                    localStorage.setItem('com_filter_search', input.value);
+                    if (sel) { localStorage.setItem('com_filter_select', sel.value); }
+                } catch (e) {}
                 var n = 0;
                 cards.forEach(function (c) {
                     var ds = c.getAttribute('data-search');

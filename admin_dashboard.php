@@ -187,7 +187,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
         .stats-grid .stat-card { padding:0.75rem 0.9rem !important; border-radius:12px !important; display:flex; flex-direction:column; gap:0.15rem; }
         .stats-grid .stat-value { font-size:1.7rem !important; line-height:1.1 !important; }
         .stats-grid .stat-title { font-size:0.72rem !important; }
-        @media (max-width:520px){ .stats-grid .stat-value { font-size:1.4rem !important; } .stats-grid .stat-title { font-size:0.62rem !important; } }
+        @media (max-width:520px){ .stats-grid { grid-template-columns:repeat(3, 1fr) !important; } .stats-grid .stat-value { font-size:1.4rem !important; } .stats-grid .stat-title { font-size:0.62rem !important; } .stats-grid .stat-card { padding:0.55rem 0.5rem !important; } }
         .dash-chips { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.85rem; }
         .dash-chip { background:rgba(255,255,255,0.05); color:var(--white); border:1px solid var(--glass-border); border-radius:50px; padding:0.45rem 1.1rem; font-size:0.85rem; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
         .dash-chip:hover { border-color:var(--accent); }

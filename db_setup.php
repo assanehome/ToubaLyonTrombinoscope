@@ -572,6 +572,7 @@ try {
     }
     // Réglages du Guddi Àjjuma (heure, thème, présentateur, lien par défaut)
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_heure', '20h00')")->execute(); } catch (Exception $e) {}
+    try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_heure_fin', '21h30')")->execute(); } catch (Exception $e) {}
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_theme_defaut', 'Sëriñ Tuubaa ak Gammu')")->execute(); } catch (Exception $e) {}
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_presentateur_defaut', 'Oustaz Sëriñ Mbàcke Géy')")->execute(); } catch (Exception $e) {}
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_lien_defaut', 'https://us06web.zoom.us/j/81338485985?pwd=RDNzM3hBWkpmdTBCTE0rS1lDS2w5QT09')")->execute(); } catch (Exception $e) {}
@@ -611,6 +612,7 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     try { $pdo->query("SELECT annule FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN annule TINYINT(1) NOT NULL DEFAULT 0"); }
     try { $pdo->query("SELECT debut_notifie FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN debut_notifie TINYINT(1) NOT NULL DEFAULT 0"); }
+    try { $pdo->query("SELECT heure_fin FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN heure_fin VARCHAR(20) NULL DEFAULT NULL"); }
 
     // Répétitions de Kurel (créées par les responsables de Kurel, ponctuelles ou périodiques)
     $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_repetitions (

@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Réglages généraux
         if ($action === 'save_params') {
             dahira_set_param($pdo, 'guddi_heure', trim($_POST['heure'] ?? ''));
+            dahira_set_param($pdo, 'guddi_heure_fin', trim($_POST['heure_fin'] ?? ''));
             dahira_set_param($pdo, 'guddi_theme_defaut', trim($_POST['theme_defaut'] ?? ''));
             $presDefaut = trim($_POST['presentateur_defaut'] ?? '');
             // Si « Autre / saisie libre », prendre le champ libre
@@ -275,6 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $date = $row['date_guddi'];
                     $heure = dahira_param($pdo, 'guddi_heure', '20h00');
+                    $heureFin = dahira_param($pdo, 'guddi_heure_fin', '21h30');
                     $lienEff = dahira_param($pdo, 'guddi_lien_defaut', ''); // lien Zoom toujours celui des paramètres
                     $lieuGuddi = dahira_param($pdo, 'guddi_lieu_defaut', '');
                     $lieuEff = $lieuGuddi !== '' ? $lieuGuddi : dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
@@ -297,7 +299,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } else {
                             $sujet = '💎 Guddi Àjjuma — ' . guddi_date_longue($date);
                             $pdfUrl = !empty($row['pdf_path']) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($row['pdf_path']) : '';
-                            $corps = guddi_email($date, $heure, (string)($row['theme'] ?? ''), (string)($row['presentateur'] ?? ''), $lienEff, (string)($row['livre'] ?? ''), $pdfUrl, $modeEff, $lieuEff);
+                            $corps = guddi_email($date, $heure, (string)($row['theme'] ?? ''), (string)($row['presentateur'] ?? ''), $lienEff, (string)($row['livre'] ?? ''), $pdfUrl, $modeEff, $lieuEff, $heureFin);
                         }
                         $sent = 0;
                         foreach ($destinataires as $m) {
@@ -322,6 +324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Données
 // ---------------------------------------------------------------------------
 $heure = dahira_param($pdo, 'guddi_heure', '20h00');
+$heureFin = dahira_param($pdo, 'guddi_heure_fin', '21h30');
 $themeDefaut = dahira_param($pdo, 'guddi_theme_defaut', 'Sëriñ Tuubaa ak Gammu');
 $presentateurDefaut = dahira_param($pdo, 'guddi_presentateur_defaut', 'Oustaz Sëriñ Mbàcke Géy');
 $lienDefaut = dahira_param($pdo, 'guddi_lien_defaut', '');
@@ -471,6 +474,15 @@ if ($commissionId > 0) {
             line-height: 1.3;
         }
         .pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+        /* Indicateurs : 3 par ligne sur PC, 2 sur mobile */
+        .pl-stats { grid-template-columns: repeat(3, 1fr); }
+        @media (max-width: 600px) { .pl-stats { grid-template-columns: repeat(2, 1fr); } }
+        /* Boutons d'action du prochain Guddi : un par ligne, pleine largeur sur mobile */
+        @media (max-width: 600px) {
+            .gu-actions-bar { flex-direction: column; align-items: stretch; }
+            .gu-actions-bar > *, .gu-actions-bar form { width: 100%; }
+            .gu-actions-bar .btn { width: 100%; justify-content: center; }
+        }
         .pl-card { border-radius: 16px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
         .pl-date { font-size: 1.05rem; font-weight: 700; color: var(--white); }
         .pl-date small { color: var(--text-muted); font-weight: 400; font-size: 0.78rem; }
@@ -640,7 +652,7 @@ if ($commissionId > 0) {
                         </div>
                         <?php endif; ?>
 
-                        <div class="pl-stats" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.75rem;">
+                        <div class="pl-stats" style="display:grid; gap:0.75rem;">
                             <?php
                             // Une carte par indicateur, valeurs stockées en data-annee
                             $cartesIndicateurs = [
@@ -723,7 +735,7 @@ if ($commissionId > 0) {
                         $prochainMode = (string)($prochain['mode'] ?? '');
                         if ($prochainMode === '') { $prochainMode = $modeDefaut; }
                         $waMsg = $prochainActif
-                            ? guddi_message($pdate, $heure, $theme, $presentateur, $lienAffiche, (string)($prochain['livre'] ?? ''), !empty($prochain['pdf_path']) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($prochain['pdf_path']) : '', $prochainMode, $lieuDahira)
+                            ? guddi_message($pdate, $heure, $theme, $presentateur, $lienAffiche, (string)($prochain['livre'] ?? ''), !empty($prochain['pdf_path']) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($prochain['pdf_path']) : '', $prochainMode, $lieuDahira, dahira_base_url() . '/guddi_detail.php?id=' . (int)$prochain['id'], $heureFin)
                             : guddi_message_annulation($pdate);
                         $waAnnul = guddi_message_annulation($pdate);
                     ?>
@@ -738,18 +750,12 @@ if ($commissionId > 0) {
                                     <?php echo ucfirst(guddi_jour_fr($pdate)) . ' ' . date('d/m/Y', strtotime($pdate)); ?>
                                 </div>
                                 <div style="font-size:0.95rem; color:var(--white); margin-top:0.3rem;">
-                                    🕐 à partir de <strong><?php echo htmlspecialchars($heure); ?></strong> — <?php echo $prochainMode === 'presentiel' ? '🏛️ en présentiel (<span style="white-space:pre-line;">' . htmlspecialchars($lieuDahira) . '</span>) + 💻 à distance' : '💻 participation à distance'; ?>
+                                    🕐 <?php echo trim($heureFin) !== '' ? 'de <strong>' . htmlspecialchars($heure) . '</strong> à <strong>' . htmlspecialchars($heureFin) . '</strong>' : 'à partir de <strong>' . htmlspecialchars($heure) . '</strong>'; ?> — <?php echo $prochainMode === 'presentiel' ? '🏛️ en présentiel (<span style="white-space:pre-line;">' . htmlspecialchars($lieuDahira) . '</span>) + 💻 à distance' : '💻 participation à distance'; ?>
                                 </div>
                                 <?php if ($theme !== ''): ?><div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem;">🎯 Thème : <?php echo htmlspecialchars($theme); ?></div><?php endif; ?>
                                 <?php if ($presentateur !== ''): ?><div style="font-size:0.85rem; color:var(--text-muted);">🎤 Présentateur : <?php echo htmlspecialchars($presentateur); ?></div><?php endif; ?>
                                 <?php if ($lienAffiche !== '' && $prochainActif): ?><div style="font-size:0.82rem; color:var(--text-muted); margin-top:0.25rem;">🔗 <a href="<?php echo htmlspecialchars($lienAffiche); ?>" target="_blank" rel="noopener" style="color:var(--accent);">Lien de participation Zoom</a></div><?php endif; ?>
                                 <?php if (!empty($prochain['pdf_path'])): ?><div style="font-size:0.82rem; color:var(--text-muted); margin-top:0.25rem;">📄 <a href="uploads/<?php echo htmlspecialchars($prochain['pdf_path']); ?>" target="_blank" rel="noopener" style="color:var(--accent);">Livre étudié PDF joint</a></div><?php endif; ?>
-                                <form action="admin_guddi.php" method="POST" style="margin-top:0.5rem;" data-confirm="<?php echo $prochainActif ? 'Marquer ce Guddi Àjjuma comme annulé ?' : 'Réactiver ce Guddi Àjjuma ?'; ?>">
-                                    <?php echo csrf_field(); ?>
-                                    <input type="hidden" name="action" value="toggle_annulation">
-                                    <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
-                                    <button type="submit" class="btn btn-secondary btn-sm" style="<?php echo $prochainActif ? 'border-color:rgba(191,33,33,0.6); color:#fca5a5;' : ''; ?>"><?php echo $prochainActif ? '‼️ Marquer comme annulé' : '↩️ Réactiver'; ?></button>
-                                </form>
                             </div>
                             <div style="display:flex; flex-direction:column; gap:0.55rem; min-width:240px;">
                                 <?php echo dahira_wa_button(dahira_wa_link(null, $waMsg), $prochainActif ? 'Partager sur WhatsApp' : 'Annulation WhatsApp', false, ((int)($prochain['publie'] ?? 0)) !== 1); ?>
@@ -778,6 +784,18 @@ if ($commissionId > 0) {
                                     </button>
                                 </form>
                                 <?php endif; ?>
+                                <form action="admin_guddi.php" method="POST" style="margin:0;" data-confirm="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'Dépublier ce Guddi Àjjuma de l\'accueil membre ?' : 'Publier ce Guddi Àjjuma sur l\'accueil membre (validation de présence) ?'; ?>">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="toggle_publie">
+                                    <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%; <?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'background:#c62828; border-color:#c62828; color:#fff;' : 'background:#1f9d55; border-color:#1f9d55; color:#fff;'; ?>"><?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? '⛔ Annuler la publication' : '⚪ Publier'; ?></button>
+                                </form>
+                                <form action="admin_guddi.php" method="POST" style="margin:0;" data-confirm="<?php echo $prochainActif ? 'Marquer ce Guddi Àjjuma comme annulé ?' : 'Réactiver ce Guddi Àjjuma ?'; ?>">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="toggle_annulation">
+                                    <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%; <?php echo $prochainActif ? 'border-color:rgba(191,33,33,0.6); color:#fca5a5;' : ''; ?>"><?php echo $prochainActif ? '‼️ Marquer comme annulé' : '↩️ Réactiver'; ?></button>
+                                </form>
                             </div>
                         </div>
                         <!-- Zone de saisie de la séance -->
@@ -819,17 +837,17 @@ if ($commissionId > 0) {
                                             <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
                                             <button type="submit" class="btn btn-secondary btn-sm" style="border-color:rgba(191,33,33,0.6); color:#fca5a5; cursor:pointer;">🗑️ Supprimer</button>
                                         </form>
-                                        <span style="color:var(--text-muted); font-size:0.8rem;">Remplacer :</span>
                                     </div>
                                 <?php endif; ?>
                                 <div class="mpp-file" style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
+                                    <?php if (!empty($prochain['pdf_path'])): ?><span style="color:var(--text-muted); font-size:0.8rem;">Remplacer :</span><?php endif; ?>
                                     <button type="button" class="btn btn-secondary btn-sm" id="mpp-file-btn" style="border-color:var(--accent); color:var(--accent); cursor:pointer;">📎 Choisir un fichier</button>
                                     <input type="file" name="pdf_programme" id="mpp-file-input" accept="application/pdf" style="display:none;">
                                     <span id="mpp-file-name" style="color:var(--text-muted); font-size:0.82rem; word-break:break-all;">Aucun fichier choisi</span>
                                 </div>
                             </div>
                         </form>
-                            <div style="margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                            <div class="gu-actions-bar" style="margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                                 <button type="submit" form="frm-save-seance" class="btn btn-primary btn-sm">💾 Enregistrer la séance</button>
                                 <form action="admin_guddi.php" method="POST" style="margin:0;">
                                     <?php echo csrf_field(); ?>
@@ -838,12 +856,6 @@ if ($commissionId > 0) {
                                     <button type="submit" class="btn btn-secondary btn-sm">📋 Charger les valeurs par défaut</button>
                                 </form>
                                 <a href="guddi_detail.php?id=<?php echo (int)$prochain['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
-                                <form action="admin_guddi.php" method="POST" style="margin:0;" data-confirm="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'Dépublier ce Guddi Àjjuma de l\'accueil membre ?' : 'Publier ce Guddi Àjjuma sur l\'accueil membre (validation de présence) ?'; ?>">
-                                    <?php echo csrf_field(); ?>
-                                    <input type="hidden" name="action" value="toggle_publie">
-                                    <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
-                                    <button type="submit" class="btn btn-secondary btn-sm" style="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'background:#c62828; border-color:#c62828; color:#fff;' : 'background:#1f9d55; border-color:#1f9d55; color:#fff;'; ?>"><?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? '� Annuler la publication' : '⚪ Publier'; ?></button>
-                                </form>
                             </div>
                         <details style="margin-top:0.9rem;" class="pl-details">
                             <summary><?php echo $prochainActif ? 'Voir / copier le message d\'annonce' : 'Voir / copier le message d\'annulation'; ?></summary>
@@ -868,7 +880,8 @@ if ($commissionId > 0) {
                         <?php echo csrf_field(); ?>
                         <input type="hidden" name="action" value="save_params">
                         <div class="pl-params pl-params-stack">
-                            <div class="form-group"><label class="form-label">🕐 Heure</label><input type="text" name="heure" class="form-input" value="<?php echo htmlspecialchars($heure); ?>" placeholder="20h00"></div>
+                            <div class="form-group"><label class="form-label">🕐 Heure de début</label><input type="text" name="heure" class="form-input" value="<?php echo htmlspecialchars($heure); ?>" placeholder="20h00"></div>
+                            <div class="form-group"><label class="form-label">🕐 Heure de fin</label><input type="text" name="heure_fin" class="form-input" value="<?php echo htmlspecialchars($heureFin); ?>" placeholder="21h30"></div>
                             <div class="form-group"><label class="form-label">🎯 Thème par défaut</label><input type="text" name="theme_defaut" class="form-input" value="<?php echo htmlspecialchars($themeDefaut); ?>"></div>
                             <div class="form-group">
                                 <label class="form-label">🎤 Présentateur par défaut (membre de la commission Culte)</label>

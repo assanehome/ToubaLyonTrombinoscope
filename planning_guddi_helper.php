@@ -63,12 +63,12 @@ function guddi_jeudis(string $from, string $to): array
  *    Commission Culte,
  *    Touba Lyon »
  */
-function guddi_message(string $date, string $heure, string $theme, string $presentateur, string $lien, string $livre = '', string $pdfUrl = '', string $mode = 'distance', string $lieu = ''): string
+function guddi_message(string $date, string $heure, string $theme, string $presentateur, string $lien, string $livre = '', string $pdfUrl = '', string $mode = 'distance', string $lieu = '', string $pageLien = '', string $heureFin = ''): string
 {
     $msg = "💎 GUDDI ÀJJUMA 💎\n\n"
         . "Àssalaamu hanlaykum,\n\n"
         . "Le Guddi Àjjuma de ce " . guddi_date_longue($date)
-        . " aura lieu inshallaah, à partir de " . trim($heure) . ".";
+        . " aura lieu inshallaah, " . (trim($heureFin) !== '' ? "de " . trim($heure) . " à " . trim($heureFin) : "à partir de " . trim($heure)) . ".";
 
     if ($mode === 'presentiel') {
         $msg .= "\nEn présentiel";
@@ -99,6 +99,10 @@ function guddi_message(string $date, string $heure, string $theme, string $prese
         }
     }
 
+    if (trim($pageLien) !== '') {
+        $msg .= "\n\n👉 Détails et présence :\n" . trim($pageLien);
+    }
+
     $msg .= "\n\nSëriñ Muntaxaa MBÀKKE yàlla na fi yàgg Lool te wér.\n"
         . "Yàlla na Sunu Boroom defar ligéey bi bamu dëppoo ak niko Sëriñ bi bëggee te mu nangul nuko ci bàrkeb xasida yi.\n\n"
         . "Commission Culte,\nTouba Lyon";
@@ -109,7 +113,7 @@ function guddi_message(string $date, string $heure, string $theme, string $prese
 /**
  * Corps HTML d'un e-mail annonçant un Guddi Àjjuma.
  */
-function guddi_email(string $date, string $heure, string $theme, string $presentateur, string $lien, string $livre = '', string $pdfUrl = '', string $mode = 'distance', string $lieu = ''): string
+function guddi_email(string $date, string $heure, string $theme, string $presentateur, string $lien, string $livre = '', string $pdfUrl = '', string $mode = 'distance', string $lieu = '', string $heureFin = ''): string
 {
     $date_fr = date('d/m/Y', strtotime($date));
     $jour = guddi_jour_fr($date);
@@ -119,12 +123,16 @@ function guddi_email(string $date, string $heure, string $theme, string $present
             . ' — la participation à distance reste possible via le lien Zoom ci-dessous'
         : 'par participation à distance';
 
+    $heureTxt = trim($heureFin) !== ''
+        ? 'de <strong>' . htmlspecialchars($heure) . '</strong> à <strong>' . htmlspecialchars($heureFin) . '</strong>'
+        : 'à partir de <strong>' . htmlspecialchars($heure) . '</strong>';
+
     $inner = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">'
         . '<h2 style="color:#1b4332;">💎 GUDDI ÀJJUMA 💎</h2>'
         . '<p style="color:#333;">Àssalaamu hanlaykum,</p>'
         . '<p style="color:#333;">Le <strong>Guddi Àjjuma</strong> de ce '
         . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong>'
-        . ' aura lieu inshallaah, à partir de <strong>' . htmlspecialchars($heure) . '</strong> '
+        . ' aura lieu inshallaah, ' . $heureTxt . ' '
         . $modeTxt . '.</p>';
 
     $facts = [];

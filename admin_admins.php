@@ -9,6 +9,7 @@ require_once __DIR__ . '/admin_guard.php';
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/dahira_emails.php';
+require_once __DIR__ . '/notification_helper.php';
 
 $error = '';
 $success = '';
@@ -31,6 +32,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($action === 'grant') {
                         $pdo->prepare("UPDATE membres SET is_admin = 1 WHERE id = ?")->execute([$member_id]);
                         $sent = !empty($m['email']) ? @send_role_notification($m['email'], $m['prenom'] . ' ' . $m['nom'], 'admin') : false;
+                        // Notification in-app (cloche + Web Push), en plus de l'e-mail
+                        troba_notify_membre(
+                            $pdo,
+                            $member_id,
+                            'role',
+                            '🛡️ Rôle administrateur',
+                            'Vous avez reçu le rôle d\'administrateur. Vous pouvez désormais accéder à l\'espace d\'administration.',
+                            'admin_dashboard.php'
+                        );
                         $success = "Le rôle d'administrateur a été attribué à {$fullName}." . ($sent ? " Un e-mail de notification lui a été envoyé." : "");
                     } else {
                         // Empêcher un membre-admin de retirer son propre rôle

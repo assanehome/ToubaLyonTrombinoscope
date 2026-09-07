@@ -392,7 +392,7 @@ try {
         <?php if (empty($me['is_admin']) && !empty($gestionItems)): ?>
             <details class="glass-card adm-switch" style="margin-top: 2rem; padding: 0.75rem 1.15rem; border-color: rgba(212, 175, 55, 0.45);">
                 <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:var(--gold); font-weight:700; font-size:0.9rem;">
-                    🛠️ Mode gestion
+                    🛠️ Mode Administrateur
                     <span class="adm-switch-chevron" style="margin-left:auto; color:var(--text-muted); transition:transform 0.2s;">▸</span>
                 </summary>
                 <div style="margin-top: 0.8rem;">

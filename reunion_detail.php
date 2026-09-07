@@ -75,6 +75,7 @@ $titre = (string) $reunion['titre'];
 $description = (string) ($reunion['description'] ?? '');
 $date = (string) $reunion['date_reunion'];
 $heure = (string) ($reunion['heure'] ?? '20h00');
+$heureFin = trim((string) ($reunion['heure_fin'] ?? ''));
 $mode = (string) ($reunion['mode'] ?? 'distance');
 $lieu = (string) ($reunion['lieu'] ?? '');
 $periodicite = (string) ($reunion['periodicite'] ?? 'ponctuelle');
@@ -159,10 +160,10 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                     <div class="gd-hero gd-anim gd-anim-1">
                         <div class="gd-date">
                             📌 <?php echo htmlspecialchars($titre); ?>
-                            <small>📋 <?php echo htmlspecialchars($commissionNom); ?> · 🗓️ <?php echo date('d/m/Y', strtotime($date)); ?> · 🕐 à partir de <?php echo htmlspecialchars($heure); ?></small>
+                            <small>📋 <?php echo htmlspecialchars($commissionNom); ?> · 🗓️ <?php echo date('d/m/Y', strtotime($date)); ?> · 🕐 <?php echo $heureFin !== '' ? 'de ' . htmlspecialchars($heure) . ' à ' . htmlspecialchars($heureFin) : 'à partir de ' . htmlspecialchars($heure); ?></small>
                         </div>
                         <div class="gd-badges">
-                            <?php $etat = $cloture ? 'termine' : dahira_event_etat($date, $heure); ?>
+                            <?php $etat = $cloture ? 'termine' : dahira_event_etat($date, $heure, ($heureFin !== '' ? $heureFin : null)); ?>
                             <?php if ($etat === 'termine'): ?>
                                 <span class="pl-badge pl-badge-no">🕌 Terminée</span>
                             <?php elseif ($etat === 'encours'): ?>
@@ -222,7 +223,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                         </div>
                         <div class="glass-card gd-item">
                             <div class="k">🗓️ Date & heure</div>
-                            <div class="v"><?php echo date('d/m/Y', strtotime($date)); ?> · <?php echo htmlspecialchars($heure); ?></div>
+                            <div class="v"><?php echo date('d/m/Y', strtotime($date)); ?> · <?php echo $heureFin !== '' ? 'de ' . htmlspecialchars($heure) . ' à ' . htmlspecialchars($heureFin) : htmlspecialchars($heure); ?></div>
                         </div>
                         <?php if ($mode === 'presentiel' && $lieu !== ''): ?>
                         <div class="glass-card gd-item">
