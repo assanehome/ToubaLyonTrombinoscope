@@ -132,6 +132,30 @@ h3 {
     transform: translateY(-5px);
 }
 
+/* ══════════════════════════════════════════════
+   Optimisation d'espace : conteneurs imbriqués
+   Une carte dans une carte cumule les paddings ; on les
+   réduit, surtout sur mobile, pour gagner de la place.
+   ══════════════════════════════════════════════ */
+.glass-card .glass-card { padding: 1.4rem; }
+@media (max-width: 600px) {
+    .container { padding: 0 0.6rem; }
+    .glass-card { padding: 1rem; }
+    /* Carte qui en contient une autre : padding externe minimal → supprime
+       l'espace inutile autour de la carte interne (gain de largeur sur mobile). */
+    .glass-card:has(.glass-card) { padding: 0.5rem !important; }
+    /* Cartes imbriquées : padding réduit (!important pour battre les styles inline) */
+    .glass-card .glass-card { padding: 0.7rem !important; }
+    .glass-card .glass-card .glass-card { padding: 0.55rem !important; }
+}
+@media (max-width: 400px) {
+    .container { padding: 0 0.4rem; }
+    .glass-card { padding: 0.85rem; }
+    .glass-card:has(.glass-card) { padding: 0.4rem !important; }
+    .glass-card .glass-card { padding: 0.6rem !important; }
+    .glass-card .glass-card .glass-card { padding: 0.45rem !important; }
+}
+
 /* Buttons */
 .btn {
     display: inline-flex;

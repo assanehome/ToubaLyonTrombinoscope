@@ -613,6 +613,7 @@ try {
     try { $pdo->query("SELECT annule FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN annule TINYINT(1) NOT NULL DEFAULT 0"); }
     try { $pdo->query("SELECT debut_notifie FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN debut_notifie TINYINT(1) NOT NULL DEFAULT 0"); }
     try { $pdo->query("SELECT heure_fin FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN heure_fin VARCHAR(20) NULL DEFAULT NULL"); }
+    try { $pdo->query("SELECT compte_rendu FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN compte_rendu MEDIUMTEXT NULL DEFAULT NULL"); }
 
     // Répétitions de Kurel (créées par les responsables de Kurel, ponctuelles ou périodiques)
     $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_repetitions (
@@ -684,6 +685,73 @@ try {
         updated_at TIMESTAMP NULL DEFAULT NULL,
         UNIQUE KEY uniq_kourel_annee_khassida (kourel_id, annee, khassida),
         INDEX idx_kou_annee (kourel_id, annee)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Actualités : messages préparés par la commission Secrétariat Général,
+    // diffusés aux membres (statut publié) par notification, WhatsApp et e-mail.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS actualites (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        type VARCHAR(100) NULL DEFAULT NULL,
+        titre VARCHAR(200) NOT NULL,
+        contenu TEXT NOT NULL,
+        mentions VARCHAR(500) NULL DEFAULT NULL,
+        statut VARCHAR(20) NOT NULL DEFAULT 'brouillon',
+        publie_notifie TINYINT(1) NOT NULL DEFAULT 0,
+        email_envoye TINYINT(1) NOT NULL DEFAULT 0,
+        created_by INT NULL DEFAULT NULL,
+        published_at TIMESTAMP NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        INDEX idx_statut (statut),
+        INDEX idx_date (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Migration : colonne cloture (actualité archivée, masquée aux membres)
+    try { $pdo->query("SELECT cloture FROM actualites LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE actualites ADD COLUMN cloture TINYINT(1) NOT NULL DEFAULT 0"); }
+    // Migrations : pièces jointes (image à afficher, document PDF)
+    try { $pdo->query("SELECT image_path FROM actualites LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE actualites ADD COLUMN image_path VARCHAR(255) NULL DEFAULT NULL"); }
+    try { $pdo->query("SELECT pdf_path FROM actualites LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE actualites ADD COLUMN pdf_path VARCHAR(255) NULL DEFAULT NULL"); }
+
+    // Liste des types d'actualité (extensible par les responsables)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS actualite_types (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nom VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_type (nom)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Amorçage : types d'actualité proposés (modifiables / extensibles)
+    foreach (['Annonce', 'Annonce mariage', 'Événement', 'Communiqué', 'Rappel', 'Décès / Condoléances', 'Félicitations', 'Appel à contribution', 'Compte-rendu'] as $at) {
+        try { $pdo->prepare("INSERT IGNORE INTO actualite_types (nom) VALUES (?)")->execute([$at]); } catch (Exception $e) {}
+    }
+
+    // Tâches liées à une réunion de commission : après publication, tout membre
+    // de la commission peut ajouter des tâches et les attribuer aux autres membres.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS reunion_taches (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        reunion_id INT NOT NULL,
+        commission_id INT NOT NULL,
+        titre VARCHAR(255) NOT NULL,
+        description TEXT NULL DEFAULT NULL,
+        assignee_id INT NULL DEFAULT NULL,
+        statut VARCHAR(20) NOT NULL DEFAULT 'a_faire',
+        echeance DATE NULL DEFAULT NULL,
+        created_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        INDEX idx_reunion (reunion_id),
+        INDEX idx_commission (commission_id),
+        INDEX idx_assignee (assignee_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Commentaires / historique d'une tâche (dont les changements de statut)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS reunion_tache_commentaires (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tache_id INT NOT NULL,
+        membre_id INT NULL DEFAULT NULL,
+        texte TEXT NOT NULL,
+        systeme TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_tache (tache_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     // 3. Create uploads directory if it doesn't exist

@@ -65,7 +65,10 @@ function troba_member_gestion_items(?PDO $pdo = null): array
             } catch (Throwable $e) {}
             try {
                 $secreN = (int) $pdo->query("SELECT COUNT(*) FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = $pid AND (LOWER(c.nom) LIKE '%secrétariat général%' OR LOWER(c.nom) LIKE '%secretariat general%')")->fetchColumn();
-                if ($secreN > 0) { $items['admin_planning.php'] = '📅 Planning Dahira'; }
+                if ($secreN > 0) {
+                    $items['admin_planning.php'] = '📅 Planning Dahira';
+                    $items['actualites.php'] = '📰 Actualités';
+                }
             } catch (Throwable $e) {}
             if ($stockOn) { $items['stock_index.php'] = '📦 Stock'; }
         }

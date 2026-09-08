@@ -188,6 +188,11 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
         .stats-grid .stat-value { font-size:1.7rem !important; line-height:1.1 !important; }
         .stats-grid .stat-title { font-size:0.72rem !important; }
         @media (max-width:520px){ .stats-grid { grid-template-columns:repeat(3, 1fr) !important; } .stats-grid .stat-value { font-size:1.4rem !important; } .stats-grid .stat-title { font-size:0.62rem !important; } .stats-grid .stat-card { padding:0.55rem 0.5rem !important; } }
+        /* Accès rapides (boutons vers Actualités / Planning) */
+        .dash-quick { display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
+        .dash-quick-btn { display:inline-flex; align-items:center; gap:0.5rem; text-decoration:none; font-weight:700; font-size:0.9rem; color:#08150f; background:linear-gradient(135deg,#d4af37,#e8c766); border:1px solid transparent; border-radius:12px; padding:0.7rem 1.15rem; transition:transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; box-shadow:0 4px 14px rgba(212,175,55,0.28); }
+        .dash-quick-btn:hover { transform:translateY(-2px); filter:brightness(1.05); box-shadow:0 8px 20px rgba(212,175,55,0.4); }
+        @media (max-width:520px){ .dash-quick { flex-direction:column; } .dash-quick-btn { width:100%; justify-content:center; } }
         .dash-chips { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.85rem; }
         .dash-chip { background:rgba(255,255,255,0.05); color:var(--white); border:1px solid var(--glass-border); border-radius:50px; padding:0.45rem 1.1rem; font-size:0.85rem; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
         .dash-chip:hover { border-color:var(--accent); }
@@ -270,6 +275,13 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                 <span class="stat-value"><?php echo $counts['approved']; ?></span>
             </div>
         </div>
+
+        <!-- Accès rapides -->
+        <div class="dash-quick">
+            <a href="actualites.php" class="dash-quick-btn">📰 <span>Actualités</span></a>
+            <a href="admin_planning.php" class="dash-quick-btn">📅 <span>Planning Dahira</span></a>
+        </div>
+
 
 
         <!-- Pastilles rapides par civilité (comme sur le Trombinoscope public) -->

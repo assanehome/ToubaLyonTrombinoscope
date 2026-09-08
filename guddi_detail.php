@@ -308,6 +308,17 @@ if ($membreId > 0) {
                         </div>
                     </div>
 
+                    <!-- Membres présents (trombinoscope) -->
+                    <?php $presMembres = dahira_presence_membres($pdo, 'guddi', $id); ?>
+                    <div class="glass-card gd-anim gd-anim-5" style="margin-bottom:1.4rem;">
+                        <h3 style="color:var(--white); margin:0 0 0.8rem;">👥 Membres présents (<?php echo count($presMembres); ?>)</h3>
+                        <?php if (!empty($presMembres)): ?>
+                            <?php echo dahira_presence_trombi_html($presMembres); ?>
+                        <?php else: ?>
+                            <p style="color:var(--text-muted); font-size:0.88rem; margin:0;">Aucune présence validée pour le moment.</p>
+                        <?php endif; ?>
+                    </div>
+
                     <!-- Actions -->
                     <div class="gd-anim gd-anim-5" style="display:flex; gap:0.6rem; flex-wrap:wrap;">
                         <a href="<?php echo $__guAdmin ? 'admin_guddi.php' : 'index.php'; ?>" class="btn btn-secondary btn-sm">← Retour</a>

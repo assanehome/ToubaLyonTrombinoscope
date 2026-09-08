@@ -56,12 +56,39 @@ function troba_ensure_notification_schema(PDO $pdo): void
 }
 
 /**
+ * L'envoi de notifications aux membres est-il activé ? Interrupteur global,
+ * piloté depuis le tableau de bord admin (réglage app_settings
+ * « notif_membres_actives », activé par défaut). Mis en cache par requête.
+ */
+function troba_notifications_membres_actives(PDO $pdo): bool
+{
+    static $actif = null;
+    if ($actif !== null) {
+        return $actif;
+    }
+    try {
+        $st = $pdo->prepare("SELECT valeur FROM app_settings WHERE cle = 'notif_membres_actives'");
+        $st->execute();
+        $v = $st->fetchColumn();
+        // Activé par défaut : seule la valeur explicite '0' désactive l'envoi.
+        $actif = ($v === false || $v === null) ? true : ((string) $v !== '0');
+    } catch (Exception $e) {
+        $actif = true;
+    }
+    return $actif;
+}
+
+/**
  * Dépose une notification pour un membre. Jamais bloquant : si l'enregistrement
  * échoue, l'e-mail a de toute façon été envoyé.
  */
 function troba_notify_membre(PDO $pdo, int $membre_id, string $kind, string $title, string $body, ?string $url = null): void
 {
     if ($membre_id <= 0) {
+        return;
+    }
+    // Interrupteur global : ne rien envoyer aux membres si désactivé côté admin.
+    if (!troba_notifications_membres_actives($pdo)) {
         return;
     }
     troba_ensure_notification_schema($pdo);

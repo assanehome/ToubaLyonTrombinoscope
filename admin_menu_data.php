@@ -36,6 +36,7 @@ function troba_admin_menu_items(?PDO $pdo = null): array
     $items = [
         'admin_dashboard.php'        => '🏠 Tableau de bord',
         'admin_dashboard.php#trombi' => '🖼️ Trombinoscope',
+        'actualites.php'             => '📰 Actualités',
         'admin_adhesions.php'        => '📝 Membres (' . $adhesions . ')',
         'admin_reponses.php'         => '📊 Suivi intégration',
         'admin_integrateurs.php'     => '👤 Intégrateurs',
@@ -49,6 +50,7 @@ function troba_admin_menu_items(?PDO $pdo = null): array
     $items['admin_guddi.php']  = '💎 Guddi Àjjuma';
     $items['wird_admin.php']   = '📖 Lecture Coran';
     $items['admin_admins.php'] = '👥 Gérer les admins';
+    $items['admin_parametres.php'] = '⚙️ Paramètres';
 
     return $items;
 }

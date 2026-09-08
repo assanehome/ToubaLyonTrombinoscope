@@ -39,6 +39,70 @@ if (isset($_SESSION['player_id'])) {
     }
 }
 
+// Changement de statut d'une tâche depuis l'accueil (par l'assigné, indépendamment
+// de la publication de la réunion). Journalise un commentaire et notifie le créateur.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'maj_tache_statut') {
+    if (csrf_validate()) {
+        $tid = (int) ($_POST['tache_id'] ?? 0);
+        $ns = $_POST['statut'] ?? '';
+        $labelsT = ['a_faire' => 'À faire', 'en_cours' => 'En cours', 'fait' => 'Fait'];
+        if ($tid > 0 && in_array($ns, ['a_faire', 'en_cours', 'fait'], true)) {
+            try {
+                $st = $pdo->prepare("SELECT t.titre, t.statut, t.assignee_id, t.created_by, t.reunion_id, r.publie, r.cloture
+                                     FROM reunion_taches t JOIN commission_reunions r ON r.id = t.reunion_id
+                                     WHERE t.id = ?");
+                $st->execute([$tid]);
+                $t = $st->fetch();
+                $reunionOk = $t && ((int) ($t['publie'] ?? 0) === 1 || (int) ($t['cloture'] ?? 0) === 1);
+                if ($t && $reunionOk && (int) ($t['assignee_id'] ?? 0) === (int) $_SESSION['player_id']) {
+                    $old = (string) ($t['statut'] ?? 'a_faire');
+                    if ($old !== $ns) {
+                        $pdo->prepare("UPDATE reunion_taches SET statut = ?, updated_at = NOW() WHERE id = ?")->execute([$ns, $tid]);
+                        require_once __DIR__ . '/notification_helper.php';
+                        $auteurT = trim(($me['prenom'] ?? '') . ' ' . ($me['nom'] ?? ''));
+                        $txtT = '🔄 Statut : ' . ($labelsT[$old] ?? $old) . ' → ' . ($labelsT[$ns] ?? $ns) . ($auteurT !== '' ? ' (par ' . $auteurT . ')' : '');
+                        $pdo->prepare("INSERT INTO reunion_tache_commentaires (tache_id, membre_id, texte, systeme) VALUES (?,?,?,1)")->execute([$tid, (int) $_SESSION['player_id'], $txtT]);
+                        $cby = (int) ($t['created_by'] ?? 0);
+                        if ($cby > 0 && $cby !== (int) $_SESSION['player_id']) {
+                            troba_notify_membre($pdo, $cby, 'reunion', '🔄 Tâche mise à jour', 'La tâche « ' . (string) $t['titre'] . ' » est passée à « ' . ($labelsT[$ns] ?? $ns) . ' ».', 'reunion_detail.php?id=' . (int) ($t['reunion_id'] ?? 0));
+                        }
+                    }
+                }
+            } catch (Exception $e) { /* best-effort */ }
+        }
+    }
+    header('Location: index.php');
+    exit;
+}
+
+// Ajout d'un commentaire sur une tâche depuis l'accueil (par l'assigné, réunion publiée ou clôturée)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_ma_tache_commentaire') {
+    if (csrf_validate()) {
+        $tid = (int) ($_POST['tache_id'] ?? 0);
+        $txt = trim($_POST['commentaire'] ?? '');
+        if ($tid > 0 && $txt !== '') {
+            try {
+                $st = $pdo->prepare("SELECT t.titre, t.assignee_id, t.created_by, t.reunion_id, r.publie, r.cloture
+                                     FROM reunion_taches t JOIN commission_reunions r ON r.id = t.reunion_id
+                                     WHERE t.id = ?");
+                $st->execute([$tid]);
+                $t = $st->fetch();
+                $reunionOk = $t && ((int) ($t['publie'] ?? 0) === 1 || (int) ($t['cloture'] ?? 0) === 1);
+                if ($t && $reunionOk && (int) ($t['assignee_id'] ?? 0) === (int) $_SESSION['player_id']) {
+                    $pdo->prepare("INSERT INTO reunion_tache_commentaires (tache_id, membre_id, texte, systeme) VALUES (?,?,?,0)")->execute([$tid, (int) $_SESSION['player_id'], mb_substr($txt, 0, 1000)]);
+                    require_once __DIR__ . '/notification_helper.php';
+                    $cby = (int) ($t['created_by'] ?? 0);
+                    if ($cby > 0 && $cby !== (int) $_SESSION['player_id']) {
+                        troba_notify_membre($pdo, $cby, 'reunion', '💬 Commentaire tâche', 'Nouveau commentaire sur la tâche « ' . (string) $t['titre'] . ' ».', 'reunion_detail.php?id=' . (int) ($t['reunion_id'] ?? 0));
+                    }
+                }
+            } catch (Exception $e) { /* best-effort */ }
+        }
+    }
+    header('Location: index.php');
+    exit;
+}
+
 // Lecture du Coran : Juz réservés (non validés) dans une session en cours
 $myWirdParts = [];
 $myWirdSession = null;
@@ -161,6 +225,35 @@ if (isset($_SESSION['player_id'])) {
     } catch (Exception $e) {
         $mesRepetitions = [];
     }
+}
+
+// Tâches attribuées au membre (suite aux réunions), non terminées
+$mesTaches = [];
+if (isset($_SESSION['player_id'])) {
+    try {
+        $rqT = $pdo->prepare(
+            "SELECT t.id, t.titre, t.statut, t.echeance, t.reunion_id, r.titre AS reunion_titre, c.nom AS commission_nom
+             FROM reunion_taches t
+             JOIN commission_reunions r ON r.id = t.reunion_id
+             LEFT JOIN commissions c ON c.id = t.commission_id
+             WHERE t.assignee_id = ? AND t.statut <> 'fait' AND (r.publie = 1 OR r.cloture = 1)
+             ORDER BY FIELD(t.statut,'en_cours','a_faire'), (t.echeance IS NULL) ASC, t.echeance ASC, t.created_at ASC"
+        );
+        $rqT->execute([(int) $_SESSION['player_id']]);
+        $mesTaches = $rqT->fetchAll();
+    } catch (Exception $e) {
+        $mesTaches = [];
+    }
+}
+
+// Actualités publiées (commission Secrétariat Général) — visibles par tous les membres
+$actualitesPubliees = [];
+try {
+    require_once __DIR__ . '/actualites_helper.php';
+    $rqA = $pdo->query("SELECT id, type, titre, contenu, mentions, image_path, pdf_path, published_at, created_at FROM actualites WHERE statut = 'publie' AND COALESCE(cloture,0) = 0 ORDER BY COALESCE(published_at, created_at) DESC, id DESC LIMIT 6");
+    $actualitesPubliees = $rqA->fetchAll();
+} catch (Exception $e) {
+    $actualitesPubliees = [];
 }
 
 // Complétion du profil membre (bannière « compléter vos informations »)
@@ -296,6 +389,13 @@ try {
         @keyframes rencCardIn { from { opacity: 0; transform: translateY(18px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
         .renc-wrap { position: relative; overflow: hidden; }
         @keyframes rencFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* Animation d'apparition des sections « Prochaines rencontres » et « Lecture du Coran » */
+        @keyframes idxReveal { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
+        .idx-reveal { position: relative; overflow: hidden; animation: idxReveal 0.6s cubic-bezier(0.22,1,0.36,1) both; transition: box-shadow 0.25s ease, transform 0.2s ease; }
+        .idx-reveal:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(0,0,0,0.3); }
+        .idx-reveal.idx-delay { animation-delay: 0.12s; }
+        .idx-reveal::after { content: ''; position: absolute; top: 0; left: -20%; right: -20%; height: 3px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.95), rgba(212,175,55,0.95), transparent); background-size: 200% 100%; animation: rencFlow 4.5s linear infinite; pointer-events: none; }
+        @media (prefers-reduced-motion: reduce) { .idx-reveal, .idx-reveal::after { animation: none !important; } }
         /* Boutons d'action des cartes : survol animé */
         .renc-card .btn { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
         .renc-card .btn:hover { filter: brightness(1.08); }
@@ -463,9 +563,109 @@ try {
         </a>
         <?php endif; ?>
 
+        <!-- Actualités publiées (Secrétariat Général) -->
+        <?php if (!empty($actualitesPubliees)): ?>
+        <style>
+            @keyframes actuIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+            .actu-item { animation: actuIn 0.5s cubic-bezier(0.22,1,0.36,1) both; transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+            .actu-item:hover { transform: translateY(-2px); border-color: rgba(212,175,55,0.5); box-shadow: 0 8px 22px rgba(0,0,0,0.28); }
+            .actu-item[open] { border-color: rgba(212,175,55,0.5); }
+            .actu-item .actu-chevron { transition: transform 0.25s ease; }
+            .actu-item[open] .actu-chevron { transform: rotate(90deg); }
+            .actu-item .actu-body { animation: actuIn 0.35s ease both; }
+            @media (prefers-reduced-motion: reduce) { .actu-item, .actu-item .actu-body { animation: none !important; } }
+        </style>
+        <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">📰 Actualités</div>
+            <div style="display:flex; flex-direction:column; gap:0.7rem;">
+                <?php $acI = 0; foreach ($actualitesPubliees as $ac):
+                    $acEmoji = function_exists('actu_type_emoji') ? actu_type_emoji((string) ($ac['type'] ?? '')) : '📰';
+                    $acDelay = 0.06 * $acI + 0.05; $acI++;
+                ?>
+                <details class="glass-card actu-item" style="padding:0.85rem 1.05rem; border:1px solid var(--glass-border); animation-delay:<?php echo number_format($acDelay, 2); ?>s;">
+                    <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:#fff; font-weight:700;">
+                        <span><?php echo $acEmoji; ?></span>
+                        <span style="flex:1; min-width:0;"><?php echo htmlspecialchars((string) ($ac['titre'] ?? '')); ?></span>
+                        <?php if (!empty($ac['type'])): ?><span style="font-size:0.7rem; color:var(--accent); border:1px solid rgba(212,175,55,0.4); border-radius:50px; padding:0.1rem 0.55rem; white-space:nowrap;"><?php echo htmlspecialchars((string) $ac['type']); ?></span><?php endif; ?>
+                        <span class="actu-chevron" style="color:var(--text-muted);">▸</span>
+                    </summary>
+                    <div class="actu-body">
+                        <div style="color:var(--text-muted); font-size:0.78rem; margin-top:0.5rem;">📅 <?php echo date('d/m/Y', strtotime((string) ($ac['published_at'] ?? $ac['created_at']))); ?></div>
+                        <div style="color:#e8e8e8; font-size:0.9rem; line-height:1.55; white-space:pre-wrap; margin-top:0.5rem;"><?php echo function_exists('actu_contenu_html') ? actu_contenu_html((string) ($ac['contenu'] ?? ''), actu_mentions_map($pdo, (string) ($ac['mentions'] ?? '')), false, 'color:var(--accent);font-weight:700;text-decoration:underline;') : nl2br(htmlspecialchars((string) ($ac['contenu'] ?? ''))); ?></div>
+                        <?php if (!empty($ac['image_path']) || !empty($ac['pdf_path'])): ?>
+                        <div style="margin-top:0.7rem;">
+                            <a href="actualite_detail.php?id=<?php echo (int) $ac['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);"><?php echo !empty($ac['image_path']) ? '🖼️' : '📎'; ?> Voir<?php echo !empty($ac['pdf_path']) && empty($ac['image_path']) ? ' le document' : (!empty($ac['image_path']) ? ' l\'actualité' : ''); ?></a>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </details>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Mes tâches (attribuées suite aux réunions) — juste après les Actualités -->
+        <?php if (!empty($mesTaches)): ?>
+        <style>
+            .mt-actions form { margin: 0; }
+            @media (max-width: 600px) {
+                .mt-actions { flex-direction: column; align-items: stretch !important; }
+                .mt-actions form, .mt-actions select, .mt-actions .btn { width: 100%; box-sizing: border-box; }
+                .mt-actions select { width: 100%; }
+                .mt-actions .btn { justify-content: center; }
+                .mt-voir .btn { width: 100%; justify-content: center; box-sizing: border-box; }
+            }
+        </style>
+        <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">✅ Mes tâches (<?php echo count($mesTaches); ?>)</div>
+            <div style="display:flex; flex-direction:column; gap:0.6rem;">
+                <?php foreach ($mesTaches as $mt):
+                    $stt = (string) ($mt['statut'] ?? 'a_faire');
+                    $badgeTxt = $stt === 'en_cours' ? '🔧 En cours' : '⏳ À faire';
+                    $badgeStyle = $stt === 'en_cours'
+                        ? 'background:rgba(45,140,255,0.15); color:#8ec5ff; border:1px solid rgba(45,140,255,0.4);'
+                        : 'background:rgba(255,255,255,0.06); color:var(--text-muted); border:1px solid var(--glass-border);';
+                ?>
+                <div class="renc-card">
+                    <div style="display:flex; justify-content:space-between; gap:0.6rem; align-items:flex-start; flex-wrap:wrap;">
+                        <div style="font-weight:800; color:#fff;">📌 <?php echo htmlspecialchars((string) $mt['titre']); ?></div>
+                        <span style="font-size:0.72rem; font-weight:700; border-radius:50px; padding:0.15rem 0.6rem; white-space:nowrap; <?php echo $badgeStyle; ?>"><?php echo $badgeTxt; ?></span>
+                    </div>
+                    <div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.35rem;">
+                        👥 <?php echo htmlspecialchars((string) ($mt['commission_nom'] ?? '')); ?> · 📅 <?php echo htmlspecialchars((string) $mt['reunion_titre']); ?>
+                        <?php if (!empty($mt['echeance'])): ?> · ⏰ <?php echo date('d/m/Y', strtotime((string) $mt['echeance'])); ?><?php endif; ?>
+                    </div>
+                    <div class="mt-actions" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.6rem;">
+                        <form method="POST" action="index.php" style="margin:0;">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="maj_tache_statut">
+                            <input type="hidden" name="tache_id" value="<?php echo (int) $mt['id']; ?>">
+                            <select name="statut" onchange="this.form.submit()" title="Changer le statut" style="background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.35rem 0.6rem; font-size:0.82rem; color-scheme:dark;">
+                                <option value="a_faire" <?php echo $stt === 'a_faire' ? 'selected' : ''; ?>>⏳ À faire</option>
+                                <option value="en_cours" <?php echo $stt === 'en_cours' ? 'selected' : ''; ?>>🔧 En cours</option>
+                                <option value="fait" <?php echo $stt === 'fait' ? 'selected' : ''; ?>>✅ Fait</option>
+                            </select>
+                        </form>
+                    </div>
+                    <form method="POST" action="index.php" style="margin:0.6rem 0 0; display:flex; flex-direction:column; gap:0.4rem;">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="action" value="add_ma_tache_commentaire">
+                        <input type="hidden" name="tache_id" value="<?php echo (int) $mt['id']; ?>">
+                        <input type="text" name="commentaire" placeholder="💬 Ajouter un commentaire…" maxlength="1000" style="width:100%; box-sizing:border-box; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.4rem 0.6rem; font-size:0.83rem;">
+                        <button type="submit" class="btn btn-secondary btn-sm" style="align-self:flex-start;">Envoyer</button>
+                    </form>
+                    <div class="mt-voir" style="margin-top:0.6rem;">
+                        <a href="reunion_detail.php?id=<?php echo (int) $mt['reunion_id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">👁️ Voir</a>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Séances publiées : Dahira & Guddi Àjjuma (validation de présence) — avant le Coran -->
         <?php if (!empty($prochainDahira) || !empty($prochainGuddi)): ?>
-        <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+        <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
             <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🕌 Prochaines rencontres — validez votre présence</div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
 
@@ -526,7 +726,7 @@ try {
 
         <!-- Réunions de commission publiées (à venir) -->
         <?php if (!empty($mesReunions)): ?>
-        <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+        <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
             <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">👥 Réunions de vos commissions</div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
                 <?php foreach ($mesReunions as $mr): ?>
@@ -565,7 +765,7 @@ try {
                 <input type="hidden" name="part_id" id="idx-wf-pid" value="">
                 <input type="hidden" name="ptoken" value="">
             </form>
-            <div class="w-tovalidate-idx">
+            <div class="w-tovalidate-idx idx-reveal idx-delay">
                 <div class="wtv-idx-top">
                     <div class="wtv-idx-icon">📖</div>
                     <div class="wtv-idx-titles">

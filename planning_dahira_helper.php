@@ -294,3 +294,55 @@ function dahira_set_param(PDO $pdo, string $cle, string $valeur): void
     }
 }
 
+/**
+ * Membres ayant validé leur présence à une séance (dahira, guddi, reunion, repetition).
+ * @return array<int,array{id:int,prenom:string,nom:string,photo_path:?string}>
+ */
+function dahira_presence_membres(PDO $pdo, string $type, int $planningId): array
+{
+    try {
+        $st = $pdo->prepare("SELECT m.id, m.prenom, m.nom, m.photo_path
+                             FROM presence_validations pv JOIN membres m ON m.id = pv.membre_id
+                             WHERE pv.planning_type = ? AND pv.planning_id = ?
+                             ORDER BY m.prenom ASC, m.nom ASC");
+        $st->execute([$type, $planningId]);
+        return $st->fetchAll();
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
+ * Rend une grille « trombinoscope » (photo + prénom nom) des membres présents.
+ * Retourne '' si la liste est vide. Styles inclus (une seule fois par page).
+ */
+function dahira_presence_trombi_html(array $membres): string
+{
+    if (empty($membres)) { return ''; }
+    static $cssOut = false;
+    $h = '';
+    if (!$cssOut) {
+        $cssOut = true;
+        $h .= '<style>'
+            . '.pres-trombi{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:0.9rem;}'
+            . '.pres-trombi .pt-card{text-align:center;}'
+            . '.pres-trombi .pt-av,.pres-trombi .pt-ph{width:62px;height:62px;border-radius:50%;margin:0 auto 0.35rem;display:flex;align-items:center;justify-content:center;border:2px solid var(--accent);}'
+            . '.pres-trombi .pt-av{object-fit:cover;}'
+            . '.pres-trombi .pt-ph{background:linear-gradient(135deg,#d4af37,#b8902f);color:#0c241a;font-weight:800;font-size:1.05rem;text-transform:uppercase;}'
+            . '.pres-trombi .pt-name{font-size:0.78rem;color:var(--white);line-height:1.25;word-break:break-word;}'
+            . '</style>';
+    }
+    $h .= '<div class="pres-trombi">';
+    foreach ($membres as $m) {
+        $nom = trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? ''));
+        $ini = mb_substr(trim((string) ($m['prenom'] ?? '')), 0, 1) . mb_substr(trim((string) ($m['nom'] ?? '')), 0, 1);
+        $photo = trim((string) ($m['photo_path'] ?? ''));
+        $av = $photo !== ''
+            ? '<img class="pt-av" src="uploads/' . htmlspecialchars($photo) . '" alt="">'
+            : '<span class="pt-ph">' . htmlspecialchars($ini) . '</span>';
+        $h .= '<div class="pt-card">' . $av . '<div class="pt-name">' . htmlspecialchars($nom) . '</div></div>';
+    }
+    $h .= '</div>';
+    return $h;
+}
+

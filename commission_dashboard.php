@@ -413,6 +413,7 @@ try {
             }
         }
         $h .= '<a href="reunion_detail.php?id=' . $rid . '" class="btn btn-secondary btn-sm">📊 Détail</a>';
+        $h .= '<a href="reunion_rapport.php?id=' . $rid . '" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">📄 PDF</a>';
         if (!$rPub && !$rClo) {
             $h .= '<button type="button" class="btn btn-secondary btn-sm" style="border-color:#7dd3fc; color:#7dd3fc;" onclick="toggleReuEdit(' . $rid . ')">✏️ Modifier</button>';
         }
@@ -860,9 +861,21 @@ $membersJs = array_map(function ($m) {
             if (!map[tlCid]) { map[tlCid] = []; }
             if (map[tlCid].map(Number).indexOf(id) === -1) { map[tlCid].push(id); }
             tlSelected.add(id); tlRender(); updateCard(tlCid, tlMode);
+            // Un responsable est aussi membre de la commission : refléter l'ajout côté membres.
+            var mirroredMembers = false;
+            if (tlMode === 'managers') {
+                if (!COM_MEMBERS[tlCid]) { COM_MEMBERS[tlCid] = []; }
+                if (COM_MEMBERS[tlCid].map(Number).indexOf(id) === -1) { COM_MEMBERS[tlCid].push(id); mirroredMembers = true; }
+                updateCard(tlCid, 'members');
+            }
             comPersist(tlMode, tlCid, id, true).catch(function (e) {
                 var arr = map[tlCid]; var i = arr.map(Number).indexOf(id); if (i > -1) { arr.splice(i, 1); }
                 tlSelected.delete(id); tlRender(); updateCard(tlCid, tlMode);
+                if (mirroredMembers) {
+                    var mi = COM_MEMBERS[tlCid].map(Number).indexOf(id);
+                    if (mi > -1) { COM_MEMBERS[tlCid].splice(mi, 1); }
+                    updateCard(tlCid, 'members');
+                }
                 modernAlert("Échec de l'ajout : " + e.message, 'Erreur');
             });
         }
