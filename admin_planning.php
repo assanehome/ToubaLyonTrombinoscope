@@ -110,14 +110,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Enregistrer le programme d'un dimanche
+        // Ajouter un Dahira d'exception à une date choisie (hors dimanches générés)
+        elseif ($action === 'add_exception') {
+            $dateExc = trim($_POST['date_exception'] ?? '');
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateExc)) {
+                $error = "Veuillez indiquer une date valide.";
+            } else {
+                try {
+                    $st = $pdo->prepare("INSERT IGNORE INTO dahira_plannings (date_dahira, commission_id) VALUES (?, ?)");
+                    $st->execute([$dateExc, $commissionId > 0 ? $commissionId : null]);
+                    if ($st->rowCount() > 0) {
+                        $success = "Dahira d'exception ajouté le " . date('d/m/Y', strtotime($dateExc)) . ".";
+                    } else {
+                        $error = "Un Dahira est déjà planifié à cette date.";
+                    }
+                } catch (Exception $e) {
+                    error_log('Touba Lyon planning - exception : ' . $e->getMessage());
+                    $error = "Une erreur technique est survenue. Veuillez réessayer plus tard.";
+                }
+            }
+        }
+
+        // Enregistrer le programme d'un dimanche (et les horaires spécifiques éventuels)
         elseif ($action === 'save_programme') {
             $id = (int) ($_POST['id'] ?? 0);
-            $programme = trim($_POST['programme'] ?? '');
+            $programme = dahira_sanitize_html($_POST['programme'] ?? '');
+            $titre = trim($_POST['titre'] ?? '');
+            $description = trim($_POST['description'] ?? '');
+            $hDebut = trim($_POST['heure_debut'] ?? '');
+            $hFin = trim($_POST['heure_fin'] ?? '');
             if ($id > 0) {
                 try {
-                    $pdo->prepare("UPDATE dahira_plannings SET programme = ?, updated_at = NOW() WHERE id = ?")->execute([$programme !== '' ? $programme : null, $id]);
-                    $success = "Programme enregistré.";
+                    $pdo->prepare("UPDATE dahira_plannings SET titre = ?, description = ?, programme = ?, heure_debut = ?, heure_fin = ?, updated_at = NOW() WHERE id = ?")
+                        ->execute([$titre !== '' ? $titre : null, $description !== '' ? $description : null, $programme !== '' ? $programme : null, $hDebut !== '' ? $hDebut : null, $hFin !== '' ? $hFin : null, $id]);
+                    $success = "Programme et horaires enregistrés.";
                 } catch (Exception $e) {
                     $error = "Une erreur technique est survenue.";
                 }
@@ -129,8 +155,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
                 try {
+                    $st = $pdo->prepare("SELECT a_dahira FROM dahira_plannings WHERE id = ?");
+                    $st->execute([$id]);
+                    $etaitMaintenu = ((int) $st->fetchColumn()) === 1;
                     $pdo->prepare("UPDATE dahira_plannings SET a_dahira = 1 - a_dahira, updated_at = NOW() WHERE id = ?")->execute([$id]);
-                    $success = "Statut du dimanche mis à jour.";
+                    $success = $etaitMaintenu
+                        ? "Dahira annulé. Les membres ne le savent pas encore : envoyez l'annulation par WhatsApp et par e-mail."
+                        : "Dahira rétabli.";
                 } catch (Exception $e) {
                     $error = "Une erreur technique est survenue.";
                 }
@@ -203,22 +234,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // Envoyer l'e-mail d'annonce aux membres
+        // Envoyer l'e-mail d'annonce ou d'annulation aux membres
         elseif ($action === 'send_email') {
             $id = (int) ($_POST['id'] ?? 0);
+            $type = $_POST['type'] ?? 'annonce'; // annonce | annulation
             require_once __DIR__ . '/send_mail.php';
             try {
                 $st = $pdo->prepare("SELECT * FROM dahira_plannings WHERE id = ?");
                 $st->execute([$id]);
                 $row = $st->fetch();
+                $estAnnulation = $row && ($type === 'annulation' || (int) ($row['a_dahira'] ?? 1) === 0);
                 if (!$row) {
                     $error = "Ce dimanche n'existe plus.";
-                } elseif ((int) ($row['publie'] ?? 0) !== 1) {
+                } elseif (!$estAnnulation && (int) ($row['publie'] ?? 0) !== 1) {
                     $error = "Publiez d'abord ce Dahira sur l'accueil membre avant d'envoyer l'annonce par e-mail.";
                 } else {
                     $lieu = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
                     $debut = dahira_param($pdo, 'dahira_debut', '17h00');
                     $fin = dahira_param($pdo, 'dahira_fin', '20h30');
+                    // Horaires spécifiques à ce Dahira s'ils sont définis
+                    if (trim((string)($row['heure_debut'] ?? '')) !== '') { $debut = trim((string)$row['heure_debut']); }
+                    if (trim((string)($row['heure_fin'] ?? '')) !== '') { $fin = trim((string)$row['heure_fin']); }
                     $signatureMail = dahira_param($pdo, 'dahira_signature', DAHIRA_SIGNATURE_DEFAUT);
                     $date = $row['date_dahira'];
                     $programme = (string) ($row['programme'] ?? '');
@@ -226,8 +262,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (empty($destinataires)) {
                         $error = "Aucun membre à prévenir (aucun membre validé rattaché à la commission).";
                     } else {
-                        $sujet = '📅 Dahira — ' . dahira_date_longue($date);
-                        $corps = dahira_email_annonce($date, $lieu, $debut, $fin, $programme, $signatureMail);
+                        if ($estAnnulation) {
+                            $sujet = '‼️ Annulation Dahira — ' . dahira_date_longue($date);
+                            $corps = dahira_email_annulation($date, $signatureMail);
+                        } else {
+                            $sujet = '📅 Dahira — ' . dahira_date_longue($date);
+                            $corps = dahira_email_annonce($date, $lieu, $debut, $fin, $programme, $signatureMail);
+                        }
                         $sent = 0;
                         foreach ($destinataires as $m) {
                             $nom = trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? ''));
@@ -236,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             }
                         }
                         $pdo->prepare("UPDATE dahira_plannings SET email_envoye = 1, updated_at = NOW() WHERE id = ?")->execute([$id]);
-                        $success = "Annonce envoyée par e-mail à $sent membre(s).";
+                        $success = ($estAnnulation ? "Annulation envoyée" : "Annonce envoyée") . " par e-mail à $sent membre(s).";
                     }
                 }
             } catch (Exception $e) {
@@ -268,7 +309,8 @@ try {
 // pas proposés à l'annonce.
 $prochain = null;
 foreach ($plannings as $p) {
-    if ($p['date_dahira'] >= date('Y-m-d') && (int) ($p['a_dahira'] ?? 1) === 1) { $prochain = $p; break; }
+    // Prochain Dahira à venir (qu'il soit actif OU annulé) pour pouvoir le gérer
+    if ($p['date_dahira'] >= date('Y-m-d')) { $prochain = $p; break; }
 }
 
 // Séparation à venir / passés
@@ -357,6 +399,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
         .pl-badge { font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 6px; }
         .pl-badge-ok { background: rgba(37,211,102,0.15); color: #7bd8a6; border: 1px solid rgba(37,211,102,0.3); }
         .pl-badge-no { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--glass-border); }
+        .pl-badge-annul { background: rgba(191,33,33,0.15); color: #fca5a5; border: 1px solid rgba(191,33,33,0.4); }
         details.pl-details summary { cursor: pointer; color: var(--text-muted); font-size: 0.8rem; }
         details.pl-details pre { white-space: pre-wrap; font-family: inherit; font-size: 0.83rem; color: var(--white); background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.9rem; margin-top: 0.5rem; }
         .pl-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.8rem; }
@@ -385,6 +428,16 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
         }
         /* Flèche du panneau dépliable : rotation à l'ouverture */
         details[open] > summary .pl-chevron { transform: rotate(90deg); }
+        /* Éditeur riche du programme */
+        .dh-prog-toolbar { display:flex; flex-wrap:wrap; gap:0.3rem; padding:0.5rem; border:1px solid var(--glass-border); border-bottom:0; border-radius:12px 12px 0 0; background:rgba(255,255,255,0.03); }
+        .dh-prog-toolbar button { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; min-width:34px; height:32px; padding:0 0.5rem; cursor:pointer; font-size:0.9rem; line-height:1; transition:all 0.15s ease; }
+        .dh-prog-toolbar button:hover { border-color:var(--accent); color:var(--accent); }
+        .dh-prog-toolbar .sep { width:1px; background:var(--glass-border); margin:0 0.2rem; }
+        .dh-prog-editor { min-height:150px; border:1px solid var(--glass-border); border-radius:0 0 12px 12px; padding:0.9rem 1rem; background:rgba(255,255,255,0.02); color:var(--white); font-size:0.94rem; line-height:1.6; outline:none; overflow-y:auto; max-height:420px; }
+        .dh-prog-editor:focus { border-color:var(--accent); }
+        .dh-prog-editor:empty::before { content:attr(data-placeholder); color:var(--text-muted); white-space:pre-line; }
+        .dh-prog-editor h3, .dh-prog-editor h4 { color:#fff; margin:0.5rem 0 0.3rem; }
+        .dh-prog-editor ul, .dh-prog-editor ol { padding-left:1.4rem; }
     </style>
 </head>
 <body>
@@ -479,48 +532,138 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                 <div class="glass-card" style="margin-bottom:1.5rem; border:2px solid rgba(212,175,55,0.55); background:linear-gradient(160deg, rgba(212,175,55,0.09) 0%, rgba(255,255,255,0.02) 100%);">
                     <?php if ($prochain):
                         $pdate = $prochain['date_dahira'];
+                        // Horaires : spécifiques au Dahira s'ils sont définis, sinon horaires par défaut
+                        $debutEff = trim((string)($prochain['heure_debut'] ?? '')) !== '' ? trim((string)$prochain['heure_debut']) : $debut;
+                        $finEff = trim((string)($prochain['heure_fin'] ?? '')) !== '' ? trim((string)$prochain['heure_fin']) : $fin;
+                        // Créneaux horaires par intervalle de 30 minutes
+                        $creneaux = [];
+                        for ($ch = 6; $ch <= 23; $ch++) { foreach (['00', '30'] as $cm) { $creneaux[] = sprintf('%02dh%s', $ch, $cm); } }
+                        $hDebutVal = trim((string)($prochain['heure_debut'] ?? ''));
+                        $hFinVal = trim((string)($prochain['heure_fin'] ?? ''));
                         $lienDahira = dahira_base_url() . '/dahira_detail.php?id=' . (int)$prochain['id'];
-                        $waMsg = dahira_message_annonce($pdate, $lieu, $debut, $fin, (string)($prochain['programme'] ?? ''), $lienDahira, $signature);
+                        $prochainActif = ((int)($prochain['a_dahira'] ?? 1)) === 1;
+                        $waMsg = $prochainActif
+                            ? dahira_message_annonce($pdate, $lieu, $debutEff, $finEff, (string)($prochain['programme'] ?? ''), $lienDahira, $signature)
+                            : dahira_message_annulation($pdate, $signature);
+                        $waAnnul = dahira_message_annulation($pdate, $signature);
                         $waLink = dahira_wa_link(null, $waMsg);
                     ?>
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1.5rem; flex-wrap:wrap;">
                             <div>
-                                <h3 style="color:var(--white); font-size:1.1rem; margin-bottom:0.4rem;">📣 Prochain Dahira</h3>
-                                <div style="font-size:1.6rem; font-weight:700; color:var(--accent); line-height:1.2;">
+                                <h3 style="color:var(--white); font-size:1.1rem; margin-bottom:0.4rem;">📣 Prochain Dahira
+                                    <?php if (!$prochainActif): ?>
+                                        <span class="pl-badge pl-badge-annul" style="font-size:0.75rem; padding:0.25rem 0.6rem; vertical-align:middle; background:rgba(191,33,33,0.15); color:#fca5a5; border:1px solid rgba(191,33,33,0.4);">‼️ Annulé</span>
+                                    <?php endif; ?>
+                                </h3>
+                                <?php if (trim((string)($prochain['titre'] ?? '')) !== ''): ?>
+                                    <div style="font-size:1.15rem; font-weight:800; color:var(--white); margin-bottom:0.15rem;">📌 <?php echo htmlspecialchars((string)$prochain['titre']); ?></div>
+                                <?php endif; ?>
+                                <div style="font-size:1.6rem; font-weight:700; color:<?php echo $prochainActif ? 'var(--accent)' : 'var(--danger)'; ?>; line-height:1.2;">
                                     <?php echo ucfirst(dahira_jour_fr($pdate)) . ' ' . date('d/m/Y', strtotime($pdate)); ?>
                                 </div>
                                 <div style="font-size:0.95rem; color:var(--white); margin-top:0.3rem;">
-                                    🕐 de <strong><?php echo htmlspecialchars($debut); ?></strong> à <strong><?php echo htmlspecialchars($fin); ?></strong>
+                                    🕐 de <strong><?php echo htmlspecialchars($debutEff); ?></strong> à <strong><?php echo htmlspecialchars($finEff); ?></strong>
+                                    <?php if (trim((string)($prochain['heure_debut'] ?? '')) !== '' || trim((string)($prochain['heure_fin'] ?? '')) !== ''): ?>
+                                        <span style="font-size:0.72rem; color:var(--accent);">(horaires spécifiques)</span>
+                                    <?php endif; ?>
                                 </div>
                                 <div style="font-size:0.82rem; color:var(--text-muted); margin-top:0.3rem; white-space:pre-line;">📍 <?php echo htmlspecialchars($lieu); ?></div>
+                                <?php if (trim((string)($prochain['description'] ?? '')) !== ''): ?>
+                                    <div style="font-size:0.85rem; color:var(--white); margin-top:0.4rem; white-space:pre-line;"><?php echo nl2br(htmlspecialchars((string)$prochain['description'])); ?></div>
+                                <?php endif; ?>
                             </div>
                             <div style="display:flex; flex-direction:column; gap:0.55rem; min-width:240px;">
-                                <?php echo dahira_wa_button($waLink, 'Partager au groupe WhatsApp', false, ((int)($prochain['publie'] ?? 0)) !== 1); ?>
-                                <?php if ($groupeWa !== '' && ((int)($prochain['publie'] ?? 0)) === 1): ?>
+                                <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'Dépublier ce Dahira de l\'accueil membre ?' : 'Publier ce Dahira sur l\'accueil membre (validation de présence) ?'; ?>">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="toggle_publie">
+                                    <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%; <?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'background:#c62828; border-color:#c62828; color:#fff;' : 'background:#1f9d55; border-color:#1f9d55; color:#fff;'; ?>"><?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? '⛔ Annuler la publication' : '⚪ Publier'; ?></button>
+                                </form>
+                                <?php echo dahira_wa_button($waLink, $prochainActif ? 'Partager au groupe WhatsApp' : 'Annulation WhatsApp', false, $prochainActif ? (((int)($prochain['publie'] ?? 0)) !== 1) : false); ?>
+                                <?php if ($groupeWa !== '' && ($prochainActif ? ((int)($prochain['publie'] ?? 0)) === 1 : true)): ?>
                                     <button type="button" class="btn btn-sm" style="background:#128C7E; border:1px solid #128C7E; color:#fff; font-weight:700;" onclick="shareGroup(<?php echo htmlspecialchars(json_encode($waMsg), ENT_QUOTES); ?>, <?php echo htmlspecialchars(json_encode($groupeWa), ENT_QUOTES); ?>)">🟢 Groupe (copier)</button>
                                 <?php endif; ?>
+                                <?php if ($prochainActif): ?>
                                 <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="Envoyer l'annonce du Dahira du <?php echo date('d/m/Y', strtotime($pdate)); ?> par e-mail à <?php echo $nbMembres; ?> membre(s) ?">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="send_email">
+                                    <input type="hidden" name="type" value="annonce">
                                     <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
                                     <?php $annonceDisabled = $nbMembres === 0 || ((int)($prochain['publie'] ?? 0)) !== 1; ?>
                                     <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;<?php echo $annonceDisabled ? ' opacity:0.4; filter:grayscale(0.5); cursor:not-allowed;' : ''; ?>" <?php echo $annonceDisabled ? 'disabled' : ''; ?> title="<?php echo ((int)($prochain['publie'] ?? 0)) !== 1 ? 'Disponible une fois le Dahira publié' : ''; ?>">
                                         📧 Envoyer par e-mail (<?php echo $nbMembres; ?> membre<?php echo $nbMembres > 1 ? 's' : ''; ?>)
                                     </button>
                                 </form>
+                                <?php else: ?>
+                                <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="Envoyer l'annulation du Dahira du <?php echo date('d/m/Y', strtotime($pdate)); ?> par e-mail à <?php echo $nbMembres; ?> membre(s) ?">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="send_email">
+                                    <input type="hidden" name="type" value="annulation">
+                                    <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;" <?php echo $nbMembres === 0 ? 'disabled' : ''; ?>>
+                                        📧 Envoyer l'annulation (<?php echo $nbMembres; ?>)
+                                    </button>
+                                </form>
+                                <?php endif; ?>
+                                <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="<?php echo $prochainActif ? 'Marquer ce Dahira comme annulé ?' : 'Réactiver ce Dahira ?'; ?>">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="toggle_dahira">
+                                    <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="width:100%; <?php echo $prochainActif ? 'border-color:rgba(191,33,33,0.6); color:#fca5a5;' : ''; ?>"><?php echo $prochainActif ? '‼️ Marquer comme annulé' : '↩️ Réactiver'; ?></button>
+                                </form>
                                 <a href="dahira_detail.php?id=<?php echo (int)$prochain['id']; ?>" class="btn btn-secondary btn-sm" style="width:100%; text-align:center; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
                             </div>
                         </div>
                         <!-- Zone de saisie du programme du prochain Dahira -->
-                        <form action="admin_planning.php" method="POST" style="margin-top:1.1rem; padding-top:1rem; border-top:1px solid rgba(255,255,255,0.07);">
+                        <form action="admin_planning.php" method="POST" style="margin-top:1.1rem; padding-top:1rem; border-top:1px solid rgba(255,255,255,0.07);" onsubmit="document.getElementById('dh-prog-input').value = document.getElementById('dh-prog-editor').innerHTML;">
                             <?php echo csrf_field(); ?>
                             <input type="hidden" name="action" value="save_programme">
                             <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
+                            <input type="hidden" name="programme" id="dh-prog-input">
+                            <div class="form-group" style="margin-bottom:0.8rem;">
+                                <label class="form-label">📌 Titre (facultatif)</label>
+                                <input type="text" name="titre" class="form-input" value="<?php echo htmlspecialchars((string)($prochain['titre'] ?? '')); ?>" placeholder="Ex : Magal, Gamou, Dahira spécial…" maxlength="200" style="width:100%;">
+                            </div>
+                            <div class="form-group" style="margin-bottom:0.8rem;">
+                                <label class="form-label">📝 Description (facultatif)</label>
+                                <textarea name="description" class="form-input" rows="3" placeholder="Quelques mots de présentation…" style="width:100%;"><?php echo htmlspecialchars((string)($prochain['description'] ?? '')); ?></textarea>
+                            </div>
+                            <div style="display:flex; gap:0.8rem; flex-wrap:wrap; margin-bottom:0.8rem;">
+                                <div class="form-group" style="flex:1 1 150px; margin:0;">
+                                    <label class="form-label">🕐 Heure de début</label>
+                                    <select name="heure_debut" class="form-input" style="width:100%;">
+                                        <option value="">— Par défaut (<?php echo htmlspecialchars($debut); ?>) —</option>
+                                        <?php foreach ($creneaux as $cr): ?>
+                                            <option value="<?php echo $cr; ?>" <?php echo $hDebutVal === $cr ? 'selected' : ''; ?>><?php echo $cr; ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex:1 1 150px; margin:0;">
+                                    <label class="form-label">🕐 Heure de fin</label>
+                                    <select name="heure_fin" class="form-input" style="width:100%;">
+                                        <option value="">— Par défaut (<?php echo htmlspecialchars($fin); ?>) —</option>
+                                        <?php foreach ($creneaux as $cr): ?>
+                                            <option value="<?php echo $cr; ?>" <?php echo $hFinVal === $cr ? 'selected' : ''; ?>><?php echo $cr; ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            </div>
+                            <p style="color:var(--text-muted); font-size:0.78rem; margin:0 0 0.6rem;">Laissez vide pour utiliser les horaires par défaut (<?php echo htmlspecialchars($debut); ?> – <?php echo htmlspecialchars($fin); ?>).</p>
                             <label class="form-label" style="margin-bottom:0.4rem;">🗓️ Programme détaillé (horaires | activités)</label>
-                            <textarea name="programme" class="form-input" rows="5" placeholder="17h00 | 19h15  DURUS&#10;19h15 | 20h15  Prestation Xassidas&#10;20h15 | 20h30  Gammu"><?php echo htmlspecialchars((string)($prochain['programme'] ?? '')); ?></textarea>
-                            <div style="margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                            <div class="dh-prog-toolbar" id="dh-prog-toolbar">
+                                <button type="button" data-cmd="bold" title="Gras"><strong>G</strong></button>
+                                <button type="button" data-cmd="italic" title="Italique"><em>I</em></button>
+                                <button type="button" data-cmd="underline" title="Souligné"><u>S</u></button>
+                                <span class="sep"></span>
+                                <button type="button" data-cmd="formatBlock" data-val="h4" title="Titre">H</button>
+                                <button type="button" data-cmd="insertUnorderedList" title="Liste à puces">•—</button>
+                                <button type="button" data-cmd="insertOrderedList" title="Liste numérotée">1.</button>
+                                <button type="button" data-cmd="removeFormat" title="Effacer la mise en forme">✖︎</button>
+                            </div>
+                            <div class="dh-prog-editor" id="dh-prog-editor" contenteditable="true" data-placeholder="17h00 | 19h15  DURUS&#10;19h15 | 20h15  Prestation Xassidas&#10;20h15 | 20h30  Gammu"><?php echo dahira_sanitize_html((string)($prochain['programme'] ?? '')); ?></div>
+                            <div style="margin-top:0.6rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                                 <button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer le programme</button>
-                                <span style="color:var(--text-muted); font-size:0.78rem;">Une ligne par activité, avec l'horaire en début de ligne.</span>
+                                <span style="color:var(--text-muted); font-size:0.78rem;">Mettez en forme le programme (titres, listes, gras…).</span>
                             </div>
                         </form>
                         <form action="admin_planning.php" method="POST" style="margin-top:0.6rem;" data-confirm="Remplacer le programme actuel par le programme par défaut ?">
@@ -529,16 +672,16 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                             <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
                             <button type="submit" class="btn btn-secondary btn-sm">📋 Charger le programme par défaut</button>
                         </form>
-                        <form action="admin_planning.php" method="POST" style="margin-top:0.6rem;" data-confirm="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'Dépublier ce Dahira de l\'accueil membre ?' : 'Publier ce Dahira sur l\'accueil membre (validation de présence) ?'; ?>">
-                            <?php echo csrf_field(); ?>
-                            <input type="hidden" name="action" value="toggle_publie">
-                            <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
-                            <button type="submit" class="btn btn-secondary btn-sm" style="<?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? 'background:#c62828; border-color:#c62828; color:#fff;' : 'background:#1f9d55; border-color:#1f9d55; color:#fff;'; ?>"><?php echo ((int)($prochain['publie'] ?? 0)) === 1 ? '� Annuler la publication' : '⚪ Publier'; ?></button>
-                        </form>
                         <details style="margin-top:0.9rem;" class="pl-details">
-                            <summary>Voir / copier le message WhatsApp</summary>
+                            <summary><?php echo $prochainActif ? 'Voir / copier le message WhatsApp' : 'Voir / copier le message d\'annulation'; ?></summary>
                             <pre><?php echo htmlspecialchars($waMsg); ?></pre>
                         </details>
+                        <?php if ($prochainActif): ?>
+                        <details style="margin-top:0.6rem;" class="pl-details">
+                            <summary>Voir / copier le message d'annulation</summary>
+                            <pre><?php echo htmlspecialchars($waAnnul); ?></pre>
+                        </details>
+                        <?php endif; ?>
                     <?php else: ?>
                         <h3 style="color:var(--white); font-size:1.1rem; margin-bottom:0.3rem;">📣 Prochain Dahira</h3>
                         <p style="color:var(--text-muted); margin:0;">Aucun dimanche avec Dahira à venir. Générez les dimanches ci-dessous.</p>
@@ -571,31 +714,19 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                     </form>
                 </details>
 
-                <!-- Dahiras clôturés (historique, après les paramètres par défaut) -->
-                <?php if (!empty($planningsPassesCloturees)): ?>
+                <!-- Ajouter un Dahira d'exception (date libre) — juste après les paramètres -->
                 <details class="glass-card" style="margin-bottom:1.5rem;">
-                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✅ Dahiras clôturés (<?php echo count($planningsPassesCloturees); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
-                    <div class="pl-grid" style="margin-top:0.9rem;">
-                        <?php foreach ($planningsPassesCloturees as $p):
-                            $d = $p['date_dahira'];
-                            $nbCloture = $nbPartDahira($p);
-                        ?>
-                        <div class="glass-card pl-card" style="opacity:0.8; border-left:3px solid rgba(37,211,102,0.4);">
-                            <div class="pl-date">
-                                <?php echo ucfirst(dahira_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
-                                <small>· passé</small>
-                            </div>
-                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
-                                <span>
-                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">✅ Clôturé<?php echo $nbCloture > 0 ? ' · ' . $nbCloture . ' pers.' : ''; ?></span>
-                                </span>
-                                <a href="dahira_detail.php?id=<?php echo (int)$p['id']; ?>" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
-                            </div>
+                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✨ Ajouter un Dahira d'exception <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
+                    <form action="admin_planning.php" method="POST" style="margin-top:1rem;">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="action" value="add_exception">
+                        <p style="color:var(--text-muted); font-size:0.85rem; margin:0 0 0.8rem;">Planifiez un Dahira à une date précise (hors dimanches habituels) : Magal, Gamou, événement exceptionnel…</p>
+                        <div class="pl-params">
+                            <div class="form-group"><label class="form-label">🗓️ Date du Dahira</label><input type="date" name="date_exception" class="form-input" value="<?php echo date('Y-m-d'); ?>" required></div>
                         </div>
-                        <?php endforeach; ?>
-                    </div>
+                        <div style="margin-top:0.9rem;"><button type="submit" class="btn btn-primary btn-sm">➕ Ajouter ce Dahira</button></div>
+                    </form>
                 </details>
-                <?php endif; ?>
 
                 <!-- Générer les dimanches -->
                 <details class="glass-card" style="margin-bottom:1.5rem;">
@@ -639,14 +770,14 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                                 <?php if ($aDahira): ?>
                                     <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">🕌 Dahira</span>
                                 <?php else: ?>
-                                    <span class="pl-badge" style="font-size:0.75rem; padding:0.25rem 0.6rem; background:rgba(255,255,255,0.07); color:var(--text-muted); border:1px solid var(--glass-border);">🚫 Pas Dahira</span>
+                                    <span class="pl-badge pl-badge-annul" style="font-size:0.75rem; padding:0.25rem 0.6rem;">‼️ Annulé</span>
                                 <?php endif; ?>
                                 </span>
-                                <form action="admin_planning.php" method="POST" style="margin:0;">
+                                <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="<?php echo $aDahira ? 'Marquer ce Dahira comme annulé ?' : 'Rétablir ce Dahira ?'; ?>">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="toggle_dahira">
                                     <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
-                                    <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem;"><?php echo $aDahira ? '→ Pas Dahira' : '→ Dahira'; ?></button>
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem;<?php echo $aDahira ? ' border-color:rgba(191,33,33,0.6); color:#fca5a5;' : ''; ?>"><?php echo $aDahira ? '‼️ Annuler' : '↩️ Réactiver'; ?></button>
                                 </form>
                             </div>
                         </div>
@@ -672,14 +803,14 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                                 <?php if ($aDahira): ?>
                                     <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">🕌 Dahira</span>
                                 <?php else: ?>
-                                    <span class="pl-badge" style="font-size:0.75rem; padding:0.25rem 0.6rem; background:rgba(255,255,255,0.07); color:var(--text-muted); border:1px solid var(--glass-border);">🚫 Pas Dahira</span>
+                                    <span class="pl-badge pl-badge-annul" style="font-size:0.75rem; padding:0.25rem 0.6rem;">‼️ Annulé</span>
                                 <?php endif; ?>
                                 </span>
-                                <form action="admin_planning.php" method="POST" style="margin:0;">
+                                <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="<?php echo $aDahira ? 'Marquer ce Dahira comme annulé ?' : 'Rétablir ce Dahira ?'; ?>">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="toggle_dahira">
                                     <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
-                                    <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem;"><?php echo $aDahira ? '→ Pas Dahira' : '→ Dahira'; ?></button>
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem;<?php echo $aDahira ? ' border-color:rgba(191,33,33,0.6); color:#fca5a5;' : ''; ?>"><?php echo $aDahira ? '‼️ Annuler' : '↩️ Réactiver'; ?></button>
                                 </form>
                             </div>
                         </div>
@@ -688,6 +819,32 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                     <?php endif; ?>
                     </div>
                 </details>
+
+                <!-- Dahiras clôturés (historique, en bas de page) -->
+                <?php if (!empty($planningsPassesCloturees)): ?>
+                <details class="glass-card" style="margin-bottom:1.5rem;">
+                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✅ Dahiras clôturés (<?php echo count($planningsPassesCloturees); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
+                    <div class="pl-grid" style="margin-top:0.9rem;">
+                        <?php foreach ($planningsPassesCloturees as $p):
+                            $d = $p['date_dahira'];
+                            $nbCloture = $nbPartDahira($p);
+                        ?>
+                        <div class="glass-card pl-card" style="opacity:0.8; border-left:3px solid rgba(37,211,102,0.4);">
+                            <div class="pl-date">
+                                <?php echo ucfirst(dahira_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
+                                <small>· passé</small>
+                            </div>
+                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                                <span>
+                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">✅ Clôturé<?php echo $nbCloture > 0 ? ' · ' . $nbCloture . ' pers.' : ''; ?></span>
+                                </span>
+                                <a href="dahira_detail.php?id=<?php echo (int)$p['id']; ?>" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+                <?php endif; ?>
             </div>
         </div>
     </main>
@@ -761,6 +918,26 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
             if (okBtn) { okBtn.addEventListener('click', function () { form.submit(); }); }
             if (cancelBtn) { cancelBtn.addEventListener('click', function () { closeModal(modal); }); }
             modal.addEventListener('click', function (e) { if (e.target === modal) { closeModal(modal); } });
+        })();
+        // Éditeur riche du programme (léger, sans dépendance)
+        (function () {
+            var editor = document.getElementById('dh-prog-editor');
+            var toolbar = document.getElementById('dh-prog-toolbar');
+            if (!editor || !toolbar) { return; }
+            toolbar.addEventListener('click', function (e) {
+                var btn = e.target.closest('button[data-cmd]');
+                if (!btn) { return; }
+                e.preventDefault();
+                editor.focus();
+                var cmd = btn.getAttribute('data-cmd');
+                var val = btn.getAttribute('data-val') || null;
+                if (cmd === 'formatBlock' && val) {
+                    try { document.execCommand('formatBlock', false, val); }
+                    catch (err) { document.execCommand('formatBlock', false, '<' + val + '>'); }
+                } else {
+                    document.execCommand(cmd, false, null);
+                }
+            });
         })();
     </script>
 </body>

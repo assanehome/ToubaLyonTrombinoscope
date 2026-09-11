@@ -3,6 +3,13 @@
 # Empêcher le listage des répertoires
 Options -Indexes
 
+# Les fichiers dont le nom commence par un point (.user.ini, .env, .git…) ne
+# sont jamais servis : la regle groupee plus bas ne les attrapait pas, l'ancre
+# de fin de nom la rendait sans effet.
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
 # Bloquer l'accès direct aux fichiers sensibles (config, secrets, includes, logs)
 <FilesMatch "(^\.|config\.secret\.php|db_config\.php|db_setup\.php|admin_guard\.php|\.env|\.log|\.txt|\.md)$">
     Require all denied

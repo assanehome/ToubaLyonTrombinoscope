@@ -180,9 +180,56 @@ function dahira_wa_button(string $link, string $label = 'Partager sur WhatsApp',
  *    Programme joint ci-dessus.
  *    Sëriñ Muntaxaa Mbakke Yalla nafi Yagg lòolu te wer. »
  */
+/**
+ * Assainit le HTML du programme (éditeur riche) : jeu de balises limité,
+ * sans attributs dangereux.
+ */
+function dahira_sanitize_html(string $html): string
+{
+    $allowed = '<p><br><strong><b><em><i><u><s><ul><ol><li><h3><h4><h5><span><div><a><blockquote>';
+    $clean = strip_tags($html, $allowed);
+    $clean = preg_replace('/\son\w+\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $clean);
+    $clean = preg_replace('/(href\s*=\s*)("|\')\s*javascript:[^"\']*(\2)/i', '$1$2#$3', $clean);
+    $clean = preg_replace('/\sstyle\s*=\s*("[^"]*"|\'[^\']*\')/i', '', $clean);
+    return trim((string) $clean);
+}
+
+/** Convertit le programme HTML en texte simple (usage générique). */
+function dahira_html_to_texte(string $html): string
+{
+    $t = str_replace(['</p>', '<br>', '<br/>', '<br />', '</h3>', '</h4>', '</h5>', '</li>', '</blockquote>'], "\n", $html);
+    $t = preg_replace('/<li[^>]*>/i', '• ', $t);
+    $t = html_entity_decode(strip_tags($t), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $t = preg_replace("/[ \t]+\n/", "\n", $t);
+    $t = preg_replace("/\n{3,}/", "\n\n", $t);
+    return trim((string) $t);
+}
+
+/**
+ * Convertit le programme HTML en texte formaté WhatsApp
+ * (*gras*, _italique_, ~barré~, listes à puces, sauts de ligne).
+ */
+function dahira_html_to_whatsapp(string $html): string
+{
+    $t = $html;
+    $t = preg_replace('#<(strong|b)\b[^>]*>(.*?)</\1>#is', '*$2*', $t);
+    $t = preg_replace('#<(em|i)\b[^>]*>(.*?)</\1>#is', '_$2_', $t);
+    $t = preg_replace('#<(s|strike|del)\b[^>]*>(.*?)</\1>#is', '~$2~', $t);
+    $t = preg_replace('#<h[1-6]\b[^>]*>(.*?)</h[1-6]>#is', "\n*$1*\n", $t);
+    $t = preg_replace('#<li\b[^>]*>(.*?)</li>#is', "• $1\n", $t);
+    $t = preg_replace('#</p\s*>#i', "\n\n", $t);
+    $t = preg_replace('#<br\s*/?>#i', "\n", $t);
+    $t = html_entity_decode(strip_tags($t), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $t = preg_replace("/[ \t]+\n/", "\n", $t);
+    $t = preg_replace("/\n{3,}/", "\n\n", $t);
+    return trim((string) $t);
+}
+
 function dahira_message_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = '', string $lien = '', string $signature = ''): string
 {
     if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
+    // Le programme peut être saisi en HTML : converti en texte formaté WhatsApp
+    $programme = dahira_html_to_whatsapp($programme);
 
     $msg = "As-salaamu haleykum,\n\n"
         . "Un Dahira aura lieu ce " . dahira_date_longue($date) . " :\n";
@@ -222,8 +269,8 @@ function dahira_email_annonce(string $date, string $lieu, string $debut, string 
 
     if (trim($programme) !== '') {
         $inner .= '<h3 style="color:#1b4332;margin:20px 0 8px;">🗓️ Programme</h3>'
-            . '<div style="background:#ffffff;border:1px solid #e6e6e6;border-radius:12px;padding:12px 16px;white-space:pre-wrap;color:#333;line-height:1.5;">'
-            . htmlspecialchars(trim($programme)) . '</div>';
+            . '<div style="background:#ffffff;border:1px solid #e6e6e6;border-radius:12px;padding:12px 16px;color:#333;line-height:1.5;">'
+            . dahira_sanitize_html(trim($programme)) . '</div>';
     }
 
     $inner .= '<p style="color:#333;margin-top:18px;">' . nl2br(htmlspecialchars(trim($signature))) . '</p>'
@@ -231,6 +278,38 @@ function dahira_email_annonce(string $date, string $lieu, string $debut, string 
         . '</div>';
 
     return $inner;
+}
+
+/**
+ * Message WhatsApp d'ANNULATION d'un Dahira.
+ */
+function dahira_message_annulation(string $date, string $signature = ''): string
+{
+    if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
+    return "‼️‼️ ANNULATION DAHIRA\n\n"
+        . "As-salaamu haleykum,\n\n"
+        . "Le Dahira prévu ce " . dahira_date_longue($date) . " est annulé inshallaah.\n\n"
+        . "Ñungi leen di tuubal bu baax.\n\n"
+        . trim($signature);
+}
+
+/**
+ * Corps HTML d'un e-mail annonçant l'annulation d'un Dahira.
+ */
+function dahira_email_annulation(string $date, string $signature = ''): string
+{
+    if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
+    $date_fr = date('d/m/Y', strtotime($date));
+    $jour = dahira_jour_fr($date);
+    return '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">'
+        . '<h2 style="color:#b91c1c;">‼️‼️ ANNULATION DAHIRA</h2>'
+        . '<p style="color:#333;">As-salaamu haleykum,</p>'
+        . '<p style="color:#333;">Le <strong>Dahira</strong> prévu ce '
+        . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> est <strong>annulé</strong> inshallaah.</p>'
+        . '<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;color:#991b1b;">Ñungi leen di tuubal bu baax.</p>'
+        . '<p style="color:#333;margin-top:16px;">' . nl2br(htmlspecialchars(trim($signature))) . '</p>'
+        . '<p style="color:#888;font-size:12px;">— Dahira Touba Lyon (Mubawwa-A-Sidqin)</p>'
+        . '</div>';
 }
 
 // ---------------------------------------------------------------------------
