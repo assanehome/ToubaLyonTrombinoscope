@@ -502,6 +502,13 @@ try {
     } catch (Exception $e) {
         $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN nb_participants INT NULL DEFAULT NULL");
     }
+    // Migrations : horaires spécifiques à un Dahira (remplacent les horaires par défaut)
+    try { $pdo->query("SELECT heure_debut FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN heure_debut VARCHAR(20) NULL DEFAULT NULL"); }
+    try { $pdo->query("SELECT heure_fin FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN heure_fin VARCHAR(20) NULL DEFAULT NULL"); }
+    // Migration : titre du Dahira (facultatif — ex. « Magal de… », « Gamou »)
+    try { $pdo->query("SELECT titre FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN titre VARCHAR(200) NULL DEFAULT NULL"); }
+    // Migration : description du Dahira (facultatif)
+    try { $pdo->query("SELECT description FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN description TEXT NULL DEFAULT NULL"); }
     // Migration : colonne publie (affichage sur l'accueil membre + validation de présence) si absente
     try {
         $pdo->query("SELECT publie FROM dahira_plannings LIMIT 1");
@@ -569,6 +576,12 @@ try {
         $pdo->query("SELECT publie FROM guddi_plannings LIMIT 1");
     } catch (Exception $e) {
         $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN publie TINYINT(1) NOT NULL DEFAULT 0");
+    }
+    // Migration : colonne audio_path (enregistrement de la séance, déposé à la clôture) si absente
+    try {
+        $pdo->query("SELECT audio_path FROM guddi_plannings LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN audio_path VARCHAR(255) NULL DEFAULT NULL");
     }
     // Réglages du Guddi Àjjuma (heure, thème, présentateur, lien par défaut)
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_heure', '20h00')")->execute(); } catch (Exception $e) {}
@@ -753,6 +766,39 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_tache (tache_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Cotisations : mode de cotisation par membre (mensuel = doit cotiser chaque
+    // mois via Stripe ; virement = virement automatique ; exempt = dispensé).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS cotisation_config (
+        membre_id INT NOT NULL PRIMARY KEY,
+        mode VARCHAR(20) NOT NULL DEFAULT 'mensuel',
+        updated_at TIMESTAMP NULL DEFAULT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Cotisations : un enregistrement par membre et par mois (période AAAA-MM).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS cotisations (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        membre_id INT NOT NULL,
+        periode CHAR(7) NOT NULL,
+        montant DECIMAL(8,2) NOT NULL DEFAULT 0,
+        statut VARCHAR(20) NOT NULL DEFAULT 'attente',
+        methode VARCHAR(20) NULL DEFAULT NULL,
+        stripe_session VARCHAR(255) NULL DEFAULT NULL,
+        paid_at TIMESTAMP NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        UNIQUE KEY uniq_membre_periode (membre_id, periode),
+        INDEX idx_periode (periode),
+        INDEX idx_statut (statut)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Valeur par défaut de la cotisation mensuelle (en euros), modifiable en réglages
+    try {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM app_settings WHERE cle = 'cotisation_montant'");
+        $st->execute();
+        if ((int) $st->fetchColumn() === 0) {
+            $pdo->prepare("INSERT INTO app_settings (cle, valeur) VALUES ('cotisation_montant', '30')")->execute();
+        }
+    } catch (Exception $e) { /* app_settings créé plus tôt */ }
 
     // 3. Create uploads directory if it doesn't exist
     $uploadDir = __DIR__ . '/uploads';

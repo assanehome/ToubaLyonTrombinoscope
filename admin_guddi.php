@@ -40,13 +40,39 @@ function guddi_commission_id(PDO $pdo): int
     return $cid;
 }
 
+/**
+ * Efface l'enregistrement audio d'une séance : le fichier sur le disque et la
+ * référence en base. Sans effet si la séance n'en avait pas.
+ */
+function guddi_oublier_audio(PDO $pdo, int $id): void
+{
+    try {
+        $st = $pdo->prepare("SELECT audio_path FROM guddi_plannings WHERE id = ?");
+        $st->execute([$id]);
+        $ancien = (string) $st->fetchColumn();
+        if ($ancien !== '') {
+            $chemin = __DIR__ . '/uploads/' . basename($ancien);
+            if (is_file($chemin)) { @unlink($chemin); }
+        }
+        $pdo->prepare("UPDATE guddi_plannings SET audio_path = NULL, updated_at = NOW() WHERE id = ?")->execute([$id]);
+    } catch (Exception $e) {
+        error_log('Touba Lyon guddi - suppression audio : ' . $e->getMessage());
+    }
+}
+
 $commissionId = guddi_commission_id($pdo);
 
 // ---------------------------------------------------------------------------
 // Actions POST
 // ---------------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!csrf_validate()) {
+    // Un envoi plus lourd que ce que PHP accepte arrive ici entièrement vide.
+    // Sans ce garde-fou, un enregistrement trop gros se plaindrait d'un jeton
+    // de sécurité manquant : personne n'y comprendrait rien.
+    if (empty($_POST) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        $error = "Le fichier envoyé dépasse ce que le serveur accepte ("
+            . guddi_audio_taille_max_texte() . " au maximum). Rien n'a été enregistré.";
+    } elseif (!csrf_validate()) {
         $error = "Échec de validation de sécurité (CSRF). Veuillez réessayer.";
     } else {
         $action = $_POST['action'] ?? '';
@@ -164,6 +190,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // Joindre (ou remplacer) l'enregistrement d'une séance déjà clôturée
+        elseif ($action === 'save_audio') {
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id > 0) {
+                $audio = guddi_enregistrer_audio($id, $_FILES['audio_guddi'] ?? [], __DIR__ . '/uploads', $error);
+                if ($error === '' && $audio === null) {
+                    $error = "Aucun fichier n'a été choisi.";
+                } elseif ($error === '') {
+                    try {
+                        guddi_oublier_audio($pdo, $id);
+                        $pdo->prepare("UPDATE guddi_plannings SET audio_path = ?, updated_at = NOW() WHERE id = ?")->execute([$audio, $id]);
+                        $success = "L'enregistrement de la séance a été joint.";
+                    } catch (Exception $e) {
+                        error_log('Touba Lyon guddi - enregistrement audio : ' . $e->getMessage());
+                        $error = "Une erreur technique est survenue.";
+                    }
+                }
+            }
+        }
+
+        // Retirer l'enregistrement d'une séance
+        elseif ($action === 'delete_audio') {
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id > 0) {
+                guddi_oublier_audio($pdo, $id);
+                $success = "L'enregistrement de la séance a été supprimé.";
+            }
+        }
+
         // Charger les valeurs par défaut dans la séance
         elseif ($action === 'load_default') {
             $id = (int) ($_POST['id'] ?? 0);
@@ -250,9 +305,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } catch (Exception $e) {
                             $nb = 0;
                         }
-                        $pdo->prepare("UPDATE guddi_plannings SET cloture = 1, nb_participants = ?, updated_at = NOW() WHERE id = ?")
-                            ->execute([$nb > 0 ? $nb : null, $id]);
-                        $success = "Séance clôturée." . ($nb > 0 ? " Participants : $nb." : "");
+                        // L'enregistrement de la séance, s'il a été joint à la clôture
+                        $audio = guddi_enregistrer_audio($id, $_FILES['audio_guddi'] ?? [], __DIR__ . '/uploads', $error);
+                        if ($error !== '') {
+                            // Le fichier a échoué : la séance reste ouverte, on le dit.
+                            $error .= " La séance n'a pas été clôturée : recommencez, au besoin sans le fichier.";
+                        }
+                        if ($error === '') {
+                            if ($audio !== null) {
+                                guddi_oublier_audio($pdo, $id); // un précédent enregistrement ne reste pas orphelin
+                                $pdo->prepare("UPDATE guddi_plannings SET cloture = 1, nb_participants = ?, audio_path = ?, updated_at = NOW() WHERE id = ?")
+                                    ->execute([$nb > 0 ? $nb : null, $audio, $id]);
+                            } else {
+                                $pdo->prepare("UPDATE guddi_plannings SET cloture = 1, nb_participants = ?, updated_at = NOW() WHERE id = ?")
+                                    ->execute([$nb > 0 ? $nb : null, $id]);
+                            }
+                            $success = "Séance clôturée." . ($nb > 0 ? " Participants : $nb." : "")
+                                . ($audio !== null ? " Enregistrement joint." : "");
+                        }
                     }
                 } catch (Exception $e) {
                     $error = "Une erreur technique est survenue.";
@@ -911,36 +981,6 @@ if ($commissionId > 0) {
                     </form>
                 </details>
 
-                <!-- Séances clôturées (historique) -->
-                <?php if (!empty($planningsPassesCloturees)): ?>
-                <details class="glass-card" style="margin-bottom:1.5rem;">
-                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✅ Séances clôturées (<?php echo count($planningsPassesCloturees); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
-                    <div class="pl-grid" style="margin-top:0.9rem;">
-                        <?php foreach ($planningsPassesCloturees as $p):
-                            $d = $p['date_guddi'];
-                            $actif = ((int)($p['actif'] ?? 1)) === 1;
-                            $nbCloture = $nbPartGuddi($p);
-                        ?>
-                        <div class="glass-card pl-card" style="opacity:0.8; border-left:3px solid rgba(37,211,102,0.4);">
-                            <div class="pl-date">
-                                <?php echo ucfirst(guddi_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
-                                <small>· passé</small>
-                            </div>
-                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
-                                <span>
-                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">✅ Clôturée<?php echo $nbCloture > 0 ? ' · ' . $nbCloture . ' pers.' : ''; ?></span>
-                                    <?php if (!empty(trim((string)($p['livre'] ?? '')))): ?>
-                                        <span class="pl-badge pl-badge-no" style="font-size:0.75rem; padding:0.25rem 0.6rem;">📖 <?php echo htmlspecialchars((string)$p['livre']); ?></span>
-                                    <?php endif; ?>
-                                </span>
-                                <a href="guddi_detail.php?id=<?php echo (int)$p['id']; ?>" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </details>
-                <?php endif; ?>
-
                 <!-- Générer les jeudis -->
                 <details class="glass-card" style="margin-bottom:1.5rem;">
                     <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">🗓️ Générer les jeudis <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
@@ -994,6 +1034,60 @@ if ($commissionId > 0) {
                     <?php endif; ?>
                     </div>
                 </details>
+
+                <!-- Séances clôturées (historique) -->
+                <?php if (!empty($planningsPassesCloturees)): ?>
+                <details class="glass-card" style="margin-bottom:1.5rem;">
+                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✅ Séances clôturées (<?php echo count($planningsPassesCloturees); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
+                    <div class="pl-grid" style="margin-top:0.9rem;">
+                        <?php foreach ($planningsPassesCloturees as $p):
+                            $d = $p['date_guddi'];
+                            $actif = ((int)($p['actif'] ?? 1)) === 1;
+                            $nbCloture = $nbPartGuddi($p);
+                        ?>
+                        <div class="glass-card pl-card" style="opacity:0.8; border-left:3px solid rgba(37,211,102,0.4);">
+                            <div class="pl-date">
+                                <?php echo ucfirst(guddi_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
+                                <small>· passé</small>
+                            </div>
+                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                                <span>
+                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">✅ Clôturée<?php echo $nbCloture > 0 ? ' · ' . $nbCloture . ' pers.' : ''; ?></span>
+                                    <?php if (!empty(trim((string)($p['livre'] ?? '')))): ?>
+                                        <span class="pl-badge pl-badge-no" style="font-size:0.75rem; padding:0.25rem 0.6rem;">📖 <?php echo htmlspecialchars((string)$p['livre']); ?></span>
+                                    <?php endif; ?>
+                                </span>
+                                <a href="guddi_detail.php?id=<?php echo (int)$p['id']; ?>" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
+                            </div>
+                            <?php // L'enregistrement de la séance : à écouter, à remplacer ou à retirer. ?>
+                            <?php $gaFichier = trim((string)($p['audio_path'] ?? '')); ?>
+                            <div style="margin-top:0.55rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.08);">
+                                <?php if ($gaFichier !== ''): ?>
+                                    <div style="display:flex; gap:0.4rem; align-items:center; justify-content:space-between;">
+                                        <span style="font-size:0.72rem; color:var(--text-muted);">🎧 Enregistrement</span>
+                                        <form action="admin_guddi.php" method="POST" style="margin:0;" data-confirm="Supprimer l'enregistrement de cette séance ? Le fichier sera effacé du serveur.">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="delete_audio">
+                                            <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                                            <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.68rem; padding:0.15rem 0.45rem; border-color:rgba(220,80,80,0.45); color:#f3a6a6;">🗑️</button>
+                                        </form>
+                                    </div>
+                                    <audio controls preload="none" src="uploads/<?php echo htmlspecialchars($gaFichier); ?>" style="width:100%; height:34px; margin-top:0.35rem;"></audio>
+                                <?php else: ?>
+                                    <form action="admin_guddi.php" method="POST" enctype="multipart/form-data" style="margin:0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="save_audio">
+                                        <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                                        <input type="file" name="audio_guddi" accept="audio/*,.mp3,.m4a,.ogg,.opus,.wav" style="font-size:0.68rem; color:var(--text-muted); max-width:100%;">
+                                        <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.68rem; padding:0.15rem 0.5rem;">🎧 Joindre</button>
+                                    </form>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+                <?php endif; ?>
             </div>
         </div>
     </main>
@@ -1005,10 +1099,13 @@ if ($commissionId > 0) {
             <div class="modal-header"><h3 style="color:var(--accent);">✅ Clôturer la séance</h3></div>
             <div class="modal-body" style="display:block; text-align:left;">
                 <p id="cloture-msg" style="margin:0 0 1rem; line-height:1.5; text-align:left;">Clôturer cette séance du Guddi Àjjuma ?</p>
-                <form id="cloture-form" action="admin_guddi.php" method="POST" style="margin:0;">
+                <form id="cloture-form" action="admin_guddi.php" method="POST" enctype="multipart/form-data" style="margin:0;">
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="action" value="cloture">
                     <input type="hidden" name="id" id="cloture-id">
+                    <label for="cloture-audio" style="display:block; font-size:0.82rem; color:var(--white); margin-bottom:0.35rem;">🎧 Enregistrement de la séance <span style="color:var(--text-muted); font-weight:400;">(facultatif)</span></label>
+                    <input type="file" id="cloture-audio" name="audio_guddi" accept="audio/*,.mp3,.m4a,.ogg,.opus,.wav" style="width:100%; font-size:0.8rem; color:var(--text-muted);">
+                    <p style="margin:0.4rem 0 0; font-size:0.72rem; color:var(--text-muted); line-height:1.45;">MP3, M4A, OGG ou WAV — <?php echo htmlspecialchars(guddi_audio_taille_max_texte()); ?> au maximum. L'envoi d'un long enregistrement peut prendre un moment : laissez la page ouverte.</p>
                 </form>
             </div>
             <div class="modal-footer" style="display:flex; gap:0.5rem; justify-content:flex-end;">
@@ -1148,6 +1245,7 @@ if ($commissionId > 0) {
             var msg = document.getElementById('cloture-msg');
             var okBtn = document.getElementById('cloture-ok');
             var cancelBtn = document.getElementById('cloture-cancel');
+            var fichierAudio = document.getElementById('cloture-audio');
             if (!modal || !form || !idInput) { return; }
             function openModal(m) { m.style.display = 'flex'; setTimeout(function () { m.classList.add('active'); }, 10); }
             function closeModal(m) { m.classList.remove('active'); setTimeout(function () { m.style.display = 'none'; }, 280); }
@@ -1160,10 +1258,19 @@ if ($commissionId > 0) {
                 btn.addEventListener('click', function () {
                     idInput.value = btn.getAttribute('data-id');
                     msg.textContent = 'Clôturer la séance du ' + date + ' ?';
+                    if (fichierAudio) { fichierAudio.value = ''; } // rien d'hérité d'une autre séance
+                    if (okBtn) { okBtn.disabled = false; okBtn.textContent = '✅ Clôturer'; }
                     openModal(modal);
                 });
             });
-            if (okBtn) { okBtn.addEventListener('click', function () { form.submit(); }); }
+            // L'envoi d'un enregistrement prend du temps : le bouton le dit, et
+            // ne se laisse pas cliquer deux fois.
+            if (okBtn) { okBtn.addEventListener('click', function () {
+                var avecFichier = fichierAudio && fichierAudio.files && fichierAudio.files.length > 0;
+                okBtn.disabled = true;
+                okBtn.textContent = avecFichier ? '⏳ Envoi en cours…' : '⏳ Clôture…';
+                form.submit();
+            }); }
             if (cancelBtn) { cancelBtn.addEventListener('click', function () { closeModal(modal); }); }
             modal.addEventListener('click', function (e) { if (e.target === modal) { closeModal(modal); } });
         })();

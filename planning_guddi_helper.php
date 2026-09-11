@@ -204,3 +204,102 @@ function guddi_email_annulation(string $date): string
 // ---------------------------------------------------------------------------
 // Membres destinataires (réutilise dahira_destinataires)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Enregistrement audio d'une séance
+// ---------------------------------------------------------------------------
+
+/**
+ * Les formats acceptés pour l'enregistrement d'une séance. Le MP3 d'abord :
+ * c'est ce que rendent Zoom et les dictaphones de téléphone.
+ */
+function guddi_audio_extensions(): array
+{
+    return ['mp3', 'm4a', 'ogg', 'opus', 'wav'];
+}
+
+/** Une taille écrite à la mode de php.ini (« 64M », « 512K ») en octets. */
+function guddi_taille_ini(string $valeur): int
+{
+    $valeur = trim($valeur);
+    if ($valeur === '') {
+        return 0;
+    }
+    $n = (int) $valeur;
+    switch (strtolower(substr($valeur, -1))) {
+        case 'g': $n *= 1024 * 1024 * 1024; break;
+        case 'm': $n *= 1024 * 1024; break;
+        case 'k': $n *= 1024; break;
+    }
+    return max(0, $n);
+}
+
+/**
+ * Ce que le serveur accepte vraiment : la plus petite des deux limites.
+ * Annoncer 64 Mo quand la requête entière plafonne à 8 ne tromperait que nous.
+ */
+function guddi_audio_taille_max(): int
+{
+    $limites = array_filter([
+        guddi_taille_ini((string) ini_get('upload_max_filesize')),
+        guddi_taille_ini((string) ini_get('post_max_size')),
+    ]);
+    return empty($limites) ? 0 : (int) min($limites);
+}
+
+/** La même limite, dite en français : « 64 Mo ». */
+function guddi_audio_taille_max_texte(): string
+{
+    $o = guddi_audio_taille_max();
+    if ($o <= 0) {
+        return 'la limite du serveur';
+    }
+    return $o >= 1024 * 1024
+        ? round($o / (1024 * 1024)) . ' Mo'
+        : round($o / 1024) . ' Ko';
+}
+
+/**
+ * Range l'enregistrement reçu dans $dossier et renvoie son nom de fichier.
+ *
+ * Renvoie null quand rien n'a été joint — ce n'est pas une erreur, la clôture
+ * d'une séance sans enregistrement reste normale. $erreur n'est renseignée que
+ * lorsqu'un fichier a bien été envoyé mais n'a pas pu être gardé.
+ */
+function guddi_enregistrer_audio(int $id, array $fichier, string $dossier, string &$erreur): ?string
+{
+    $etat = (int) ($fichier['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($etat === UPLOAD_ERR_NO_FILE || trim((string) ($fichier['name'] ?? '')) === '') {
+        return null;
+    }
+    if ($etat === UPLOAD_ERR_INI_SIZE || $etat === UPLOAD_ERR_FORM_SIZE) {
+        $erreur = "L'enregistrement dépasse " . guddi_audio_taille_max_texte()
+            . " : il n'a pas été envoyé. Compressez-le ou déposez-le ailleurs.";
+        return null;
+    }
+    if ($etat !== UPLOAD_ERR_OK) {
+        $erreur = "L'envoi de l'enregistrement a échoué. Réessayez.";
+        return null;
+    }
+    // Le format d'abord : c'est ce que la personne peut corriger elle-même.
+    $ext = strtolower(pathinfo((string) $fichier['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, guddi_audio_extensions(), true)) {
+        $erreur = 'Format audio non reconnu (' . strtoupper(implode(', ', guddi_audio_extensions())) . ' acceptés).';
+        return null;
+    }
+    $tmp = (string) ($fichier['tmp_name'] ?? '');
+    if ($tmp === '' || !is_uploaded_file($tmp)) {
+        $erreur = "Fichier inattendu : l'enregistrement n'a pas été accepté.";
+        return null;
+    }
+    if (!is_dir($dossier) && !@mkdir($dossier, 0755, true)) {
+        $erreur = "Le dossier des fichiers n'a pas pu être créé.";
+        return null;
+    }
+    $nom = 'guddi_audio_' . $id . '_' . date('Ymd_His') . '.' . $ext;
+    if (!move_uploaded_file($tmp, $dossier . '/' . $nom)) {
+        $erreur = "L'enregistrement n'a pas pu être rangé sur le serveur.";
+        return null;
+    }
+    return $nom;
+}

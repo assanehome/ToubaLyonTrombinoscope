@@ -304,9 +304,33 @@ if ($membreId > 0) {
                         </div>
                         <div class="glass-card gd-item">
                             <div class="k">📄 Livre étudié (PDF)</div>
-                            <div class="v"><?php echo $pdfPath !== '' ? '<a href="uploads/' . htmlspecialchars($pdfPath) . '" target="_blank" rel="noopener">Voir le PDF</a>' : '—'; ?></div>
+                            <div class="v">
+                                <?php if ($pdfPath !== ''):
+                                    // Le PDF s'ouvre dans la liseuse du site, comme le Coran :
+                                    // pages, zoom et glissement au doigt, sans quitter Touba Lyon.
+                                    $gdLiseuse = 'pdf_viewer.php?file=' . urlencode('uploads/' . $pdfPath)
+                                        . ($livre !== '' ? '&titre=' . urlencode($livre) : '')
+                                        . '&retour=' . urlencode('guddi_detail.php?id=' . $id); ?>
+                                    <a href="<?php echo htmlspecialchars($gdLiseuse); ?>" class="btn btn-secondary btn-sm"
+                                       style="border-color:var(--accent); color:var(--accent); font-size:0.78rem; padding:0.25rem 0.6rem;">📖 Lire le PDF</a>
+                                <?php else: ?>
+                                    —
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
+
+                    <?php // L'enregistrement de la séance, déposé à la clôture ?>
+                    <?php $audioPath = trim((string)($seance['audio_path'] ?? '')); ?>
+                    <?php if ($audioPath !== ''): ?>
+                    <div class="glass-card gd-anim gd-anim-5" style="margin-bottom:1.4rem;">
+                        <h3 style="color:var(--white); margin:0 0 0.7rem;">🎧 Enregistrement de la séance</h3>
+                        <audio controls preload="none" src="uploads/<?php echo htmlspecialchars($audioPath); ?>" style="width:100%;"></audio>
+                        <p style="margin:0.5rem 0 0; font-size:0.78rem; color:var(--text-muted);">
+                            <a href="uploads/<?php echo htmlspecialchars($audioPath); ?>" download style="color:var(--accent);">⬇️ Télécharger l'enregistrement</a>
+                        </p>
+                    </div>
+                    <?php endif; ?>
 
                     <!-- Membres présents (trombinoscope) -->
                     <?php $presMembres = dahira_presence_membres($pdo, 'guddi', $id); ?>

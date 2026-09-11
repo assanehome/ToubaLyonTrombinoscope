@@ -1,9 +1,68 @@
 <?php
-$file = $_GET['file'] ?? '';
+/**
+ * Touba Lyon 2026 - Liseuse PDF : lire un document sans quitter le site
+ *
+ * Deux dossiers seulement sont lisibles ici : le Coran (Coran_pdf/) et les
+ * documents joints aux séances (uploads/). Tout autre chemin est refusé, et
+ * un chemin qui tente de remonter d'un cran encore plus.
+ *
+ * Paramètres : file (le document), titre (le libellé affiché) et retour (la
+ * page du site où ramène le bouton « Retour »).
+ */
+$file = (string) ($_GET['file'] ?? '');
+$titre = trim((string) ($_GET['titre'] ?? ''));
+$retour = trim((string) ($_GET['retour'] ?? ''));
 
-// Basic security validation: Only allow files within Coran_pdf/
-if (strpos($file, 'Coran_pdf/') !== 0 || strpos($file, '..') !== false) {
-    die("Fichier PDF non valide ou introuvable.");
+$dossierOk = strpos($file, 'Coran_pdf/') === 0 || strpos($file, 'uploads/') === 0;
+$lisible = $dossierOk
+    && strpos($file, '..') === false
+    && strpos($file, "\0") === false
+    && strpos($file, '\\') === false
+    && strtolower(substr($file, -4)) === '.pdf'
+    && is_file(__DIR__ . '/' . $file);
+
+// Le retour reste dans le site : une page d'ici, jamais une adresse extérieure.
+if (!preg_match('~^[A-Za-z0-9_-]+\.php(\?[A-Za-z0-9_=&%.:+-]*)?$~', $retour)) {
+    $retour = '';
+}
+
+if ($titre === '') {
+    $titre = $lisible ? basename($file) : 'Document';
+}
+if (mb_strlen($titre) > 70) {
+    $titre = mb_substr($titre, 0, 70) . '…';
+}
+
+if (!$lisible) {
+    http_response_code(404);
+    ?>
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Document introuvable - Touba Lyon</title>
+        <style>
+            body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+                   background: #0a110e; color: #e8e2d0; font-family: 'Inter', system-ui, -apple-system, sans-serif; padding: 1.5rem; }
+            .carte { max-width: 420px; text-align: center; border: 1px solid rgba(212,175,55,0.25);
+                     border-radius: 18px; padding: 2rem 1.6rem; background: rgba(255,255,255,0.03); }
+            h1 { color: #ffd873; font-size: 1.25rem; margin: 0 0 0.7rem; }
+            p { color: #a9b5ad; line-height: 1.55; margin: 0 0 1.4rem; font-size: 0.92rem; }
+            a { display: inline-block; text-decoration: none; color: #ffd873; font-weight: 600;
+                border: 1px solid rgba(212,175,55,0.35); border-radius: 8px; padding: 0.55rem 1.1rem; }
+        </style>
+    </head>
+    <body>
+        <div class="carte">
+            <h1>📄 Document introuvable</h1>
+            <p>Ce document n'est plus en ligne, ou son adresse n'est pas celle d'un document du site.</p>
+            <a href="<?php echo $retour !== '' ? htmlspecialchars($retour) : 'index.php'; ?>">◀ Retour</a>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
 }
 ?>
 <!DOCTYPE html>
@@ -11,7 +70,7 @@ if (strpos($file, 'Coran_pdf/') !== 0 || strpos($file, '..') !== false) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lecture du Coran - Touba Lyon</title>
+    <title><?php echo htmlspecialchars($titre); ?> - Touba Lyon</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
     <style>
         body, html {
@@ -52,6 +111,9 @@ if (strpos($file, 'Coran_pdf/') !== 0 || strpos($file, '..') !== false) {
         }
         .pdf-btn:hover { background: rgba(212,175,55,0.15); }
         .pdf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        a.pdf-btn { text-decoration: none; display: inline-block; }
+        .pdf-titre { color: #e8e2d0; font-size: 0.88rem; font-weight: 600; max-width: 38vw;
+                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         
         #page_info { font-size: 1rem; font-weight: 600; color: #fff; margin: 0 0.5rem; min-width: 100px; text-align: center; }
         
@@ -94,7 +156,12 @@ if (strpos($file, 'Coran_pdf/') !== 0 || strpos($file, '..') !== false) {
 
     <div class="pdf-toolbar">
         <div class="toolbar-group">
-            <button class="pdf-btn" onclick="goBack();">◀ Retour</button>
+            <?php if ($retour !== ''): ?>
+                <a class="pdf-btn" href="<?php echo htmlspecialchars($retour); ?>">◀ Retour</a>
+            <?php else: ?>
+                <button class="pdf-btn" onclick="goBack();">◀ Retour</button>
+            <?php endif; ?>
+            <span class="pdf-titre"><?php echo htmlspecialchars($titre); ?></span>
         </div>
         <div class="toolbar-group">
             <button class="pdf-btn" id="prev_page">◀ Préc.</button>
