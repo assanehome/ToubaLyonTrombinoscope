@@ -8,7 +8,7 @@
  * Cette page redirige donc vers l'espace Kurels.
  */
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 header('Location: kourel_dashboard.php');
 exit;

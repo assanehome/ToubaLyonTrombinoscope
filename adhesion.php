@@ -193,6 +193,7 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscription au Dahira - Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
+    <script src="password-toggle.js" defer></script>
     <style>
         .adh-section-title {
             font-size: 1.2rem; font-weight: 700; color: var(--gold);

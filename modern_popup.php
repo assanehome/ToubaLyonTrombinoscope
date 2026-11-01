@@ -126,6 +126,19 @@ if (!defined('MODERN_POPUP_INCLUDED')) {
             if (e.key === 'Escape') { closeModal(cModal); closeModal(aModal); pendingOk = null; pendingAlertClose = null; }
         });
 
+        // Interception automatique des liens data-confirm (ex. boutons WhatsApp) :
+        // le lien ne s'ouvre qu'après confirmation.
+        document.querySelectorAll('a[data-confirm]').forEach(function (a) {
+            a.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                var href = a.getAttribute('href');
+                var target = a.getAttribute('target') || '_self';
+                window.modernConfirm(a.getAttribute('data-confirm'), function () {
+                    if (target === '_self') { window.location.href = href; } else { window.open(href, target); }
+                });
+            });
+        });
+
         // Interception automatique des formulaires data-confirm
         document.querySelectorAll('form[data-confirm]').forEach(function (f) {
             f.addEventListener('submit', function (ev) {

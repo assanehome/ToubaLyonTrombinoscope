@@ -14,13 +14,26 @@ function troba_member_menu_items(?PDO $pdo = null): array
     // Menu de base d'un membre simple. Les points liés à un rôle / une
     // responsabilité sont désormais regroupés dans le « Mode gestion » de
     // l'accueil (voir troba_member_gestion_items).
-    return [
+    $menu = [
         'index.php'              => '🏠 Espace membre',
         'trombinoscope.php'      => '🖼️ Trombinoscope',
         'profile.php'            => '👤 Mon profil',
+        'cotisation.php'         => '💶 Ma cotisation',
         'notifications_page.php' => '🔔 Notifications',
         'kikanla.php'            => '🎮 Jouer à Ki Kan La',
     ];
+    // Disponibilités pour les Dahira : réservé aux membres d'au moins une commission
+    if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
+        $pid = (int) $_SESSION['player_id'];
+        try {
+            $nbCom = (int) $pdo->query("SELECT (SELECT COUNT(*) FROM commission_membres WHERE membre_id = $pid) + (SELECT COUNT(*) FROM commission_gestionnaires WHERE membre_id = $pid)")->fetchColumn();
+            if ($nbCom > 0) {
+                $apres = ['disponibilites.php' => '🗓️ Mes disponibilités'];
+                $menu = array_slice($menu, 0, 4, true) + $apres + array_slice($menu, 4, null, true);
+            }
+        } catch (Throwable $e) {}
+    }
+    return $menu;
 }
 
 /**
@@ -70,8 +83,28 @@ function troba_member_gestion_items(?PDO $pdo = null): array
                     $items['actualites.php'] = '📰 Actualités';
                 }
             } catch (Throwable $e) {}
+            try {
+                $finN = (int) $pdo->query("SELECT COUNT(*) FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = $pid AND (LOWER(c.nom) LIKE '%finance%' OR LOWER(c.nom) LIKE '%trésor%' OR LOWER(c.nom) LIKE '%tresor%')")->fetchColumn();
+                if ($finN > 0) { $items['admin_cotisations.php'] = '💶 Cotisations'; }
+            } catch (Throwable $e) {}
             if ($stockOn) { $items['stock_index.php'] = '📦 Stock'; }
         }
+    }
+    // Wadial Magal : organisateurs et membres des commissions impliquées
+    if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
+        try {
+            require_once __DIR__ . '/magal_helper.php';
+            if (magal_membre_a_acces($pdo, (int) $_SESSION['player_id'])) { $items['magal.php'] = '🕌 Wadial Magal'; }
+        } catch (Throwable $e) {}
+    }
+    // Délégué (création de sessions) ou gestionnaire d'un Kamil : accès à « Lecture Coran »
+    // même sans être responsable de la commission Culte.
+    if (!isset($items['wird_admin.php']) && $pdo instanceof PDO && !empty($_SESSION['player_id'])) {
+        $pid = (int) $_SESSION['player_id'];
+        try {
+            $kamilN = (int) $pdo->query("SELECT (SELECT COUNT(*) FROM culte_delegues WHERE membre_id = $pid) + (SELECT COUNT(*) FROM quran_session_gestionnaires WHERE membre_id = $pid)")->fetchColumn();
+            if ($kamilN > 0) { $items['wird_admin.php'] = '📖 Lecture Coran'; }
+        } catch (Throwable $e) {}
     }
     return $items;
 }

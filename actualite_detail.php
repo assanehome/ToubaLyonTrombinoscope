@@ -10,7 +10,7 @@ require_once __DIR__ . '/planning_dahira_helper.php';
 require_once __DIR__ . '/actualites_helper.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 $__acAdmin = !empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;

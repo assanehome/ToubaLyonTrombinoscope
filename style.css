@@ -1908,7 +1908,13 @@ select option:hover {
    (inspiré du menu du projet Daara)
 ─────────────────────────────────────────────── */
 .dashboard-layout { display:grid; grid-template-columns:240px minmax(0,1fr); gap:1.5rem; margin-top:2rem; align-items:start; }
-.admin-sidebar { position:sticky; top:1rem; display:flex; flex-direction:column; gap:0.35rem; background:rgba(255,255,255,0.02); border:1px solid var(--glass-border); border-radius:16px; padding:0.9rem; }
+.admin-sidebar { position:sticky; top:1rem; display:flex; flex-direction:column; gap:0.35rem; background:rgba(255,255,255,0.02); border:1px solid var(--glass-border); border-radius:16px; padding:0.9rem; max-height:calc(100vh - 2rem); overflow:hidden; }
+/* Seule la liste des liens défile ; l'en-tête du menu reste visible */
+.admin-menu-links { overflow-y:auto; overscroll-behavior:contain; min-height:0; flex:1 1 auto; padding-right:4px; scrollbar-width:thin; scrollbar-color:rgba(212,175,55,0.8) rgba(255,255,255,0.06); }
+.admin-menu-links::-webkit-scrollbar { width:10px; }
+.admin-menu-links::-webkit-scrollbar-track { background:rgba(255,255,255,0.06); border-radius:8px; }
+.admin-menu-links::-webkit-scrollbar-thumb { background:rgba(212,175,55,0.65); border-radius:8px; border:2px solid transparent; background-clip:padding-box; }
+.admin-menu-links::-webkit-scrollbar-thumb:hover { background:rgba(212,175,55,0.9); background-clip:padding-box; }
 .admin-sidebar-user { font-size:0.82rem; color:var(--text-muted); line-height:1.4; padding:0.3rem 0.6rem 0.7rem; border-bottom:1px solid var(--glass-border); margin-bottom:0.3rem; }
 .dashboard-main { min-width:0; }
 .admin-menu-links { display:flex; flex-direction:column; gap:0.35rem; }

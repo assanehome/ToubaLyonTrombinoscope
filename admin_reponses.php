@@ -12,7 +12,7 @@ require_once __DIR__ . '/contact.php';
 require_once __DIR__ . '/dahira_emails.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 // Accès : administrateurs OU membres ayant le rôle « intégrateur ».

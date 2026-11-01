@@ -11,7 +11,7 @@ require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_event_etat()
 require_once __DIR__ . '/reunion_helper.php';         // reunion_commission_nom(), reunion_periodicite_label()
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 $__reAdmin = !empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
@@ -161,9 +161,9 @@ $waHref = 'https://wa.me/?text=' . rawurlencode($shareText);
     <div class="rpt-bar">
         <a href="reunion_detail.php?id=<?php echo (int) $id; ?>" class="rpt-btn rpt-back">← Retour</a>
         <?php if ($shareText !== ''): ?>
-        <a href="<?php echo htmlspecialchars($waHref); ?>" target="_blank" rel="noopener" class="rpt-btn rpt-share">🟢 Partager</a>
+        <button type="button" id="rpt-share-pdf" class="rpt-btn rpt-share" onclick="partagerPdf(this)">🟢 Partager le compte rendu</button>
         <?php endif; ?>
-        <button type="button" class="rpt-btn rpt-print" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+        <button type="button" class="rpt-btn rpt-print" onclick="window.print()">🖨️ Imprimer le compte rendu</button>
     </div>
     <?php endif; ?>
     <div class="page">
@@ -238,5 +238,59 @@ $waHref = 'https://wa.me/?text=' . rawurlencode($shareText);
             Document généré le <?php echo date('d/m/Y à H:i'); ?> — Secrétariat, Touba Lyon
         </footer>
     </div>
+    <?php if ($embed || $shareText !== ''): ?>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
+    <script>
+        // Partage du compte rendu en PDF joint (WhatsApp via le partage natif du téléphone).
+        // Le PDF est préparé en arrière-plan dès l'ouverture pour que le partage soit immédiat.
+        var rptNom = <?php echo json_encode('compte-rendu-' . date('Y-m-d', strtotime($date)) . '.pdf'); ?>;
+        var rptTitre = <?php echo json_encode('Compte rendu — ' . $titre); ?>;
+        var rptTexte = <?php echo json_encode($shareText, JSON_UNESCAPED_UNICODE); ?>;
+        var rptWaHref = <?php echo json_encode($waHref); ?>;
+        var rptBlobPromise = null;
+        function rptPreparerPdf() {
+            if (rptBlobPromise) { return rptBlobPromise; }
+            var el = document.querySelector('.page');
+            rptBlobPromise = html2pdf().set({
+                margin: 6,
+                filename: rptNom,
+                image: { type: 'jpeg', quality: 0.95 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            }).from(el).outputPdf('blob');
+            rptBlobPromise.catch(function () { rptBlobPromise = null; });
+            return rptBlobPromise;
+        }
+        // Dans l'aperçu (popup), le PDF est généré à la demande depuis la fenêtre parente
+        window.addEventListener('load', function () {
+            if (!<?php echo $embed ? 'true' : 'false'; ?> && typeof html2pdf !== 'undefined') { setTimeout(rptPreparerPdf, 800); }
+        });
+        function partagerPdf(btn) {
+            if (typeof html2pdf === 'undefined') { window.open(rptWaHref, '_blank'); return; }
+            var ancien = btn.innerHTML;
+            btn.disabled = true; btn.innerHTML = '⏳ Préparation du compte rendu…';
+            var fin = function () { btn.disabled = false; btn.innerHTML = ancien; };
+            rptPreparerPdf().then(function (blob) {
+                var file = new File([blob], rptNom, { type: 'application/pdf' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    return navigator.share({ files: [file], title: rptTitre, text: rptTexte }).catch(function () {}).then(fin);
+                }
+                // Ordinateur : le PDF est téléchargé, puis WhatsApp s'ouvre pour le joindre au message
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = rptNom;
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+                window.open(rptWaHref, '_blank');
+                fin();
+            }).catch(function () {
+                // Pas d'alerte native : l'échec s'affiche sur le bouton, qui reste utilisable
+                btn.disabled = false;
+                btn.innerHTML = '⚠️ Échec — réessayer';
+                setTimeout(function () { btn.innerHTML = ancien; }, 4000);
+            });
+        }
+    </script>
+    <?php endif; ?>
 </body>
 </html>

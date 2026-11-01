@@ -12,7 +12,7 @@ require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/kourel_access.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 $__isAdmin = !empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;

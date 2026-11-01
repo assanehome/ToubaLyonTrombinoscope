@@ -42,7 +42,7 @@ function reunion_sanitize_html(string $html): string
 }
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 $__reAdmin = !empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
@@ -98,6 +98,12 @@ if (!$autorise) {
 
 $error = '';
 $success = '';
+// Message laissé par une action de réunion (publier, clôturer, annuler…) lancée depuis cette page
+if (!empty($_SESSION['reu_flash']) && is_array($_SESSION['reu_flash'])) {
+    if (($_SESSION['reu_flash']['type'] ?? '') === 'err') { $error = (string) ($_SESSION['reu_flash']['msg'] ?? ''); }
+    else { $success = (string) ($_SESSION['reu_flash']['msg'] ?? ''); }
+    unset($_SESSION['reu_flash']);
+}
 
 // Le visiteur est-il responsable de la commission (ou admin) ?
 $estResponsable = $__reAdmin;
@@ -132,7 +138,8 @@ try {
 $membresCommissionIndex = [];
 foreach ($membresCommission as $mc) { $membresCommissionIndex[(int) $mc['id']] = trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }
 
-$reunionPubliee = ((int) ($reunion['publie'] ?? 0)) === 1;
+// Compte rendu et tâches : disponibles dès que la réunion est publiée OU clôturée (une réunion clôturée reste modifiable)
+$reunionPubliee = ((int) ($reunion['publie'] ?? 0)) === 1 || ((int) ($reunion['cloture'] ?? 0)) === 1;
 
 // ---------------------------------------------------------------------------
 // Actions POST : tâches de réunion (après publication, ouvertes à tout membre
@@ -175,7 +182,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $inner = '<h1 style="margin:0 0 6px;font-size:20px;color:#1b4332;">📝 Compte rendu — ' . htmlspecialchars((string) $reunion['titre']) . '</h1>'
                             . '<p style="margin:0 0 16px;font-size:12px;color:#9aa39d;">' . htmlspecialchars(reunion_commission_nom($pdo, $commissionId)) . ' · ' . date('d/m/Y', strtotime((string) $reunion['date_reunion'])) . '</p>'
                             . '<div style="margin:0 0 14px;color:#2b2b2b;line-height:1.6;">' . reunion_sanitize_html((string) $reunion['compte_rendu']) . '</div>'
-                            . dahira_email_button($rapportUrl, '📄 Voir le rapport complet (PDF)')
+                            . dahira_email_button($rapportUrl, '📄 Voir le compte rendu complet')
                             . '<p style="color:#888;font-size:12px;margin-top:18px;">— Secrétariat, Touba Lyon</p>';
                         $corpsHtml = dahira_email_wrap($inner, 'Compte rendu');
                         $sujet = '📝 Compte rendu — ' . (string) $reunion['titre'] . ' (' . date('d/m/Y', strtotime((string) $reunion['date_reunion'])) . ')';
@@ -453,6 +460,13 @@ if (trim($compteRendu) !== '') {
 
 // Lien de participation (Zoom) : celui de la réunion, sinon le lien par défaut du Guddi
 $lienZoom = trim((string) ($reunion['lien'] ?? ''));
+if ($lienZoom === '') {
+    try {
+        $zq = $pdo->prepare("SELECT lien_zoom FROM commissions WHERE id = ?");
+        $zq->execute([(int) ($reunion['commission_id'] ?? 0)]);
+        $lienZoom = trim((string) $zq->fetchColumn());
+    } catch (Exception $e) { $lienZoom = ''; }
+}
 if ($lienZoom === '') { $lienZoom = trim(dahira_param($pdo, 'guddi_lien_defaut', '')); }
 
 // Présences validées
@@ -601,6 +615,81 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                             <span class="pl-badge pl-badge-no"><?php echo $mode === 'presentiel' ? '🏛️ Présentiel' : '💻 À distance'; ?></span>
                         </div>
                     </div>
+
+                    <?php if ($estResponsable):
+                        // Actions de gestion de la réunion (traitées par l'espace commission, puis retour sur cette page)
+                        $annuleeReu = ((int) ($reunion['annule'] ?? 0)) === 1;
+                        $urlDetail = dahira_base_url() . '/reunion_detail.php?id=' . (int) $id;
+                        $serieReu = $periodicite !== 'ponctuelle';
+                        $precBloque = $serieReu ? reunion_precedente_non_cloturee($pdo, $reunion) : false;
+                        $sondageStatutReu = (string) ($reunion['sondage_statut'] ?? 'aucun');
+                        $sondageOuvertReu = ($sondageStatutReu === 'ouvert');
+                        $suivante = ($serieReu && !$annuleeReu) ? reunion_prochaine_a_publier($pdo, $reunion) : null;
+                        $crPresent = trim(strip_tags($compteRendu)) !== '';
+                        $waActionLink = ($cloture && $crPresent)
+                            ? 'https://wa.me/?text=' . rawurlencode(reunion_message_compte_rendu($reunion, $commissionNom, $urlDetail))
+                            : 'https://wa.me/?text=' . rawurlencode(reunion_message_partage($reunion, $commissionNom, $urlDetail));
+                        $waAnnLink = 'https://wa.me/?text=' . rawurlencode(reunion_message_annulation($reunion, $commissionNom));
+                        $formAct = function ($action, $label, $class, $confirm = '', $danger = false, $extra = '') use ($id) {
+                            return '<form method="POST" action="commission_dashboard.php" style="margin:0;"'
+                                . ($confirm !== '' ? ' data-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '"' : '')
+                                . ($danger ? ' data-confirm-danger="1"' : '') . '>'
+                                . csrf_field()
+                                . '<input type="hidden" name="action" value="' . $action . '">'
+                                . '<input type="hidden" name="reunion_id" value="' . (int) $id . '">'
+                                . '<input type="hidden" name="retour_detail" value="' . (int) $id . '">'
+                                . $extra
+                                . '<button type="submit" class="btn ' . $class . ' btn-sm">' . $label . '</button></form>';
+                        };
+                    ?>
+                    <div class="glass-card gd-anim gd-anim-2" style="margin-bottom:1.4rem;">
+                        <h3 style="color:var(--white); margin:0 0 0.7rem;">⚙️ Actions de la réunion</h3>
+                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                            <?php if ($sondageStatutReu !== 'aucun'): ?>
+                                <a href="reunion_sondage.php?id=<?php echo (int) $id; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);"><?php echo $sondageOuvertReu ? '📊 Sondage / valider la date' : '📊 Résultats du sondage'; ?></a>
+                            <?php endif; ?>
+                            <?php if ($annuleeReu): ?>
+                                <span class="badge badge-pending" style="background:rgba(191,33,33,0.15); color:#fca5a5; border:1px solid rgba(191,33,33,0.4);">🚫 Réunion annulée</span>
+                            <?php else: ?>
+                                <?php if ($publie): ?>
+                                    <?php echo dahira_wa_button($waActionLink, ($cloture && $crPresent) ? 'Partager le compte rendu' : 'WhatsApp', true); ?>
+                                <?php endif; ?>
+                                <?php if (!$cloture): ?>
+                                    <?php if (!$publie): ?>
+                                        <?php if ($sondageOuvertReu): ?>
+                                            <span class="btn btn-sm" style="background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.4); cursor:not-allowed;" title="Validez d'abord une date du sondage">🚀 Publier</span>
+                                        <?php elseif ($precBloque): ?>
+                                            <span class="btn btn-sm" style="background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.4); cursor:not-allowed;" title="Clôturez d'abord la réunion précédente de la série">🚀 Publier</span>
+                                        <?php else: ?>
+                                            <?php echo $formAct('publish_reunion', '🚀 Publier', 'btn-primary', 'Publier cette réunion et notifier les membres de la commission ?'); ?>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <?php echo $formAct('unpublish_reunion', '⏸️ Dépublier', 'btn-secondary', 'Dépublier cette réunion ? Elle sera masquée aux membres.', true); ?>
+                                    <?php endif; ?>
+                                    <?php echo $formAct('close_reunion', '🔒 Clôturer', 'btn-secondary', 'Clôturer cette réunion ?', false, '<input type="hidden" name="publish_next" value="0">'); ?>
+                                    <?php if ($suivante): ?>
+                                        <?php echo $formAct('close_reunion', '🔒 Clôturer + publier la suivante (' . date('d/m/Y', strtotime($suivante['date_reunion'])) . ')', 'btn-primary', 'Clôturer cette réunion et publier la suivante en notifiant les membres ?', false, '<input type="hidden" name="publish_next" value="1">'); ?>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <?php echo $formAct('reopen_reunion', '↩️ Rouvrir', 'btn-secondary'); ?>
+                                <?php endif; ?>
+                                <?php if (!$cloture): ?>
+                                <form id="cancel-reu-detail" method="POST" action="commission_dashboard.php" style="margin:0;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="cancel_reunion">
+                                    <input type="hidden" name="reunion_id" value="<?php echo (int) $id; ?>">
+                                    <input type="hidden" name="retour_detail" value="<?php echo (int) $id; ?>">
+                                    <button type="button" class="btn btn-danger btn-sm" onclick="annulerReunionDetail(<?php echo htmlspecialchars(json_encode($waAnnLink), ENT_QUOTES); ?>)">🚫 Annuler</button>
+                                </form>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            <?php echo $formAct('delete_reunion', '🗑️ Supprimer', 'btn-secondary', 'Supprimer définitivement cette réunion ?', true); ?>
+                        </div>
+                        <?php if (!$publie && !$cloture && !$annuleeReu): ?>
+                        <p style="color:var(--text-muted); font-size:0.8rem; margin:0.7rem 0 0;">Pour modifier le titre, la date ou l'horaire, ouvrez la réunion dans l'espace commission (elle doit être dépubliée).</p>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
 
                     <?php
                         $mesTachesReu = array_values(array_filter($taches, function ($t) use ($membreId) {
@@ -779,13 +868,13 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                             <?php if ($estResponsable && $crWaMsg !== ''): ?>
                             <div style="margin-top:0.7rem; padding-top:0.7rem; border-top:1px solid var(--glass-border); display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                                 <span style="color:var(--text-muted); font-size:0.82rem;">Partager :</span>
-                                <?php echo dahira_wa_button(dahira_wa_link(null, $crWaMsg), 'WhatsApp', true); ?>
+                                <?php echo dahira_wa_button(dahira_wa_link(null, $crWaMsg), 'Partager le compte rendu', true); ?>
                                 <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="margin:0;" data-confirm="Envoyer le compte rendu par e-mail aux membres de la commission ?">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="share_cr_email">
                                     <button type="submit" class="btn btn-secondary btn-sm" style="border-color:rgba(45,140,255,0.6); color:#8ec5ff;">📧 Partager par e-mail</button>
                                 </form>
-                                <button type="button" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);" onclick="openCrPdf()">📄 PDF du compte rendu</button>
+                                <button type="button" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);" onclick="openCrPdf()">📄 Compte rendu PDF</button>
                             </div>
                             <?php endif; ?>
                         <?php endif; ?>
@@ -825,7 +914,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                 <iframe id="cr-pdf-frame" src="" title="Compte rendu" style="width:100%; height:100%; border:0;"></iframe>
             </div>
             <div class="modal-footer" style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end; align-items:center;">
-                <button type="button" id="cr-share-pdf" class="btn btn-primary btn-sm" onclick="sharePdf(this)">📤 Partager le PDF</button>
+                <button type="button" id="cr-share-pdf" class="btn btn-primary btn-sm" onclick="sharePdf(this)">📤 Partager le compte rendu</button>
             </div>
         </div>
     </div>
@@ -848,21 +937,14 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
         // Génère le PDF depuis l'aperçu (iframe) puis le partage (partage natif) ou le télécharge.
         function sharePdf(btn) {
             var f = document.getElementById('cr-pdf-frame');
-            if (!f || !f.contentDocument || typeof html2pdf === 'undefined') {
+            if (!f || !f.contentWindow || typeof f.contentWindow.rptPreparerPdf !== 'function') {
                 if (window.modernAlert) { window.modernAlert('Aperçu non prêt. Réessayez dans un instant.'); } else { alert('Aperçu non prêt.'); }
                 return;
             }
-            var el = f.contentDocument.querySelector('.page') || f.contentDocument.body;
             var oldLabel = btn ? btn.innerHTML : '';
             if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Génération…'; }
-            var opt = {
-                margin: 6,
-                filename: 'compte-rendu.pdf',
-                image: { type: 'jpeg', quality: 0.95 },
-                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-            html2pdf().set(opt).from(el).outputPdf('blob').then(function (blob) {
+            // Le PDF est généré dans la page rapport elle-même (ses styles s'appliquent)
+            f.contentWindow.rptPreparerPdf().then(function (blob) {
                 var file = new File([blob], 'compte-rendu.pdf', { type: 'application/pdf' });
                 if (navigator.canShare && navigator.canShare({ files: [file] })) {
                     navigator.share({ files: [file], title: 'Compte rendu' }).catch(function () {}).finally(function () {
@@ -890,6 +972,16 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
 
     <?php include __DIR__ . '/modern_popup.php'; ?>
     <script>
+        // Annuler la réunion : confirmation avec option d'ouvrir WhatsApp pour prévenir les membres
+        function annulerReunionDetail(waLink) {
+            var submit = function () { var f = document.getElementById('cancel-reu-detail'); if (f) { f.submit(); } };
+            if (window.modernConfirm) {
+                window.modernConfirm('Annuler cette réunion et notifier les membres de la commission ?', submit, {
+                    danger: true, bouton: 'Annuler',
+                    extra: { label: '🟢 Annuler + WhatsApp', style: 'background:#25D366;border:1px solid #25D366;color:#053b21;font-weight:700;', onOk: function () { try { window.open(waLink, '_blank'); } catch (e) {} submit(); } }
+                });
+            } else { submit(); }
+        }
         var presenceToken = <?php echo json_encode(isset($trobaCsrf) ? $trobaCsrf : ''); ?>;
         function validerPresence(type, id, btn) {
             if (presenceToken === '') {

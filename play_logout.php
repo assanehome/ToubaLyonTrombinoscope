@@ -3,7 +3,7 @@
  * Touba Lyon 2026 - Player Logout (Ki Kan La)
  */
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 // Clear player specific session variables

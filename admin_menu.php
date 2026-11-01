@@ -25,3 +25,19 @@ $__activeLabel = troba_admin_menu_active_label($__adminMenu, $__cur);
 </aside>
 <?php /* Sur mobile, les mêmes sections sont rendues côté serveur dans le tiroir
          de l'en-tête (header.php → #hdrNavAdmin) : plus besoin de clone JS. */ ?>
+<script>
+    // La molette doit défiler la LISTE du menu, pas la page, tant qu'il reste
+    // du contenu à faire défiler dans le menu (chaînage naturel une fois en bout de liste).
+    (function () {
+        var nav = document.getElementById('adminMenuLinks');
+        if (!nav) { return; }
+        nav.addEventListener('wheel', function (e) {
+            if (nav.scrollHeight <= nav.clientHeight) { return; } // rien à défiler ici
+            var atTop = nav.scrollTop <= 0;
+            var atBottom = nav.scrollTop + nav.clientHeight >= nav.scrollHeight - 1;
+            if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) { return; }
+            nav.scrollTop += e.deltaY;
+            e.preventDefault();
+        }, { passive: false });
+    })();
+</script>

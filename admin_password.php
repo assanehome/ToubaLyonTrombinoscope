@@ -7,7 +7,7 @@
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/csrf.php';
 
-session_start();
+require_once __DIR__ . '/session_config.php'; session_start();
 
 if (empty($_SESSION['admin_logged_in'])) {
     header('Location: admin_login.php');
@@ -49,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nouveau mot de passe - Administrateur</title>
     <link rel="stylesheet" href="style.css">
+    <script src="password-toggle.js" defer></script>
 </head>
 <body>
     <?php include __DIR__ . '/header.php'; ?>

@@ -313,6 +313,41 @@ try {
         UNIQUE KEY uniq_cg (commission_id, membre_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Disponibilités des membres des commissions pour les dimanches du planning Dahira
+    $pdo->exec("CREATE TABLE IF NOT EXISTS commission_disponibilites (
+        planning_id INT NOT NULL,
+        membre_id INT NOT NULL,
+        statut VARCHAR(10) NOT NULL DEFAULT 'dispo',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (planning_id, membre_id),
+        INDEX idx_membre (membre_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Sous-commissions : créées par les responsables d'une commission, qui y affectent
+    // des membres de leur commission (tables séparées pour ne pas interférer avec les commissions).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS sous_commissions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        commission_id INT NOT NULL,
+        nom VARCHAR(150) NOT NULL,
+        created_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_sc (commission_id, nom)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS sous_commission_membres (
+        sous_commission_id INT NOT NULL,
+        membre_id INT NOT NULL,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (sous_commission_id, membre_id),
+        INDEX idx_membre (membre_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Lien Zoom par défaut d'une commission (pré-rempli pour ses réunions à distance)
+    try {
+        $pdo->query("SELECT lien_zoom FROM commissions LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE commissions ADD COLUMN lien_zoom VARCHAR(500) NULL DEFAULT NULL");
+    }
+
     // Gestion de stock par commission (activée par l'admin)
     try {
         $pdo->query("SELECT stock_enabled FROM commissions LIMIT 1");
@@ -418,6 +453,24 @@ try {
         KEY idx_sess (session_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Gestionnaires d'un Kamil : membres de la commission Culte désignés pour suivre
+    // et gérer une session (ou toute une série périodique : session_key = serie_id ou id).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS quran_session_gestionnaires (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        session_key INT NOT NULL,
+        membre_id INT NOT NULL,
+        granted_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_qsg (session_key, membre_id),
+        INDEX idx_membre (membre_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Délégués : membres autorisés par un responsable Culte à créer des sessions de lecture
+    $pdo->exec("CREATE TABLE IF NOT EXISTS culte_delegues (
+        membre_id INT NOT NULL PRIMARY KEY,
+        granted_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
     // Réglages généraux (clé/valeur) — ex. lien du groupe WhatsApp par défaut
     $pdo->exec("CREATE TABLE IF NOT EXISTS app_settings (
         cle VARCHAR(64) PRIMARY KEY,
@@ -509,6 +562,14 @@ try {
     try { $pdo->query("SELECT titre FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN titre VARCHAR(200) NULL DEFAULT NULL"); }
     // Migration : description du Dahira (facultatif)
     try { $pdo->query("SELECT description FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN description TEXT NULL DEFAULT NULL"); }
+    // Migration : option « Dahira » d'un dimanche planifié. Par défaut un dimanche planifié n'est
+    // PAS un Dahira ; la Secrétaire active l'option. Les plannings existants étaient tous des Dahira.
+    try {
+        $pdo->query("SELECT option_dahira FROM dahira_plannings LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN option_dahira TINYINT(1) NOT NULL DEFAULT 0");
+        $pdo->exec("UPDATE dahira_plannings SET option_dahira = 1");
+    }
     // Migration : colonne publie (affichage sur l'accueil membre + validation de présence) si absente
     try {
         $pdo->query("SELECT publie FROM dahira_plannings LIMIT 1");
@@ -583,6 +644,23 @@ try {
     } catch (Exception $e) {
         $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN audio_path VARCHAR(255) NULL DEFAULT NULL");
     }
+    // Migration : colonnes heure / heure_fin propres à la séance (sinon valeurs par défaut) si absentes
+    try {
+        $pdo->query("SELECT heure FROM guddi_plannings LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN heure VARCHAR(20) NULL DEFAULT NULL");
+    }
+    try {
+        $pdo->query("SELECT heure_fin FROM guddi_plannings LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN heure_fin VARCHAR(20) NULL DEFAULT NULL");
+    }
+    // Migration : colonne details_html (détails complémentaires en HTML) si absente
+    try {
+        $pdo->query("SELECT details_html FROM guddi_plannings LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN details_html TEXT NULL DEFAULT NULL");
+    }
     // Réglages du Guddi Àjjuma (heure, thème, présentateur, lien par défaut)
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_heure', '20h00')")->execute(); } catch (Exception $e) {}
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_heure_fin', '21h30')")->execute(); } catch (Exception $e) {}
@@ -627,6 +705,27 @@ try {
     try { $pdo->query("SELECT debut_notifie FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN debut_notifie TINYINT(1) NOT NULL DEFAULT 0"); }
     try { $pdo->query("SELECT heure_fin FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN heure_fin VARCHAR(20) NULL DEFAULT NULL"); }
     try { $pdo->query("SELECT compte_rendu FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN compte_rendu MEDIUMTEXT NULL DEFAULT NULL"); }
+    // Sondage de date et d'horaire d'une réunion : options proposées puis votes des membres.
+    // Tant que le sondage est « ouvert », la réunion ne peut pas être publiée ; la validation
+    // d'une option fixe la date et l'horaire de la réunion (sondage « clos »).
+    try { $pdo->query("SELECT sondage_statut FROM commission_reunions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_reunions ADD COLUMN sondage_statut VARCHAR(10) NOT NULL DEFAULT 'aucun'"); }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS reunion_sondage_options (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        reunion_id INT NOT NULL,
+        date_option DATE NOT NULL,
+        heure VARCHAR(20) NOT NULL,
+        heure_fin VARCHAR(20) NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_reunion (reunion_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS reunion_sondage_votes (
+        option_id INT NOT NULL,
+        membre_id INT NOT NULL,
+        reponse VARCHAR(5) NOT NULL DEFAULT 'oui',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (option_id, membre_id),
+        INDEX idx_membre (membre_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     // Répétitions de Kurel (créées par les responsables de Kurel, ponctuelles ou périodiques)
     $pdo->exec("CREATE TABLE IF NOT EXISTS kourel_repetitions (
@@ -733,7 +832,7 @@ try {
         UNIQUE KEY uniq_type (nom)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     // Amorçage : types d'actualité proposés (modifiables / extensibles)
-    foreach (['Annonce', 'Annonce mariage', 'Événement', 'Communiqué', 'Rappel', 'Décès / Condoléances', 'Félicitations', 'Appel à contribution', 'Compte-rendu'] as $at) {
+    foreach (['Annonce', 'Annonce mariage', 'Événement', 'Communiqué', 'Rappel', 'Décès / Condoléances', 'Félicitations', 'Appel à contribution', 'Compte-rendu', 'Visite'] as $at) {
         try { $pdo->prepare("INSERT IGNORE INTO actualite_types (nom) VALUES (?)")->execute([$at]); } catch (Exception $e) {}
     }
 
@@ -774,6 +873,20 @@ try {
         mode VARCHAR(20) NOT NULL DEFAULT 'mensuel',
         updated_at TIMESTAMP NULL DEFAULT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Migration : colonne virement_depuis (référence AAAA-MM du passage en virement
+    // automatique — le virement ne couvre que les mois postérieurs à cette date)
+    try {
+        $pdo->query("SELECT virement_depuis FROM cotisation_config LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_depuis CHAR(7) NULL DEFAULT NULL");
+    }
+
+    // Migration : jour du mois prévu pour le virement automatique (1-31)
+    try {
+        $pdo->query("SELECT virement_jour FROM cotisation_config LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_jour TINYINT NULL DEFAULT NULL");
+    }
 
     // Cotisations : un enregistrement par membre et par mois (période AAAA-MM).
     $pdo->exec("CREATE TABLE IF NOT EXISTS cotisations (
@@ -799,6 +912,55 @@ try {
             $pdo->prepare("INSERT INTO app_settings (cle, valeur) VALUES ('cotisation_montant', '30')")->execute();
         }
     } catch (Exception $e) { /* app_settings créé plus tôt */ }
+
+    // Wadial Magal : commissions impliquées, besoins, tâches et finances par édition (année)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS magal_commissions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        annee SMALLINT NOT NULL,
+        commission_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_mc (annee, commission_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS magal_besoins (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        annee SMALLINT NOT NULL,
+        commission_id INT NOT NULL,
+        libelle VARCHAR(255) NOT NULL,
+        quantite VARCHAR(60) NULL DEFAULT NULL,
+        statut VARCHAR(20) NOT NULL DEFAULT 'a_trouver',
+        note TEXT NULL DEFAULT NULL,
+        created_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_annee_com (annee, commission_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS magal_taches (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        annee SMALLINT NOT NULL,
+        commission_id INT NOT NULL,
+        titre VARCHAR(255) NOT NULL,
+        description TEXT NULL DEFAULT NULL,
+        assignee_id INT NULL DEFAULT NULL,
+        echeance DATE NULL DEFAULT NULL,
+        statut VARCHAR(20) NOT NULL DEFAULT 'a_faire',
+        created_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT NULL,
+        INDEX idx_annee_com (annee, commission_id),
+        INDEX idx_assignee (assignee_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS magal_finance (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        annee SMALLINT NOT NULL,
+        type VARCHAR(10) NOT NULL DEFAULT 'depense',
+        libelle VARCHAR(255) NOT NULL,
+        montant DECIMAL(10,2) NOT NULL DEFAULT 0,
+        commission_id INT NULL DEFAULT NULL,
+        date_op DATE NULL DEFAULT NULL,
+        note TEXT NULL DEFAULT NULL,
+        created_by INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_annee (annee)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     // 3. Create uploads directory if it doesn't exist
     $uploadDir = __DIR__ . '/uploads';

@@ -12,7 +12,7 @@ require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_param(), dahira_
 require_once __DIR__ . '/repetition_helper.php';       // reunion_periodicite_label(), repetition_kourel_nom()
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 $__reAdmin = !empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;

@@ -10,7 +10,7 @@ require_once __DIR__ . '/admin_redirect.php';
 require_once __DIR__ . '/csrf.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 // Redirect to login if not authenticated as a member (player)

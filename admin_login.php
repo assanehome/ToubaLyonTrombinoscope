@@ -4,7 +4,7 @@
  */
 require_once __DIR__ . '/db_setup.php';
 
-session_start();
+require_once __DIR__ . '/session_config.php'; session_start();
 
 // Redirect to dashboard if already logged in
 if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
@@ -113,6 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo $setupMode ? 'Configuration Administrateur' : 'Connexion Admin'; ?> - Dahira - Mubawwa-A-Sidqin</title>
     <link rel="stylesheet" href="style.css">
+    <script src="password-toggle.js" defer></script>
 </head>
 <body>
 

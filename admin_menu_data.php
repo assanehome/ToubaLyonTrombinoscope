@@ -49,6 +49,8 @@ function troba_admin_menu_items(?PDO $pdo = null): array
     if ($stockOn) { $items['stock_index.php'] = '📦 Stock'; }
     $items['admin_guddi.php']  = '💎 Guddi Àjjuma';
     $items['wird_admin.php']   = '📖 Lecture Coran';
+    $items['magal.php']        = '🕌 Wadial Magal';
+    $items['admin_cotisations.php'] = '💶 Cotisations';
     $items['admin_admins.php'] = '👥 Gérer les admins';
     $items['admin_parametres.php'] = '⚙️ Paramètres';
 

@@ -23,6 +23,16 @@ function com_can_manage($cid, $isAdmin, $managed)
     return $isAdmin || in_array((int) $cid, $managed, true);
 }
 
+/** Retire des sous-commissions les membres qui ne font plus partie de la commission parente. */
+function com_clean_sous_membres(PDO $pdo, int $cid): void
+{
+    try {
+        $pdo->prepare("DELETE scm FROM sous_commission_membres scm JOIN sous_commissions sc ON sc.id = scm.sous_commission_id
+                       WHERE sc.commission_id = ? AND scm.membre_id NOT IN (SELECT membre_id FROM commission_membres WHERE commission_id = ?)")
+            ->execute([$cid, $cid]);
+    } catch (Exception $e) { /* best-effort */ }
+}
+
 /** Nom d'une commission (pour les notifications / e-mails). */
 function com_commission_nom(PDO $pdo, int $cid): string
 {
@@ -114,6 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     foreach ($ids as $one) { $one = (int) $one; if ($one > 0) { $ins->execute([$cid, $one]); $demandes[] = $one; } }
                 }
                 $pdo->commit();
+                com_clean_sous_membres($pdo, $cid);
                 $success = "Les membres de la commission ont été mis à jour.";
                 // Notifier uniquement les membres nouvellement ajoutés
                 $nouveaux = array_diff(array_unique($demandes), $avant);
@@ -150,6 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($st->rowCount() > 0) { com_notify_membre_ajout($pdo, $mid, com_commission_nom($pdo, $cid), false); }
             } elseif ($action === 'remove_commission_member' && $cid > 0 && $mid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
                 $pdo->prepare("DELETE FROM commission_membres WHERE commission_id = ? AND membre_id = ?")->execute([$cid, $mid]);
+                com_clean_sous_membres($pdo, $cid);
                 $success = "Membre retiré.";
             } elseif ($action === 'add_commission_manager' && $cid > 0 && $mid > 0 && $__isAdmin) {
                 $st = $pdo->prepare("INSERT IGNORE INTO commission_gestionnaires (commission_id, membre_id) VALUES (?, ?)");
@@ -171,13 +183,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $estPeriodique = !empty($_POST['periodique']);
                 $per = ($estPeriodique && in_array(($_POST['periodicite'] ?? ''), ['hebdomadaire', 'quinzaine', 'mensuelle'], true)) ? $_POST['periodicite'] : 'ponctuelle';
                 $dateFin = trim($_POST['date_fin'] ?? '');
-                if ($titre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateDebut)) {
+                // Sondage de date et d'horaire : plusieurs options proposées, la réunion n'est publiable qu'après validation d'une date
+                $sondage = !empty($_POST['sondage']);
+                $optDates = (array) ($_POST['opt_date'] ?? []);
+                $optHeures = (array) ($_POST['opt_heure'] ?? []);
+                $optFins = (array) ($_POST['opt_fin'] ?? []);
+                $optionsSondage = [];
+                $optErr = false;
+                if ($sondage) {
+                    foreach ($optDates as $ok => $od) {
+                        $od = trim((string) $od);
+                        $oh = trim((string) ($optHeures[$ok] ?? ''));
+                        $of = trim((string) ($optFins[$ok] ?? ''));
+                        if ($od === '' && $oh === '') { continue; }
+                        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $od) || $od < date('Y-m-d') || $oh === '' || $of === '' || $of <= $oh) { $optErr = true; continue; }
+                        $optionsSondage[$od . '|' . $oh] = [$od, $oh, $of];
+                    }
+                    $optionsSondage = array_values($optionsSondage);
+                    usort($optionsSondage, function ($a, $b) { return strcmp($a[0] . $a[1], $b[0] . $b[1]); });
+                    if (count($optionsSondage) >= 1) { $dateDebut = $optionsSondage[0][0]; $heure = $optionsSondage[0][1]; $heureFin = $optionsSondage[0][2]; }
+                    $per = 'ponctuelle';
+                }
+                if ($sondage && ($optErr || count($optionsSondage) < 2)) {
+                    $error = "Sondage : proposez au moins deux dates valides (date, heure de début et heure de fin après le début, pas dans le passé).";
+                } elseif ($titre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateDebut)) {
                     $error = "Le titre et une date valide sont obligatoires.";
                 } elseif ($dateDebut < date('Y-m-d')) {
                     $error = "La date de la réunion ne peut pas être dans le passé.";
                 } elseif ($heure === '') {
                     $error = "L'heure est obligatoire.";
-                } elseif ($heureFin !== '' && $heureFin <= $heure) {
+                } elseif ($heureFin === '') {
+                    $error = "L'heure de fin est obligatoire.";
+                } elseif ($heureFin <= $heure) {
                     $error = "L'heure de fin doit être après l'heure de début.";
                 } elseif ($mode === '') {
                     $error = "Le mode (à distance ou présentiel) est obligatoire.";
@@ -200,7 +237,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pdo->prepare("UPDATE commission_reunions SET serie_id = ? WHERE id IN ($inPh)")->execute(array_merge([$serieId], $createdIds));
                     }
                     $pdo->commit();
-                    $success = count($dates) > 1 ? (count($dates) . " réunions créées (série périodique).") : "Réunion créée.";
+                    if ($sondage && !empty($createdIds)) {
+                        $pdo->prepare("UPDATE commission_reunions SET sondage_statut = 'ouvert' WHERE id = ?")->execute([$createdIds[0]]);
+                        $insO = $pdo->prepare("INSERT INTO reunion_sondage_options (reunion_id, date_option, heure, heure_fin) VALUES (?,?,?,?)");
+                        foreach ($optionsSondage as $so) { $insO->execute([$createdIds[0], $so[0], $so[1], ($so[2] !== '' ? $so[2] : null)]); }
+                    }
+                    $success = $sondage ? "Réunion créée avec un sondage de date : partagez le lien par WhatsApp, puis validez une date avant de publier." : (count($dates) > 1 ? (count($dates) . " réunions créées (série périodique).") : "Réunion créée.");
                 }
             } elseif (in_array($action, ['publish_reunion', 'unpublish_reunion', 'close_reunion', 'reopen_reunion', 'delete_reunion', 'delete_reunion_serie', 'edit_reunion', 'cancel_reunion', 'duplicate_reunion'], true)) {
                 $rid = (int) ($_POST['reunion_id'] ?? 0);
@@ -213,7 +255,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$r || !com_can_manage((int) $r['commission_id'], $__isAdmin, $__managedCommissions)) {
                     $error = "Réunion introuvable ou accès refusé.";
                 } elseif ($action === 'publish_reunion') {
-                    if (reunion_precedente_non_cloturee($pdo, $r)) {
+                    if (($r['sondage_statut'] ?? 'aucun') === 'ouvert') {
+                        $error = "Impossible de publier : validez d'abord une date du sondage.";
+                    } elseif (reunion_precedente_non_cloturee($pdo, $r)) {
                         $error = "Impossible de publier : clôturez d'abord la réunion précédente de la série.";
                     } else {
                         $pdo->prepare("UPDATE commission_reunions SET publie = 1, updated_at = NOW() WHERE id = ?")->execute([$rid]);
@@ -256,7 +300,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $error = "La date de la réunion ne peut pas être dans le passé.";
                         } elseif ($eHeure === '') {
                             $error = "L'heure est obligatoire.";
-                        } elseif ($eHeureFin !== '' && $eHeureFin <= $eHeure) {
+                        } elseif ($eHeureFin === '') {
+                            $error = "L'heure de fin est obligatoire.";
+                        } elseif ($eHeureFin <= $eHeure) {
                             $error = "L'heure de fin doit être après l'heure de début.";
                         } elseif ($eMode === '') {
                             $error = "Le mode est obligatoire.";
@@ -300,6 +346,133 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("DELETE FROM presence_validations WHERE planning_type = 'reunion' AND planning_id IN ($inPh)")->execute($ids);
                     $success = count($ids) . " réunion(s) de la série supprimée(s).";
                 }
+            } elseif ($action === 'create_sous_commission' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                $nomSc = trim($_POST['nom'] ?? '');
+                if ($nomSc === '') {
+                    $error = "Le nom de la sous-commission est obligatoire.";
+                } else {
+                    $insSc = $pdo->prepare("INSERT IGNORE INTO sous_commissions (commission_id, nom, created_by) VALUES (?, ?, ?)");
+                    $insSc->execute([$cid, mb_substr($nomSc, 0, 150), !empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null]);
+                    $success = $insSc->rowCount() > 0 ? "Sous-commission « " . $nomSc . " » créée." : "Cette sous-commission existe déjà.";
+                }
+            } elseif (($action === 'delete_sous_commission' || $action === 'set_sous_commission_members') && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                $scId = (int) ($_POST['sous_commission_id'] ?? 0);
+                $chkSc = $pdo->prepare("SELECT nom FROM sous_commissions WHERE id = ? AND commission_id = ?");
+                $chkSc->execute([$scId, $cid]);
+                $scNom = $chkSc->fetchColumn();
+                if ($scNom === false) {
+                    $error = "Sous-commission introuvable.";
+                } elseif ($action === 'delete_sous_commission') {
+                    $pdo->prepare("DELETE FROM sous_commission_membres WHERE sous_commission_id = ?")->execute([$scId]);
+                    $pdo->prepare("DELETE FROM sous_commissions WHERE id = ?")->execute([$scId]);
+                    $success = "Sous-commission « " . $scNom . " » supprimée.";
+                } else {
+                    // Seuls les membres de la commission parente peuvent être affectés
+                    $parentIds = array_map('intval', $pdo->query("SELECT membre_id FROM commission_membres WHERE commission_id = " . (int) $cid)->fetchAll(PDO::FETCH_COLUMN));
+                    $voulus = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['membre_ids'] ?? [])), function ($v) use ($parentIds) { return $v > 0 && in_array($v, $parentIds, true); })));
+                    $bq = $pdo->prepare("SELECT membre_id FROM sous_commission_membres WHERE sous_commission_id = ?");
+                    $bq->execute([$scId]);
+                    $avantSc = array_map('intval', $bq->fetchAll(PDO::FETCH_COLUMN));
+                    $pdo->beginTransaction();
+                    $pdo->prepare("DELETE FROM sous_commission_membres WHERE sous_commission_id = ?")->execute([$scId]);
+                    $insM = $pdo->prepare("INSERT IGNORE INTO sous_commission_membres (sous_commission_id, membre_id) VALUES (?, ?)");
+                    foreach ($voulus as $vm) { $insM->execute([$scId, $vm]); }
+                    $pdo->commit();
+                    $cnomSc = com_commission_nom($pdo, $cid);
+                    foreach (array_diff($voulus, $avantSc) as $vm) {
+                        troba_notify_membre($pdo, (int) $vm, 'commission', '🧩 Sous-commission', 'Vous avez été affecté(e) à la sous-commission « ' . $scNom . ' » de la commission ' . $cnomSc . '.', 'index.php');
+                    }
+                    $success = "Membres de la sous-commission « " . $scNom . " » mis à jour.";
+                }
+            } elseif ($action === 'magal_add_tache' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                // Tâche du Wadial Magal pour cette commission (la commission doit être impliquée)
+                $mgAnnee = (int) date('Y');
+                $mgTitre = trim($_POST['titre'] ?? '');
+                $mgDesc = trim($_POST['description'] ?? '');
+                $mgAss = (int) ($_POST['assignee_id'] ?? 0);
+                $mgEch = trim($_POST['echeance'] ?? '');
+                $mgChk = $pdo->prepare("SELECT 1 FROM magal_commissions WHERE annee = ? AND commission_id = ?");
+                $mgChk->execute([$mgAnnee, $cid]);
+                if ($mgChk->fetchColumn() === false) {
+                    // Première contribution : la commission est inscrite automatiquement au Wadial Magal
+                    $pdo->prepare("INSERT IGNORE INTO magal_commissions (annee, commission_id) VALUES (?, ?)")->execute([$mgAnnee, $cid]);
+                }
+                if ($mgTitre === '') {
+                    $error = "Le titre de la tâche est obligatoire.";
+                } else {
+                    if ($mgEch !== '' && !DateTime::createFromFormat('Y-m-d', $mgEch)) { $mgEch = ''; }
+                    if ($mgAss > 0) {
+                        $mgOk = $pdo->prepare("SELECT 1 FROM (SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?) x WHERE membre_id = ?");
+                        $mgOk->execute([$cid, $cid, $mgAss]);
+                        if ($mgOk->fetchColumn() === false) { $mgAss = 0; }
+                    }
+                    $pdo->prepare("INSERT INTO magal_taches (annee, commission_id, titre, description, assignee_id, echeance, created_by) VALUES (?,?,?,?,?,?,?)")
+                        ->execute([$mgAnnee, $cid, mb_substr($mgTitre, 0, 255), ($mgDesc !== '' ? $mgDesc : null), ($mgAss > 0 ? $mgAss : null), ($mgEch !== '' ? $mgEch : null), !empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null]);
+                    if ($mgAss > 0 && (empty($_SESSION['player_id']) || $mgAss !== (int) $_SESSION['player_id'])) {
+                        troba_notify_membre($pdo, $mgAss, 'magal', '🕌 Wadial Magal : nouvelle tâche', 'Une tâche vous est confiée : ' . $mgTitre, 'magal.php?annee=' . $mgAnnee . '&tab=taches');
+                    }
+                    $success = "Tâche ajoutée au Wadial Magal " . $mgAnnee . ".";
+                }
+            } elseif ($action === 'magal_add_besoin' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                // Liste de besoins du Wadial Magal pour cette commission (la commission doit être impliquée)
+                $mgAnneeB = (int) date('Y');
+                $mgLib = trim($_POST['libelle'] ?? '');
+                $mgQte = trim($_POST['quantite'] ?? '');
+                $mgChkB = $pdo->prepare("SELECT 1 FROM magal_commissions WHERE annee = ? AND commission_id = ?");
+                $mgChkB->execute([$mgAnneeB, $cid]);
+                if ($mgChkB->fetchColumn() === false) {
+                    // Première contribution : la commission est inscrite automatiquement au Wadial Magal
+                    $pdo->prepare("INSERT IGNORE INTO magal_commissions (annee, commission_id) VALUES (?, ?)")->execute([$mgAnneeB, $cid]);
+                }
+                if ($mgLib === '') {
+                    $error = "Le besoin est obligatoire.";
+                } else {
+                    $pdo->prepare("INSERT INTO magal_besoins (annee, commission_id, libelle, quantite, created_by) VALUES (?,?,?,?,?)")
+                        ->execute([$mgAnneeB, $cid, mb_substr($mgLib, 0, 255), ($mgQte !== '' ? mb_substr($mgQte, 0, 60) : null), !empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null]);
+                    $success = "Besoin ajouté à la liste du Wadial Magal " . $mgAnneeB . ".";
+                }
+            } elseif ($action === 'magal_set_besoin_statut' || $action === 'magal_delete_besoin') {
+                $mgBid = (int) ($_POST['besoin_id'] ?? 0);
+                $mgRowB = $pdo->prepare("SELECT commission_id FROM magal_besoins WHERE id = ?");
+                $mgRowB->execute([$mgBid]);
+                $mgComB = (int) $mgRowB->fetchColumn();
+                if ($mgComB <= 0 || !com_can_manage($mgComB, $__isAdmin, $__managedCommissions)) {
+                    $error = "Besoin introuvable ou accès refusé.";
+                } elseif ($action === 'magal_delete_besoin') {
+                    $pdo->prepare("DELETE FROM magal_besoins WHERE id = ?")->execute([$mgBid]);
+                    $success = "Besoin supprimé.";
+                } else {
+                    $mgStB = (string) ($_POST['statut'] ?? '');
+                    if (!in_array($mgStB, ['a_trouver', 'en_cours', 'obtenu'], true)) {
+                        $error = "Statut invalide.";
+                    } else {
+                        $pdo->prepare("UPDATE magal_besoins SET statut = ? WHERE id = ?")->execute([$mgStB, $mgBid]);
+                        $success = "Statut du besoin mis à jour.";
+                    }
+                }
+            } elseif ($action === 'magal_set_tache_statut') {
+                $mgTid = (int) ($_POST['tache_id'] ?? 0);
+                $mgSt = (string) ($_POST['statut'] ?? '');
+                $mgRow = $pdo->prepare("SELECT commission_id FROM magal_taches WHERE id = ?");
+                $mgRow->execute([$mgTid]);
+                $mgCom = (int) $mgRow->fetchColumn();
+                if ($mgCom <= 0 || !com_can_manage($mgCom, $__isAdmin, $__managedCommissions)) {
+                    $error = "Tâche introuvable ou accès refusé.";
+                } elseif (!in_array($mgSt, ['a_faire', 'en_cours', 'fait'], true)) {
+                    $error = "Statut invalide.";
+                } else {
+                    $pdo->prepare("UPDATE magal_taches SET statut = ?, updated_at = NOW() WHERE id = ?")->execute([$mgSt, $mgTid]);
+                    $success = "Statut de la tâche mis à jour.";
+                }
+            } elseif ($action === 'set_commission_zoom' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                // Lien Zoom par défaut de la commission (pré-rempli pour ses réunions à distance)
+                $zoom = trim($_POST['lien_zoom'] ?? '');
+                if ($zoom !== '' && !preg_match('#^https?://#i', $zoom)) {
+                    $error = "Le lien Zoom doit commencer par https://";
+                } else {
+                    $pdo->prepare("UPDATE commissions SET lien_zoom = ? WHERE id = ?")->execute([($zoom !== '' ? $zoom : null), $cid]);
+                    $success = $zoom !== '' ? "Lien Zoom par défaut de la commission enregistré." : "Lien Zoom par défaut supprimé.";
+                }
             } elseif ($action === 'remove_commission_manager' && $cid > 0 && $mid > 0 && $__isAdmin) {
                 $pdo->prepare("DELETE FROM commission_gestionnaires WHERE commission_id = ? AND membre_id = ?")->execute([$cid, $mid]);
                 $success = "Responsable retiré.";
@@ -311,6 +484,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             error_log('Touba Lyon commission_dashboard: ' . $e->getMessage());
             $error = "Une erreur technique est survenue. Veuillez réessayer plus tard.";
         }
+    }
+    // Action lancée depuis la page détail d'une réunion : retour sur cette page avec le message
+    $retourDetail = (int) ($_POST['retour_detail'] ?? 0);
+    if ($retourDetail > 0 && ($error !== '' || $success !== '') && ($_POST['action'] ?? '') !== 'delete_reunion') {
+        $_SESSION['reu_flash'] = ['type' => $error !== '' ? 'err' : 'ok', 'msg' => $error !== '' ? $error : $success];
+        header('Location: reunion_detail.php?id=' . $retourDetail);
+        exit;
     }
     // Réponse légère pour les requêtes AJAX (ajout/retrait immédiat, sans rechargement)
     if ($isAjax) {
@@ -354,6 +534,47 @@ try {
     } catch (Exception $e) { $comReunions = []; }
     $reunionHeureDefaut = dahira_param($pdo, 'guddi_heure', '20h00');
     $reunionZoomLien = dahira_param($pdo, 'guddi_lien_defaut', '');
+    // Sous-commissions par commission, avec leurs membres affectés
+    $comSous = [];
+    try {
+        foreach ($pdo->query("SELECT id, commission_id, nom FROM sous_commissions ORDER BY nom ASC") as $sr) {
+            $comSous[(int) $sr['commission_id']][(int) $sr['id']] = ['id' => (int) $sr['id'], 'nom' => (string) $sr['nom'], 'membres' => []];
+        }
+        foreach ($pdo->query("SELECT sc.id, sc.commission_id, scm.membre_id FROM sous_commission_membres scm JOIN sous_commissions sc ON sc.id = scm.sous_commission_id") as $sm) {
+            $comSous[(int) $sm['commission_id']][(int) $sm['id']]['membres'][] = (int) $sm['membre_id'];
+        }
+    } catch (Exception $e) { $comSous = []; }
+    // Lien Zoom par défaut propre à chaque commission (prioritaire sur celui du Guddi)
+    $comZoom = [];
+    try {
+        foreach ($pdo->query("SELECT id, lien_zoom FROM commissions WHERE lien_zoom IS NOT NULL AND lien_zoom <> ''") as $zr) { $comZoom[(int) $zr['id']] = (string) $zr['lien_zoom']; }
+    } catch (Exception $e) { $comZoom = []; }
+    // Wadial Magal (année en cours) : commissions impliquées, leurs tâches et leur partie finance
+    require_once __DIR__ . '/magal_helper.php';
+    $mgAnneeCourante = (int) date('Y');
+    $mgInvolved = [];
+    $mgTachesParCom = [];
+    $mgFinParCom = [];
+    try {
+        $q = $pdo->prepare("SELECT commission_id FROM magal_commissions WHERE annee = ?");
+        $q->execute([$mgAnneeCourante]);
+        foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $mgc) { $mgInvolved[(int) $mgc] = true; }
+        $q = $pdo->prepare("SELECT t.*, CONCAT(m.prenom, ' ', m.nom) AS assignee_nom FROM magal_taches t LEFT JOIN membres m ON m.id = t.assignee_id WHERE t.annee = ? ORDER BY FIELD(t.statut,'en_cours','a_faire','fait'), t.echeance IS NULL, t.echeance ASC, t.id ASC");
+        $q->execute([$mgAnneeCourante]);
+        foreach ($q as $mgt) { $mgTachesParCom[(int) $mgt['commission_id']][] = $mgt; }
+        $mgBesoinsParCom = [];
+        $q = $pdo->prepare("SELECT * FROM magal_besoins WHERE annee = ? ORDER BY FIELD(statut,'a_trouver','en_cours','obtenu'), id ASC");
+        $q->execute([$mgAnneeCourante]);
+        foreach ($q as $mgb) { $mgBesoinsParCom[(int) $mgb['commission_id']][] = $mgb; }
+        $q = $pdo->prepare("SELECT * FROM magal_finance WHERE annee = ? AND commission_id IS NOT NULL ORDER BY COALESCE(date_op, DATE(created_at)) DESC, id DESC");
+        $q->execute([$mgAnneeCourante]);
+        foreach ($q as $mgf) {
+            $k = (int) $mgf['commission_id'];
+            if (!isset($mgFinParCom[$k])) { $mgFinParCom[$k] = ['lignes' => [], 'rec' => 0.0, 'dep' => 0.0]; }
+            $mgFinParCom[$k]['lignes'][] = $mgf;
+            if ($mgf['type'] === 'recette') { $mgFinParCom[$k]['rec'] += (float) $mgf['montant']; } else { $mgFinParCom[$k]['dep'] += (float) $mgf['montant']; }
+        }
+    } catch (Exception $e) { $mgInvolved = []; $mgTachesParCom = []; $mgFinParCom = []; }
     $reunionLieuDefaut = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
 
     // Rendu HTML d'une réunion (carte). $showTitle=false pour une période au sein d'une série.
@@ -390,20 +611,38 @@ try {
         $h .= '<div style="display:flex; gap:0.3rem; flex-wrap:wrap;">';
         if ($rClo) { $h .= '<span class="badge" style="background:rgba(255,255,255,0.06); color:var(--text-muted);">Clôturée</span>'; }
         elseif ($rPub) { $h .= '<span class="badge badge-approved">🚀 Publiée</span>'; }
-        else { $h .= '<span class="badge badge-pending">⏳ En attente</span>'; }
+        else { $h .= '<span class="badge badge-pending">' . (($r['sondage_statut'] ?? 'aucun') === 'ouvert' ? '📊 Sondage en cours' : '⏳ En attente') . '</span>'; }
         $h .= '</div></div>';
         $hFinTxt = trim((string) ($r['heure_fin'] ?? '')) !== '' ? ' – ' . htmlspecialchars($r['heure_fin']) : '';
         $h .= '<div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.3rem;">🗓️ ' . $rDateFr . ' · 🕐 ' . htmlspecialchars($r['heure']) . $hFinTxt . ' · ' . ((string) $r['mode'] === 'presentiel' ? '🏛️ présentiel' : '💻 à distance') . '</div>';
         $h .= '<div class="km-actions" style="border-top:0; padding-top:0.6rem; margin-top:0.4rem;">';
+        // Sondage de date : lien de vote, partage WhatsApp du sondage tant qu'il est ouvert
+        $sondageStatut = (string) ($r['sondage_statut'] ?? 'aucun');
+        $sondageOuvert = ($sondageStatut === 'ouvert');
+        if ($sondageStatut !== 'aucun') {
+            if ($sondageOuvert) {
+                $optsS = [];
+                try { $qo = $pdo->prepare("SELECT * FROM reunion_sondage_options WHERE reunion_id = ? ORDER BY date_option ASC, heure ASC, id ASC"); $qo->execute([$rid]); $optsS = $qo->fetchAll(); } catch (Exception $e) {}
+                $waSond = 'https://wa.me/?text=' . rawurlencode(reunion_message_sondage($r, reunion_commission_nom($pdo, (int) $r['commission_id']), $optsS, dahira_base_url() . '/reunion_sondage.php?id=' . $rid));
+                $h .= '<a href="' . htmlspecialchars($waSond, ENT_QUOTES) . '" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 Sondage WhatsApp</a>';
+            }
+            $h .= '<a href="reunion_sondage.php?id=' . $rid . '" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">' . ($sondageOuvert ? '📊 Sondage / valider la date' : '📊 Résultats du sondage') . '</a>';
+        }
         // Partage WhatsApp uniquement si la réunion est publiée
         if ($rPub) {
-            $waShare = 'https://wa.me/?text=' . rawurlencode(reunion_message_partage($r, reunion_commission_nom($pdo, (int) $r['commission_id']), dahira_base_url() . '/reunion_detail.php?id=' . $rid));
-            $h .= '<a href="' . htmlspecialchars($waShare, ENT_QUOTES) . '" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 WhatsApp</a>';
+            $waNomCom = reunion_commission_nom($pdo, (int) $r['commission_id']);
+            $waLien = dahira_base_url() . '/reunion_detail.php?id=' . $rid;
+            // Réunion clôturée avec compte rendu : le message contient les détails du compte rendu
+            $waCr = $rClo && trim(strip_tags((string) ($r['compte_rendu'] ?? ''))) !== '';
+            $waShare = 'https://wa.me/?text=' . rawurlencode($waCr ? reunion_message_compte_rendu($r, $waNomCom, $waLien) : reunion_message_partage($r, $waNomCom, $waLien));
+            $h .= '<a href="' . htmlspecialchars($waShare, ENT_QUOTES) . '" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">' . ($waCr ? '🟢 Partager le compte rendu' : '🟢 WhatsApp') . '</a>';
         }
         // Publier / Dépublier juste après WhatsApp
         if (!$rClo) {
             if (!$rPub) {
-                if ($canPublish) {
+                if ($sondageOuvert) {
+                    $h .= '<span class="btn btn-sm" style="background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.4); cursor:not-allowed;" title="Validez d\'abord une date du sondage">🚀 Publier</span>';
+                } elseif ($canPublish) {
                     $h .= '<form method="POST" style="margin:0;" data-confirm="Publier cette réunion et notifier les membres de la commission ?">' . $csrf . '<input type="hidden" name="action" value="publish_reunion"><input type="hidden" name="reunion_id" value="' . $rid . '"><button type="submit" class="btn btn-primary btn-sm">🚀 Publier</button></form>';
                 } else {
                     $h .= '<span class="btn btn-sm" style="background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.4); cursor:not-allowed;" title="Clôturez d\'abord la réunion précédente de la série">🚀 Publier</span>';
@@ -413,7 +652,7 @@ try {
             }
         }
         $h .= '<a href="reunion_detail.php?id=' . $rid . '" class="btn btn-secondary btn-sm">📊 Détail</a>';
-        $h .= '<a href="reunion_rapport.php?id=' . $rid . '" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">📄 PDF</a>';
+        $h .= '<button type="button" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);" onclick="openCrPdfDash(' . $rid . ')">📄 Compte rendu PDF</button>';
         if (!$rPub && !$rClo) {
             $h .= '<button type="button" class="btn btn-secondary btn-sm" style="border-color:#7dd3fc; color:#7dd3fc;" onclick="toggleReuEdit(' . $rid . ')">✏️ Modifier</button>';
         }
@@ -448,9 +687,9 @@ try {
             for ($hh = 7; $hh <= 23; $hh++) { foreach (['00', '30'] as $mm) { $hv = sprintf('%02d:%s', $hh, $mm); $optsH .= '<option value="' . $hv . '"' . ($curH === $hv ? ' selected' : '') . '>' . $hv . '</option>'; } }
             $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure de début</label><select name="heure" class="form-input modern-select" required>' . $optsH . '</select></div>';
             $curHF = dahira_heure_hm((string) ($r['heure_fin'] ?? ''));
-            $optsHF = '<option value="">— Aucune —</option>';
+            $optsHF = '<option value="">— Heure —</option>';
             for ($hh = 7; $hh <= 23; $hh++) { foreach (['00', '30'] as $mm) { $hv = sprintf('%02d:%s', $hh, $mm); $optsHF .= '<option value="' . $hv . '"' . (($r['heure_fin'] ?? '') !== '' && $curHF === $hv ? ' selected' : '') . '>' . $hv . '</option>'; } }
-            $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure de fin</label><select name="heure_fin" class="form-input modern-select">' . $optsHF . '</select></div>';
+            $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure de fin <span style="color:var(--danger)">*</span></label><select name="heure_fin" class="form-input modern-select" required>' . $optsHF . '</select></div>';
             $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Mode</label><select name="mode" class="form-input modern-select r-mode" required><option value="distance"' . $optDist . '>💻 À distance (Zoom)</option><option value="presentiel"' . $optPres . '>🏛️ Présentiel</option></select></div>';
             $h .= '<div class="form-group r-lien" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
             $h .= '<div class="form-group r-lieu" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
@@ -631,26 +870,257 @@ $membersJs = array_map(function ($m) {
                             </div>
                         </details>
 
-                        <div class="km-actions">
+                        <details class="com-reu-group" style="margin:0.6rem 0;">
+                        <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">⚙️ Gestion de la commission <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                        <div class="km-actions" style="margin-top:0.6rem;">
                             <button type="button" class="btn btn-primary btn-sm" onclick="openComModal('members', <?php echo (int) $c['id']; ?>, <?php echo htmlspecialchars(json_encode($c['nom']), ENT_QUOTES); ?>)">👥 Gérer les membres</button>
                             <?php if ($__isAdmin): ?>
                             <button type="button" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);" onclick="openComModal('managers', <?php echo (int) $c['id']; ?>, <?php echo htmlspecialchars(json_encode($c['nom']), ENT_QUOTES); ?>)">🎖️ Gérer les responsables</button>
                             <?php endif; ?>
-                            <?php if (!empty($c['stock_enabled'])): ?>
-                            <a href="commission_stock.php?id=<?php echo (int) $c['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:#7bd8a6; color:#7bd8a6;">📦 Stock</a>
-                            <?php endif; ?>
                         </div>
+                        </details>
+                        <?php if (!empty($c['stock_enabled'])): ?>
+                        <div class="km-actions" style="margin-top:0.4rem;"><a href="commission_stock.php?id=<?php echo (int) $c['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:#7bd8a6; color:#7bd8a6;">📦 Stock</a></div>
+                        <?php endif; ?>
+
+                        <?php
+                            $sousDeC = $comSous[(int) $c['id']] ?? [];
+                            $peutSous = com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions);
+                            $nomsMembres = [];
+                            foreach ($membersOfC as $mm) { $nomsMembres[(int) $mm['id']] = trim($mm['prenom'] . ' ' . $mm['nom']); }
+                        ?>
+                        <?php if ($peutSous || !empty($sousDeC)): ?>
+                        <div style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                            <details class="com-reu-group">
+                            <summary class="com-sub" style="margin-top:0; cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.4rem;">🧩 Sous-commissions <span style="color:var(--text-muted); font-weight:600;">(<?php echo count($sousDeC); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                            <div style="margin-top:0.6rem;">
+                            <?php if (empty($sousDeC)): ?>
+                                <p class="km-empty">Aucune sous-commission.</p>
+                            <?php endif; ?>
+                            <?php foreach ($sousDeC as $sc): ?>
+                                <details style="border:1px solid var(--glass-border); border-radius:12px; padding:0.6rem 0.9rem; background:rgba(255,255,255,0.02); margin-bottom:0.5rem;">
+                                    <summary style="cursor:pointer; font-weight:700; color:var(--white); display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                        🧩 <?php echo htmlspecialchars($sc['nom']); ?>
+                                        <span class="badge badge-approved"><?php echo count($sc['membres']); ?> membre(s)</span>
+                                    </summary>
+                                    <div class="km-list" style="margin-top:0.6rem;">
+                                        <?php if (empty($sc['membres'])): ?>
+                                            <p class="km-empty">Aucun membre affecté.</p>
+                                        <?php else: foreach ($sc['membres'] as $smid): ?>
+                                            <span class="km-chip"><span class="km-name"><?php echo htmlspecialchars($nomsMembres[$smid] ?? ('Membre #' . $smid)); ?></span></span>
+                                        <?php endforeach; endif; ?>
+                                    </div>
+                                    <?php if ($peutSous): ?>
+                                    <form method="POST" style="margin:0.8rem 0 0;">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="set_sous_commission_members">
+                                        <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                        <input type="hidden" name="sous_commission_id" value="<?php echo (int) $sc['id']; ?>">
+                                        <?php if (empty($membersOfC)): ?>
+                                            <p class="km-empty">La commission n'a aucun membre à affecter.</p>
+                                        <?php else: ?>
+                                        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:0.35rem; margin-bottom:0.7rem;">
+                                            <?php foreach ($membersOfC as $mm): ?>
+                                            <label style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.35rem 0.65rem; cursor:pointer;">
+                                                <input type="checkbox" name="membre_ids[]" value="<?php echo (int) $mm['id']; ?>"<?php echo in_array((int) $mm['id'], $sc['membres'], true) ? ' checked' : ''; ?>>
+                                                <?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?>
+                                            </label>
+                                            <?php endforeach; ?>
+                                        </div>
+                                        <button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer les membres</button>
+                                        <?php endif; ?>
+                                    </form>
+                                    <form method="POST" style="margin:0.5rem 0 0;" data-confirm="Supprimer la sous-commission « <?php echo htmlspecialchars($sc['nom'], ENT_QUOTES); ?> » ? Les membres restent dans la commission." data-confirm-danger="1">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="delete_sous_commission">
+                                        <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                        <input type="hidden" name="sous_commission_id" value="<?php echo (int) $sc['id']; ?>">
+                                        <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;">🗑️ Supprimer la sous-commission</button>
+                                    </form>
+                                    <?php endif; ?>
+                                </details>
+                            <?php endforeach; ?>
+                            <?php if ($peutSous): ?>
+                            <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin-top:0.5rem;">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="create_sous_commission">
+                                <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                <div class="form-group" style="flex:1; min-width:200px; margin:0;">
+                                    <label class="form-label">➕ Nouvelle sous-commission</label>
+                                    <input type="text" name="nom" class="form-input" required maxlength="150" placeholder="Ex : Logistique, Accueil…">
+                                </div>
+                                <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">Créer</button>
+                            </form>
+                            <?php endif; ?>
+                            </div>
+                            </details>
+                        </div>
+                        <?php endif; ?>
 
                         <?php
                             $reusAll = $comReunions[$c['id']] ?? [];
                             $reus = array_values(array_filter($reusAll, function ($x) { return (int) ($x['annule'] ?? 0) !== 1; }));
+                            // Une réunion est « terminée » si clôturée ou si son horaire est passé ; sinon en cours ou à venir
+                            $reusTerminees = [];
+                            $reusAClore = [];
+                            $reusPubliees = [];
+                            $reusNonPubliees = [];
+                            foreach ($reus as $rx) {
+                                if ((int) ($rx['cloture'] ?? 0) === 1) { $reusTerminees[] = $rx; continue; }
+                                // Horaire dépassé mais pas encore clôturée : reste visible (à clôturer / compte rendu)
+                                $passee = dahira_event_etat((string) $rx['date_reunion'], (string) ($rx['heure'] ?? ''), (string) ($rx['heure_fin'] ?? '')) === 'termine';
+                                if ($passee) { $reusAClore[] = $rx; }
+                                elseif ((int) ($rx['publie'] ?? 0) === 1) { $reusPubliees[] = $rx; }
+                                else { $reusNonPubliees[] = $rx; }
+                            }
+                            // Groupes par statut : publiées et non publiées (non affichées aux membres) ouverts par défaut
+                            $blocsReunions = [
+                                ['titre' => '🚀 Publiées — en cours ou à venir', 'liste' => $reusPubliees, 'open' => true, 'vide' => "Aucune réunion publiée en cours ou à venir."],
+                                ['titre' => '⏳ Non publiées — masquées aux membres', 'liste' => $reusNonPubliees, 'open' => true, 'vide' => ''],
+                                ['titre' => '⏰ Passées — à clôturer', 'liste' => $reusAClore, 'open' => true, 'vide' => ''],
+                                ['titre' => '✅ Clôturées', 'liste' => $reusTerminees, 'open' => false, 'vide' => ''],
+                            ];
                             $reusAnn = array_values(array_filter($reusAll, function ($x) { return (int) ($x['annule'] ?? 0) === 1; }));
                         ?>
+                        <?php if (isset($mgInvolved[(int) $c['id']]) || com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions)):
+                            $mgTaches = $mgTachesParCom[(int) $c['id']] ?? [];
+                            $mgFin = $mgFinParCom[(int) $c['id']] ?? ['lignes' => [], 'rec' => 0.0, 'dep' => 0.0];
+                            $mgPeutAjouter = com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions);
+                            $mgStatuts = magal_statuts_tache();
+                            $mgNbFait = count(array_filter($mgTaches, function ($t) { return $t['statut'] === 'fait'; }));
+                        ?>
+                        <div style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                            <details class="com-reu-group" open>
+                                <summary class="com-sub" style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.4rem; margin-top:0;">🕌 Wadial Magal <?php echo (int) $mgAnneeCourante; ?> <span style="color:var(--text-muted); font-weight:600;">(<?php echo $mgNbFait; ?>/<?php echo count($mgTaches); ?> tâche(s) faite(s))</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                                <?php if (!isset($mgInvolved[(int) $c['id']])): ?>
+                                    <p style="color:var(--text-muted); font-size:0.82rem; margin:0.6rem 0 0;">ℹ️ Votre commission n'est pas encore inscrite au Wadial Magal : en ajoutant un besoin ou une tâche, elle y sera inscrite automatiquement.</p>
+                                <?php endif; ?>
+
+                                <?php
+                                    $mgBesoins = ($mgBesoinsParCom ?? [])[(int) $c['id']] ?? [];
+                                    $mgStatutsB = magal_statuts_besoin();
+                                    $mgNbObtenus = count(array_filter($mgBesoins, function ($b) { return $b['statut'] === 'obtenu'; }));
+                                ?>
+                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0.7rem 0 0.4rem;">🧰 Liste de besoins de la commission <span style="font-weight:600;">(<?php echo $mgNbObtenus; ?>/<?php echo count($mgBesoins); ?> obtenu(s))</span></div>
+                                <?php if (empty($mgBesoins)): ?>
+                                    <p class="km-empty">Aucun besoin défini pour le moment.</p>
+                                <?php endif; ?>
+                                <?php foreach ($mgBesoins as $mgb): ?>
+                                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 0.75rem; margin-bottom:0.4rem;">
+                                        <div style="flex:1; min-width:160px;">
+                                            <strong<?php echo $mgb['statut'] === 'obtenu' ? ' style="text-decoration:line-through; opacity:0.6;"' : ''; ?>><?php echo htmlspecialchars($mgb['libelle']); ?></strong>
+                                            <?php if (!empty($mgb['quantite'])): ?><div style="color:var(--text-muted); font-size:0.78rem;">Quantité : <?php echo htmlspecialchars($mgb['quantite']); ?></div><?php endif; ?>
+                                        </div>
+                                        <?php if ($mgPeutAjouter): ?>
+                                        <form method="POST" style="margin:0;">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="magal_set_besoin_statut">
+                                            <input type="hidden" name="besoin_id" value="<?php echo (int) $mgb['id']; ?>">
+                                            <select name="statut" class="form-input" style="padding:0.25rem 0.5rem; font-size:0.82rem; color-scheme:dark;" onchange="this.form.submit()">
+                                                <?php foreach ($mgStatutsB as $mgk => $mgl): ?><option value="<?php echo $mgk; ?>"<?php echo $mgb['statut'] === $mgk ? ' selected' : ''; ?>><?php echo htmlspecialchars($mgl); ?></option><?php endforeach; ?>
+                                            </select>
+                                        </form>
+                                        <form method="POST" style="margin:0;" data-confirm="Supprimer ce besoin de la liste ?" data-confirm-danger="1">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="magal_delete_besoin">
+                                            <input type="hidden" name="besoin_id" value="<?php echo (int) $mgb['id']; ?>">
+                                            <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;" title="Supprimer">🗑️</button>
+                                        </form>
+                                        <?php else: ?>
+                                            <span class="badge badge-approved"><?php echo htmlspecialchars($mgStatutsB[$mgb['statut']] ?? $mgb['statut']); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                                <?php if ($mgPeutAjouter): ?>
+                                <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.4rem 0 0;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="magal_add_besoin">
+                                    <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                    <div class="form-group" style="flex:2; min-width:200px; margin:0;"><label class="form-label">➕ Nouveau besoin</label><input type="text" name="libelle" class="form-input" required maxlength="255" placeholder="Ex : 20 tables, sono, vaisselle…"></div>
+                                    <div class="form-group" style="flex:1; min-width:110px; margin:0;"><label class="form-label">Quantité</label><input type="text" name="quantite" class="form-input" maxlength="60" placeholder="Ex : 20"></div>
+                                    <button type="submit" class="btn btn-primary btn-sm">➕ Ajouter</button>
+                                </form>
+                                <?php endif; ?>
+                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0.7rem 0 0.4rem;">✅ Tâches de la commission</div>
+                                <?php if (empty($mgTaches)): ?>
+                                    <p class="km-empty">Aucune tâche pour le moment.</p>
+                                <?php endif; ?>
+                                <?php foreach ($mgTaches as $mgt):
+                                    $mgRetard = $mgt['statut'] !== 'fait' && !empty($mgt['echeance']) && $mgt['echeance'] < date('Y-m-d');
+                                ?>
+                                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 0.75rem; margin-bottom:0.4rem;">
+                                        <div style="flex:1; min-width:160px;">
+                                            <strong<?php echo $mgt['statut'] === 'fait' ? ' style="text-decoration:line-through; opacity:0.6;"' : ''; ?>><?php echo htmlspecialchars($mgt['titre']); ?></strong>
+                                            <div style="color:var(--text-muted); font-size:0.78rem;">
+                                                👤 <?php echo trim((string) $mgt['assignee_nom']) !== '' ? htmlspecialchars($mgt['assignee_nom']) : 'Non attribuée'; ?>
+                                                <?php if (!empty($mgt['echeance'])): ?> · 📅 <span<?php echo $mgRetard ? ' style="color:#fca5a5; font-weight:700;"' : ''; ?>><?php echo date('d/m/Y', strtotime($mgt['echeance'])); ?><?php echo $mgRetard ? ' (en retard)' : ''; ?></span><?php endif; ?>
+                                            </div>
+                                        </div>
+                                        <?php if ($mgPeutAjouter): ?>
+                                        <form method="POST" style="margin:0;">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="magal_set_tache_statut">
+                                            <input type="hidden" name="tache_id" value="<?php echo (int) $mgt['id']; ?>">
+                                            <select name="statut" class="form-input" style="padding:0.25rem 0.5rem; font-size:0.82rem; color-scheme:dark;" onchange="this.form.submit()">
+                                                <?php foreach ($mgStatuts as $mgk => $mgl): ?><option value="<?php echo $mgk; ?>"<?php echo $mgt['statut'] === $mgk ? ' selected' : ''; ?>><?php echo htmlspecialchars($mgl); ?></option><?php endforeach; ?>
+                                            </select>
+                                        </form>
+                                        <?php else: ?>
+                                            <span class="badge badge-approved"><?php echo htmlspecialchars($mgStatuts[$mgt['statut']] ?? $mgt['statut']); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+
+                                <?php if ($mgPeutAjouter): ?>
+                                <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.5rem; align-items:end; margin:0.6rem 0 0;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="magal_add_tache">
+                                    <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">➕ Nouvelle tâche Wadial Magal</label><input type="text" name="titre" class="form-input" required maxlength="255" placeholder="Ex : Réserver la salle"></div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Responsable</label>
+                                        <select name="assignee_id" class="form-input">
+                                            <option value="0">— Non attribuée —</option>
+                                            <?php foreach ($membersOfC as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Échéance</label><input type="date" name="echeance" class="form-input" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Détails (facultatif)</label><input type="text" name="description" class="form-input" placeholder="Précisions"></div>
+                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">➕ Ajouter la tâche</button></div>
+                                </form>
+                                <?php endif; ?>
+
+                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:1rem 0 0.4rem;">💶 Finance de la commission</div>
+                                <?php $mgSolde = $mgFin['rec'] - $mgFin['dep']; ?>
+                                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+                                    <span class="badge" style="background:rgba(37,211,102,0.15); color:#7bd8a6; border:1px solid rgba(37,211,102,0.4);">📥 Recettes : <?php echo number_format($mgFin['rec'], 2, ',', ' '); ?> €</span>
+                                    <span class="badge" style="background:rgba(191,33,33,0.15); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">📤 Dépenses : <?php echo number_format($mgFin['dep'], 2, ',', ' '); ?> €</span>
+                                    <span class="badge" style="background:rgba(255,193,7,0.15); color:#ffd873; border:1px solid rgba(255,193,7,0.4);">⚖️ Solde : <?php echo number_format($mgSolde, 2, ',', ' '); ?> €</span>
+                                </div>
+                                <?php if (empty($mgFin['lignes'])): ?>
+                                    <p class="km-empty">Aucune opération financière enregistrée pour cette commission.</p>
+                                <?php else: foreach ($mgFin['lignes'] as $mgl): $mgRec = $mgl['type'] === 'recette'; ?>
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.4rem 0.75rem; margin-bottom:0.35rem;">
+                                        <div>
+                                            <strong><?php echo $mgRec ? '📥' : '📤'; ?> <?php echo htmlspecialchars($mgl['libelle']); ?></strong>
+                                            <div style="color:var(--text-muted); font-size:0.78rem;"><?php echo !empty($mgl['date_op']) ? date('d/m/Y', strtotime($mgl['date_op'])) : date('d/m/Y', strtotime($mgl['created_at'])); ?><?php echo !empty($mgl['note']) ? ' · ' . htmlspecialchars($mgl['note']) : ''; ?></div>
+                                        </div>
+                                        <span style="font-weight:700; color:<?php echo $mgRec ? '#7bd8a6' : '#fca5a5'; ?>;"><?php echo $mgRec ? '+' : '−'; ?><?php echo number_format((float) $mgl['montant'], 2, ',', ' '); ?> €</span>
+                                    </div>
+                                <?php endforeach; endif; ?>
+                                <p style="margin:0.6rem 0 0;"><a href="magal.php?annee=<?php echo (int) $mgAnneeCourante; ?>&tab=taches" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">🕌 Ouvrir le Wadial Magal</a></p>
+                            </details>
+                        </div>
+                        <?php endif; ?>
                         <div style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
                             <div class="com-sub" style="margin-top:0;">📅 Réunions de la commission</div>
                             <?php if (empty($reus)): ?>
                                 <p class="km-empty">Aucune réunion pour le moment.</p>
-                            <?php else: ?>
+                            <?php else: foreach ($blocsReunions as $bloc): ?>
+                                <?php if (empty($bloc['liste'])): ?>
+                                    <?php if ($bloc['vide'] !== ''): ?><p class="km-empty"><?php echo htmlspecialchars($bloc['vide']); ?></p><?php endif; ?>
+                                <?php else: $reus = $bloc['liste']; ?>
+                                <details class="com-reu-group" style="margin-bottom:0.75rem;"<?php echo $bloc['open'] ? ' open' : ''; ?>>
+                                    <summary style="cursor:pointer; color:var(--white); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem; margin-bottom:0.5rem;"><?php echo $bloc['titre']; ?> <span style="color:var(--text-muted); font-weight:600;">(<?php echo count($bloc['liste']); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
                                 <?php
                                     // Regrouper par série périodique (serie_id), en conservant l'ordre
                                     $groupes = [];
@@ -710,7 +1180,9 @@ $membersJs = array_map(function ($m) {
                                     <?php endif; ?>
                                 <?php endforeach; ?>
                                 </div>
-                            <?php endif; ?>
+                                </details>
+                                <?php endif; ?>
+                            <?php endforeach; endif; ?>
                             <?php if (!empty($reusAnn)): ?>
                             <details class="com-reu-group" style="margin-bottom:0.75rem;">
                                 <summary style="cursor:pointer; color:#fca5a5; font-weight:700; font-size:0.85rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">🚫 Réunions annulées <span style="color:var(--text-muted); font-weight:600;">(<?php echo count($reusAnn); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
@@ -729,20 +1201,50 @@ $membersJs = array_map(function ($m) {
                                     <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
                                     <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required placeholder="Ex: Réunion mensuelle de la commission"></div>
                                     <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"></textarea></div>
-                                    <div class="form-group" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_debut" class="form-input" required min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
-                                    <div class="form-group" style="margin:0;"><label class="form-label">Heure de début <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
-                                    <div class="form-group" style="margin:0;"><label class="form-label">Heure de fin <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label><select name="heure_fin" class="form-input modern-select"><option value="">— Aucune —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
+                                    <div class="form-group r-fixe" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_debut" class="form-input" required min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
+                                    <div class="form-group r-fixe" style="margin:0;"><label class="form-label">Heure de début <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
+                                    <div class="form-group r-fixe" style="margin:0;"><label class="form-label">Heure de fin <span style="color:var(--danger)">*</span></label><select name="heure_fin" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Mode <span style="color:var(--danger)">*</span></label><select name="mode" class="form-input modern-select r-mode" required><option value="">— Choisir —</option><option value="distance">💻 À distance (Zoom)</option><option value="presentiel">🏛️ Présentiel</option></select></div>
-                                    <div class="form-group r-lien" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (réunion à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($reunionZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
+                                    <div class="form-group r-lien" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (réunion à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($comZoom[(int) $c['id']] ?? $reunionZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
                                     <div class="form-group r-lieu" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">📍 Adresse (présentiel) <span style="color:var(--danger)">*</span></label><input type="text" name="lieu" class="form-input r-lieu-input" value="<?php echo htmlspecialchars($reunionLieuDefaut); ?>"><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec l'adresse du Dahira — modifiable.</p></div>
                                     <div class="form-group" style="grid-column:1 / -1; margin:0;">
                                         <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;"><input type="checkbox" name="periodique" value="1" class="r-periodique"> 🔁 Réunion périodique</label>
+                                    </div>
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;">
+                                        <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;"><input type="checkbox" name="sondage" value="1" class="r-sondage"> 📊 Sondage de date et d'horaire</label>
+                                        <p style="color:var(--text-muted); font-size:0.75rem; margin:0.25rem 0 0;">Proposez plusieurs dates : les membres votent via un lien (partagé par WhatsApp), puis vous validez une date avant de publier la réunion.</p>
+                                    </div>
+                                    <div class="r-sondage-fields" style="grid-column:1 / -1; display:none;">
+                                        <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:0.4rem;">Dates proposées (2 propositions, ajoutez-en d'autres si besoin) — date, heure de début et heure de fin</div>
+                                        <?php for ($so = 1; $so <= 2; $so++): ?>
+                                        <div class="r-sond-row" style="display:<?php echo $so <= 2 ? 'grid' : 'none'; ?>; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.5rem; margin-bottom:0.45rem;">
+                                            <input type="date" name="opt_date[]" class="form-input" min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;" aria-label="Date proposée <?php echo $so; ?>">
+                                            <select name="opt_heure[]" class="form-input" style="color-scheme:dark;" aria-label="Heure de début <?php echo $so; ?>"><option value="">— Début —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select>
+                                            <select name="opt_fin[]" class="form-input" style="color-scheme:dark;" aria-label="Heure de fin <?php echo $so; ?>"><option value="">— Fin —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select>
+                                        </div>
+                                        <?php endfor; ?>
+                                        <button type="button" class="btn btn-secondary btn-sm r-sond-add" style="border-color:var(--gold); color:var(--gold);">➕ Ajouter une proposition</button>
                                     </div>
                                     <div class="form-group r-per-fields" style="margin:0; display:none;"><label class="form-label">Périodicité</label><select name="periodicite" class="form-input modern-select"><option value="hebdomadaire">Hebdomadaire</option><option value="quinzaine">Une semaine sur deux</option><option value="mensuelle">Mensuelle</option></select></div>
                                     <div class="form-group r-per-fields" style="margin:0; display:none;"><label class="form-label">Date de fin</label><input type="date" name="date_fin" class="form-input" min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
                                     <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Créer la réunion</button></div>
                                 </form>
                             </details>
+                            <?php if (com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions)): ?>
+                            <details class="com-reu-group" style="margin:0.5rem 0;">
+                            <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">⚙️ Paramètres <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                            <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.6rem 0 0;">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="set_commission_zoom">
+                                <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                <div class="form-group" style="flex:1; min-width:220px; margin:0;">
+                                    <label class="form-label">🔗 Lien Zoom par défaut de la commission</label>
+                                    <input type="url" name="lien_zoom" class="form-input" value="<?php echo htmlspecialchars($comZoom[(int) $c['id']] ?? ''); ?>" placeholder="https://us06web.zoom.us/...">
+                                </div>
+                                <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">💾 Enregistrer</button>
+                            </form>
+                            </details>
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -981,6 +1483,34 @@ $membersJs = array_map(function ($m) {
                 if (per) { per.addEventListener('change', syncPer); }
                 if (mode) { mode.addEventListener('change', syncMode); }
                 syncPer(); syncMode();
+                var sond = f.querySelector('.r-sondage');
+                var sondFields = f.querySelector('.r-sondage-fields');
+                var fixes = f.querySelectorAll('.r-fixe');
+                fixes.forEach(function (el) { el.querySelectorAll('input,select').forEach(function (i) { i.dataset.req = i.required ? '1' : ''; }); });
+                function syncSondage() {
+                    var on = !!(sond && sond.checked);
+                    fixes.forEach(function (el) {
+                        el.style.display = on ? 'none' : '';
+                        el.querySelectorAll('input,select').forEach(function (i) { i.required = on ? false : (i.dataset.req === '1'); });
+                    });
+                    if (sondFields) { sondFields.style.display = on ? '' : 'none'; }
+                    if (per) { if (on) { per.checked = false; } per.disabled = on; syncPer(); }
+                }
+                if (sond) { sond.addEventListener('change', syncSondage); }
+                syncSondage();
+                var addBtn = f.querySelector('.r-sond-add');
+                if (addBtn) {
+                    addBtn.addEventListener('click', function () {
+                        var rows = f.querySelectorAll('.r-sond-row');
+                        if (rows.length >= 20) { addBtn.style.display = 'none'; return; }
+                        // Nouvelle proposition : copie vierge de la dernière ligne
+                        var copie = rows[rows.length - 1].cloneNode(true);
+                        copie.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+                        copie.querySelectorAll('select').forEach(function (s) { s.selectedIndex = 0; });
+                        rows[rows.length - 1].parentNode.insertBefore(copie, addBtn);
+                        if (rows.length + 1 >= 20) { addBtn.style.display = 'none'; }
+                    });
+                }
             });
         })();
     </script>
@@ -998,6 +1528,67 @@ $membersJs = array_map(function ($m) {
     <?php endif; ?>
 
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
+    <!-- Popup : compte rendu PDF d'une réunion (aperçu + partage) -->
+    <div id="crd-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card glass-card" style="max-width:900px; width:calc(100vw - 24px); height:88vh; display:flex; flex-direction:column;">
+            <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem;">
+                <h3 style="color:var(--accent); margin:0;">📄 Compte rendu PDF</h3>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeCrPdfDash()">✕ Fermer</button>
+            </div>
+            <div style="flex:1; min-height:0; margin:0.7rem 0; border-radius:10px; overflow:hidden; background:#fff;">
+                <iframe id="crd-frame" src="" title="Compte rendu" style="width:100%; height:100%; border:0;"></iframe>
+            </div>
+            <div class="modal-footer" style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end; align-items:center;">
+                <button type="button" id="crd-share" class="btn btn-primary btn-sm" onclick="shareCrPdfDash(this)">📤 Partager le compte rendu</button>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
+    <script>
+        function openCrPdfDash(id) {
+            var f = document.getElementById('crd-frame');
+            f.setAttribute('src', 'reunion_rapport.php?id=' + encodeURIComponent(id) + '&embed=1');
+            var m = document.getElementById('crd-modal');
+            m.style.display = 'flex';
+            setTimeout(function () { m.classList.add('active'); }, 10);
+        }
+        function closeCrPdfDash() {
+            var m = document.getElementById('crd-modal');
+            m.classList.remove('active');
+            setTimeout(function () { m.style.display = 'none'; document.getElementById('crd-frame').setAttribute('src', ''); }, 300);
+        }
+        // Génère le PDF depuis l'aperçu puis le partage (partage natif) ou le télécharge
+        function shareCrPdfDash(btn) {
+            var f = document.getElementById('crd-frame');
+            var doc = f && f.contentDocument;
+            if (!f || !f.contentWindow || typeof f.contentWindow.rptPreparerPdf !== 'function') {
+                if (window.modernAlert) { window.modernAlert('Aperçu non prêt. Réessayez dans un instant.'); }
+                return;
+            }
+            var ancien = btn.innerHTML;
+            btn.disabled = true; btn.innerHTML = '⏳ Préparation…';
+            var fin = function () { btn.disabled = false; btn.innerHTML = ancien; };
+            f.contentWindow.rptPreparerPdf().then(function (blob) {
+                var file = new File([blob], 'compte-rendu.pdf', { type: 'application/pdf' });
+                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                    return navigator.share({ files: [file], title: 'Compte rendu' }).catch(function () {}).then(fin);
+                }
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = 'compte-rendu.pdf';
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+                fin();
+            }).catch(function () {
+                fin();
+                if (window.modernAlert) { window.modernAlert('Échec de la génération du PDF.'); }
+            });
+        }
+        (function () {
+            var m = document.getElementById('crd-modal');
+            if (m) { m.addEventListener('click', function (e) { if (e.target === m) { closeCrPdfDash(); } }); }
+        })();
+    </script>
     <?php include __DIR__ . '/modern_popup.php'; ?>
 </body>
 </html>

@@ -17,10 +17,10 @@ require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/csrf.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
-/** Ferme le mode administration et renvoie le membre chez lui. */
+/** Ferme le mode administration / gestion et renvoie le membre chez lui. */
 function retour_espace_membre(): void
 {
     unset(

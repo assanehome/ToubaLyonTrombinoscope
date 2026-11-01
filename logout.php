@@ -2,7 +2,7 @@
 /**
  * Touba Lyon 2026 - Admin Logout
  */
-session_start();
+require_once __DIR__ . '/session_config.php'; session_start();
 
 // Unset all session variables
 $_SESSION = array();

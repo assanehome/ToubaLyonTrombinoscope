@@ -129,6 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $lien = null; // Le lien Zoom n'est plus modifiable par séance : toujours celui des paramètres du Guddi Àjjuma.
             $livre = trim($_POST['livre'] ?? '');
             $mode = ($_POST['mode'] ?? 'distance') === 'presentiel' ? 'presentiel' : 'distance';
+            // Heures propres à cette séance (vides => valeurs par défaut à l'affichage)
+            $heureSeance = trim($_POST['heure_seance'] ?? '');
+            $heureFinSeance = trim($_POST['heure_fin_seance'] ?? '');
+            // Détails complémentaires : texte simple saisi pour la séance
+            $detailsHtml = trim($_POST['details_html'] ?? '');
             if ($id > 0) {
                 try {
                     // Upload d'un programme PDF (facultatif)
@@ -154,11 +159,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     if ($error === '') {
                         if ($pdfPath !== null) {
-                            $pdo->prepare("UPDATE guddi_plannings SET theme = ?, presentateur = ?, lien = ?, livre = ?, pdf_path = ?, mode = ?, actif = 1, updated_at = NOW() WHERE id = ?")
-                                ->execute([$theme !== '' ? $theme : null, $presentateur !== '' ? $presentateur : null, $lien !== '' ? $lien : null, $livre !== '' ? $livre : null, $pdfPath, $mode, $id]);
+                            $pdo->prepare("UPDATE guddi_plannings SET theme = ?, presentateur = ?, lien = ?, livre = ?, pdf_path = ?, mode = ?, heure = ?, heure_fin = ?, details_html = ?, actif = 1, updated_at = NOW() WHERE id = ?")
+                                ->execute([$theme !== '' ? $theme : null, $presentateur !== '' ? $presentateur : null, $lien !== '' ? $lien : null, $livre !== '' ? $livre : null, $pdfPath, $mode, $heureSeance !== '' ? $heureSeance : null, $heureFinSeance !== '' ? $heureFinSeance : null, $detailsHtml !== '' ? $detailsHtml : null, $id]);
                         } else {
-                            $pdo->prepare("UPDATE guddi_plannings SET theme = ?, presentateur = ?, lien = ?, livre = ?, mode = ?, actif = 1, updated_at = NOW() WHERE id = ?")
-                                ->execute([$theme !== '' ? $theme : null, $presentateur !== '' ? $presentateur : null, $lien !== '' ? $lien : null, $livre !== '' ? $livre : null, $mode, $id]);
+                            $pdo->prepare("UPDATE guddi_plannings SET theme = ?, presentateur = ?, lien = ?, livre = ?, mode = ?, heure = ?, heure_fin = ?, details_html = ?, actif = 1, updated_at = NOW() WHERE id = ?")
+                                ->execute([$theme !== '' ? $theme : null, $presentateur !== '' ? $presentateur : null, $lien !== '' ? $lien : null, $livre !== '' ? $livre : null, $mode, $heureSeance !== '' ? $heureSeance : null, $heureFinSeance !== '' ? $heureFinSeance : null, $detailsHtml !== '' ? $detailsHtml : null, $id]);
                         }
                         $success = "Séance du Guddi Àjjuma enregistrée." . ($pdfPath !== null ? " PDF joint." : "");
                     }
@@ -345,8 +350,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = "Publiez d'abord ce Guddi Àjjuma sur l'accueil membre avant d'envoyer l'annonce par e-mail.";
                 } else {
                     $date = $row['date_guddi'];
-                    $heure = dahira_param($pdo, 'guddi_heure', '20h00');
-                    $heureFin = dahira_param($pdo, 'guddi_heure_fin', '21h30');
+                    // Heures propres à la séance si renseignées, sinon valeurs par défaut
+                    $heure = trim((string)($row['heure'] ?? '')) !== '' ? trim((string)$row['heure']) : dahira_param($pdo, 'guddi_heure', '20h00');
+                    $heureFin = trim((string)($row['heure_fin'] ?? '')) !== '' ? trim((string)$row['heure_fin']) : dahira_param($pdo, 'guddi_heure_fin', '21h30');
                     $lienEff = dahira_param($pdo, 'guddi_lien_defaut', ''); // lien Zoom toujours celui des paramètres
                     $lieuGuddi = dahira_param($pdo, 'guddi_lieu_defaut', '');
                     $lieuEff = $lieuGuddi !== '' ? $lieuGuddi : dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
@@ -369,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         } else {
                             $sujet = '💎 Guddi Àjjuma — ' . guddi_date_longue($date);
                             $pdfUrl = !empty($row['pdf_path']) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($row['pdf_path']) : '';
-                            $corps = guddi_email($date, $heure, (string)($row['theme'] ?? ''), (string)($row['presentateur'] ?? ''), $lienEff, (string)($row['livre'] ?? ''), $pdfUrl, $modeEff, $lieuEff, $heureFin);
+                            $corps = guddi_email($date, $heure, (string)($row['theme'] ?? ''), (string)($row['presentateur'] ?? ''), $lienEff, (string)($row['livre'] ?? ''), $pdfUrl, $modeEff, $lieuEff, $heureFin, (string)($row['details_html'] ?? ''));
                         }
                         $sent = 0;
                         foreach ($destinataires as $m) {
@@ -804,8 +810,14 @@ if ($commissionId > 0) {
                         $prochainActif = ((int)($prochain['actif'] ?? 1)) === 1;
                         $prochainMode = (string)($prochain['mode'] ?? '');
                         if ($prochainMode === '') { $prochainMode = $modeDefaut; }
+                        // Heures propres à ce Guddi si renseignées, sinon valeurs par défaut
+                        $heureSeance = trim((string)($prochain['heure'] ?? ''));
+                        $heureFinSeance = trim((string)($prochain['heure_fin'] ?? ''));
+                        $heureEff = $heureSeance !== '' ? $heureSeance : $heure;
+                        $heureFinEff = $heureFinSeance !== '' ? $heureFinSeance : $heureFin;
+                        $detailsHtmlSeance = (string)($prochain['details_html'] ?? '');
                         $waMsg = $prochainActif
-                            ? guddi_message($pdate, $heure, $theme, $presentateur, $lienAffiche, (string)($prochain['livre'] ?? ''), !empty($prochain['pdf_path']) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($prochain['pdf_path']) : '', $prochainMode, $lieuDahira, dahira_base_url() . '/guddi_detail.php?id=' . (int)$prochain['id'], $heureFin)
+                            ? guddi_message($pdate, $heureEff, $theme, $presentateur, $lienAffiche, (string)($prochain['livre'] ?? ''), !empty($prochain['pdf_path']) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($prochain['pdf_path']) : '', $prochainMode, $lieuDahira, dahira_base_url() . '/guddi_detail.php?id=' . (int)$prochain['id'], $heureFinEff, $detailsHtmlSeance)
                             : guddi_message_annulation($pdate);
                         $waAnnul = guddi_message_annulation($pdate);
                     ?>
@@ -820,7 +832,7 @@ if ($commissionId > 0) {
                                     <?php echo ucfirst(guddi_jour_fr($pdate)) . ' ' . date('d/m/Y', strtotime($pdate)); ?>
                                 </div>
                                 <div style="font-size:0.95rem; color:var(--white); margin-top:0.3rem;">
-                                    🕐 <?php echo trim($heureFin) !== '' ? 'de <strong>' . htmlspecialchars($heure) . '</strong> à <strong>' . htmlspecialchars($heureFin) . '</strong>' : 'à partir de <strong>' . htmlspecialchars($heure) . '</strong>'; ?> — <?php echo $prochainMode === 'presentiel' ? '🏛️ en présentiel (<span style="white-space:pre-line;">' . htmlspecialchars($lieuDahira) . '</span>) + 💻 à distance' : '💻 participation à distance'; ?>
+                                    🕐 <?php echo trim($heureFinEff) !== '' ? 'de <strong>' . htmlspecialchars($heureEff) . '</strong> à <strong>' . htmlspecialchars($heureFinEff) . '</strong>' : 'à partir de <strong>' . htmlspecialchars($heureEff) . '</strong>'; ?> — <?php echo $prochainMode === 'presentiel' ? '🏛️ en présentiel (<span style="white-space:pre-line;">' . htmlspecialchars($lieuDahira) . '</span>) + 💻 à distance' : '💻 participation à distance'; ?>
                                 </div>
                                 <?php if ($theme !== ''): ?><div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem;">🎯 Thème : <?php echo htmlspecialchars($theme); ?></div><?php endif; ?>
                                 <?php if ($presentateur !== ''): ?><div style="font-size:0.85rem; color:var(--text-muted);">🎤 Présentateur : <?php echo htmlspecialchars($presentateur); ?></div><?php endif; ?>
@@ -874,6 +886,22 @@ if ($commissionId > 0) {
                             <input type="hidden" name="action" value="save_seance">
                             <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
                             <?php $prochainMode = (string)($prochain['mode'] ?? ''); if ($prochainMode === '') { $prochainMode = $modeDefaut; } ?>
+                            <div class="pl-params" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); margin-bottom:0.7rem;">
+                                <div class="form-group" style="margin:0;">
+                                    <label class="form-label">🕐 Heure de début</label>
+                                    <select name="heure_seance" class="form-input" style="width:100%;">
+                                        <option value="">Par défaut (<?php echo htmlspecialchars($heure); ?>)</option>
+                                        <?php echo guddi_options_heures($heureSeance); ?>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label class="form-label">🕐 Heure de fin</label>
+                                    <select name="heure_fin_seance" class="form-input" style="width:100%;">
+                                        <option value="">Par défaut (<?php echo htmlspecialchars($heureFin); ?>)</option>
+                                        <?php echo guddi_options_heures($heureFinSeance); ?>
+                                    </select>
+                                </div>
+                            </div>
                             <div class="form-group" style="margin-bottom:0.7rem;">
                                 <label class="guddi-presentiel-toggle" id="guddi-mode-toggle" for="guddi-mode" style="width:100%; box-sizing:border-box;">
                                     <input type="checkbox" name="mode" value="presentiel" id="guddi-mode" <?php echo $prochainMode === 'presentiel' ? 'checked' : ''; ?>>
@@ -897,6 +925,11 @@ if ($commissionId > 0) {
                                 <input type="text" name="presentateur_libre" id="guddi-presentateur-libre" class="form-input" placeholder="Nom du présentateur (saisie libre)" value="<?php echo $presentateur !== '' && !in_array($presentateur, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? htmlspecialchars($presentateur) : ''; ?>" style="width:100%; margin-top:0.45rem; <?php echo $presentateur !== '' && !in_array($presentateur, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? '' : 'display:none;'; ?>">
                             </div>
                             <div class="form-group" style="margin-bottom:0.7rem;"><label class="form-label">📖 Livre à étudier (facultatif)</label><input type="text" name="livre" class="form-input" value="<?php echo htmlspecialchars((string)($prochain['livre'] ?? '')); ?>" placeholder="Ex : Tafsir, Khassaïd, Fiqh…" style="width:100%;"></div>
+                            <div class="form-group" style="margin-bottom:0.7rem;">
+                                <label class="form-label">📝 Détails complémentaires (facultatif)</label>
+                                <textarea name="details_html" id="guddi-details-html" class="form-input" rows="5" placeholder="Ex : Récitation du Coran, conférence, précisions pratiques…" style="width:100%;"><?php echo htmlspecialchars((string)($prochain['details_html'] ?? '')); ?></textarea>
+                                <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Texte libre ajouté au message d'annonce et à la page détail. Les retours à la ligne sont conservés.</p>
+                            </div>
                             <div class="form-group" style="margin-bottom:0.7rem;">
                                 <?php if (!empty($prochain['pdf_path'])): ?>
                                     <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:0.4rem;">
@@ -950,8 +983,17 @@ if ($commissionId > 0) {
                         <?php echo csrf_field(); ?>
                         <input type="hidden" name="action" value="save_params">
                         <div class="pl-params pl-params-stack">
-                            <div class="form-group"><label class="form-label">🕐 Heure de début</label><input type="text" name="heure" class="form-input" value="<?php echo htmlspecialchars($heure); ?>" placeholder="20h00"></div>
-                            <div class="form-group"><label class="form-label">🕐 Heure de fin</label><input type="text" name="heure_fin" class="form-input" value="<?php echo htmlspecialchars($heureFin); ?>" placeholder="21h30"></div>
+                            <div class="form-group"><label class="form-label">🕐 Heure de début</label>
+                                <select name="heure" class="form-input" style="width:100%;">
+                                    <?php echo guddi_options_heures($heure); ?>
+                                </select>
+                            </div>
+                            <div class="form-group"><label class="form-label">🕐 Heure de fin</label>
+                                <select name="heure_fin" class="form-input" style="width:100%;">
+                                    <option value="">— Aucune —</option>
+                                    <?php echo guddi_options_heures($heureFin); ?>
+                                </select>
+                            </div>
                             <div class="form-group"><label class="form-label">🎯 Thème par défaut</label><input type="text" name="theme_defaut" class="form-input" value="<?php echo htmlspecialchars($themeDefaut); ?>"></div>
                             <div class="form-group">
                                 <label class="form-label">🎤 Présentateur par défaut (membre de la commission Culte)</label>

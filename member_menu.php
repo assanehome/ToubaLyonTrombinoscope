@@ -7,7 +7,7 @@
  * À inclure comme 1er enfant de <div class="dashboard-layout"> sur les dashboards membre.
  */
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 require_once __DIR__ . '/member_menu_data.php';
 
@@ -27,3 +27,19 @@ $__activeLabel = troba_member_menu_active_label($__memberMenu, $__cur);
         <?php endforeach; ?>
     </nav>
 </aside>
+<script>
+    // La molette doit défiler la LISTE du menu, pas la page, tant qu'il reste
+    // du contenu à faire défiler dans le menu (chaînage naturel une fois en bout de liste).
+    (function () {
+        var nav = document.getElementById('adminMenuLinks');
+        if (!nav) { return; }
+        nav.addEventListener('wheel', function (e) {
+            if (nav.scrollHeight <= nav.clientHeight) { return; } // rien à défiler ici
+            var atTop = nav.scrollTop <= 0;
+            var atBottom = nav.scrollTop + nav.clientHeight >= nav.scrollHeight - 1;
+            if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) { return; }
+            nav.scrollTop += e.deltaY;
+            e.preventDefault();
+        }, { passive: false });
+    })();
+</script>

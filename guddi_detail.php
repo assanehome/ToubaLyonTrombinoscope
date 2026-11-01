@@ -12,7 +12,7 @@ require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_param, wa_link, 
 require_once __DIR__ . '/planning_guddi_helper.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 $__guAdmin = !empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
@@ -57,8 +57,9 @@ if (!$seance) {
     exit;
 }
 
-// Données partagées
-$heure = dahira_param($pdo, 'guddi_heure', '20h00');
+// Données partagées — heures propres à la séance si renseignées, sinon valeurs par défaut
+$heure = trim((string)($seance['heure'] ?? '')) !== '' ? trim((string)$seance['heure']) : dahira_param($pdo, 'guddi_heure', '20h00');
+$heureFin = trim((string)($seance['heure_fin'] ?? '')) !== '' ? trim((string)$seance['heure_fin']) : dahira_param($pdo, 'guddi_heure_fin', '');
 $lieuDefaut = dahira_param($pdo, 'guddi_lieu_defaut', '');
 $lieuDahira = $lieuDefaut !== '' ? $lieuDefaut : dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
 $modeDefaut = dahira_param($pdo, 'guddi_mode_defaut', 'distance');
@@ -221,7 +222,7 @@ if ($membreId > 0) {
                     <div class="gd-hero gd-anim gd-anim-1">
                         <div class="gd-date">
                             <?php echo ucfirst(guddi_jour_fr($date)) . ' ' . date('d/m/Y', strtotime($date)); ?>
-                            <small>🕐 à partir de <?php echo htmlspecialchars($heure); ?></small>
+                            <small>🕐 <?php echo trim($heureFin) !== '' ? 'de ' . htmlspecialchars($heure) . ' à ' . htmlspecialchars($heureFin) : 'à partir de ' . htmlspecialchars($heure); ?></small>
                         </div>
                         <div class="gd-badges">
                             <?php $etat = dahira_event_etat($date, $heure); ?>
@@ -319,6 +320,15 @@ if ($membreId > 0) {
                             </div>
                         </div>
                     </div>
+
+                    <?php // Détails complémentaires (texte simple) saisis pour la séance ?>
+                    <?php $detailsSafe = guddi_details_texte((string)($seance['details_html'] ?? '')); ?>
+                    <?php if ($detailsSafe !== ''): ?>
+                    <div class="glass-card gd-anim gd-anim-4" style="margin-bottom:1.4rem;">
+                        <h3 style="color:var(--white); margin:0 0 0.7rem;">📝 Détails</h3>
+                        <div style="color:var(--white); font-size:0.95rem; line-height:1.6; word-break:break-word;"><?php echo $detailsSafe; ?></div>
+                    </div>
+                    <?php endif; ?>
 
                     <?php // L'enregistrement de la séance, déposé à la clôture ?>
                     <?php $audioPath = trim((string)($seance['audio_path'] ?? '')); ?>

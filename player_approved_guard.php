@@ -7,7 +7,7 @@
  * Un membre en attente (ou refusé) est redirigé vers profile.php.
  */
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 if (!empty($_SESSION['player_id'])) {
     try {

@@ -478,13 +478,19 @@ function push_to_user(PDO $pdo, int $membre_id, string $titre, string $texte, ?s
         return 0;
     }
 
+    // Nombre de notifications non lues : le service worker l'affiche en pastille sur l'icône
+    // de l'application installée (iOS 16.4+ et Android)
+    $compteur = function_exists('troba_notifications_unread_count') ? troba_notifications_unread_count($pdo, $membre_id) : null;
+
     $envoyes = 0;
     foreach ($abonnements as $ab) {
-        $code = push_send($ab, [
+        $message = [
             'titre' => $titre,
             'texte' => $texte,
             'lien'  => $lien ?: 'index.php',
-        ]);
+        ];
+        if ($compteur !== null) { $message['compteur'] = $compteur; }
+        $code = push_send($ab, $message);
 
         if ($code === 404 || $code === 410) {
             push_delete_subscription($pdo, (string)$ab['endpoint']);

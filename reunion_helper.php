@@ -202,20 +202,79 @@ function reunion_check_debut(PDO $pdo): void
 function reunion_message_partage(array $r, string $commissionNom, string $lien): string
 {
     $date = (string) ($r['date_reunion'] ?? '');
-    $dateFr = $date !== '' ? date('d/m/Y', strtotime($date)) : '';
     $heure = (string) ($r['heure'] ?? '');
     $heureFin = trim((string) ($r['heure_fin'] ?? ''));
     $mode = (string) ($r['mode'] ?? 'distance');
     $lieu = trim((string) ($r['lieu'] ?? ''));
-    $msg = "As-salaamu haleykum,\n\n📌 *" . (string) ($r['titre'] ?? 'Réunion') . "*";
-    if ($commissionNom !== '') { $msg .= "\n📋 Commission " . $commissionNom; }
-    if ($dateFr !== '') { $msg .= "\n🗓️ " . $dateFr . ($heure !== '' ? ($heureFin !== '' ? " de " . $heure . " à " . $heureFin : " à " . $heure) : ''); }
-    $msg .= "\n" . ($mode === 'presentiel' ? ('🏛️ En présentiel' . ($lieu !== '' ? " : " . $lieu : '')) : '💻 À distance (visioconférence)');
-    if (trim((string) ($r['description'] ?? '')) !== '') { $msg .= "\n\n📝 " . trim((string) $r['description']); }
-    if (trim($lien) !== '') { $msg .= "\n\n👉 Détails : " . trim($lien); }
+    $joursFr = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    $dateTxt = '';
+    if ($date !== '' && strtotime($date) !== false) {
+        $dateTxt = ucfirst($joursFr[(int) date('w', strtotime($date))]) . ' ' . date('d/m/Y', strtotime($date));
+    }
+
+    $msg = "As-salaamu haleykum,\n\n";
+    $msg .= "📢 *Nouvelle réunion" . ($commissionNom !== '' ? " de la commission " . $commissionNom : '') . "*\n";
+    $msg .= "\n📌 *" . (string) ($r['titre'] ?? 'Réunion') . "*";
+    if ($dateTxt !== '') {
+        $msg .= "\n🗓️ " . $dateTxt;
+    }
+    if ($heure !== '') {
+        $msg .= "\n🕐 " . ($heureFin !== '' ? "De " . $heure . " à " . $heureFin : "À " . $heure);
+    }
+    if ($mode === 'presentiel') {
+        $msg .= "\n🏛️ En présentiel" . ($lieu !== '' ? "\n📍 " . $lieu : '');
+    } else {
+        $msg .= "\n💻 À distance (visioconférence)";
+    }
+    if (trim((string) ($r['description'] ?? '')) !== '') {
+        $msg .= "\n\n📝 *Ordre du jour :*\n" . trim((string) $r['description']);
+    }
+    if (trim($lien) !== '') {
+        $msg .= "\n\n👉 Détails et présence : " . trim($lien);
+    }
+    $msg .= "\n\nVotre présence est importante. Jërëjëf !";
     return $msg;
 }
 
+/**
+ * Message WhatsApp du COMPTE RENDU d'une réunion clôturée : détails de la
+ * réunion, texte du compte rendu et lien vers la page de la réunion.
+ */
+function reunion_message_compte_rendu(array $r, string $commissionNom, string $lien): string
+{
+    $t = str_replace(['</p>', '<br>', '<br/>', '<br />', '</h3>', '</h4>', '</h5>', '</li>', '</blockquote>'], "\n", (string) ($r['compte_rendu'] ?? ''));
+    $t = preg_replace('/<li[^>]*>/i', '• ', $t);
+    $t = html_entity_decode(strip_tags($t), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $t = trim((string) preg_replace("/\n{3,}/", "\n\n", (string) preg_replace("/[ \t]+\n/", "\n", $t)));
+    if (mb_strlen($t) > 1500) { $t = mb_substr($t, 0, 1500) . '…'; }
+    $date = (string) ($r['date_reunion'] ?? '');
+    $msg = "📝 COMPTE RENDU — " . (string) ($r['titre'] ?? 'Réunion') . "\n"
+        . ($commissionNom !== '' ? "📋 " . $commissionNom : '')
+        . ($date !== '' ? " · 🗓️ " . date('d/m/Y', strtotime($date)) : '') . "\n\n"
+        . ($t !== '' ? $t . "\n\n" : '')
+        . (trim($lien) !== '' ? "📄 Détails et compte rendu complet :\n" . trim($lien) . "\n\n" : '')
+        . "Secrétariat, Touba Lyon";
+    return $msg;
+}
+
+/**
+ * Message WhatsApp d'un SONDAGE de date et d'horaire : options proposées et lien de vote.
+ * $options : lignes reunion_sondage_options (date_option, heure, heure_fin).
+ */
+function reunion_message_sondage(array $r, string $commissionNom, array $options, string $lien): string
+{
+    $emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣'];
+    $msg = "As-salaamu haleykum,\n\n📊 *SONDAGE — date de réunion*\n📌 *" . (string) ($r['titre'] ?? 'Réunion') . "*";
+    if ($commissionNom !== '') { $msg .= "\n📋 Commission " . $commissionNom; }
+    $msg .= "\n\nMerci de voter pour les dates qui vous conviennent :\n";
+    foreach (array_values($options) as $i => $o) {
+        $hf = trim((string) ($o['heure_fin'] ?? ''));
+        $msg .= "\n" . ($emojis[$i] ?? '▫️') . " " . date('d/m/Y', strtotime((string) $o['date_option'])) . " · " . (string) $o['heure'] . ($hf !== '' ? " – " . $hf : '');
+    }
+    if (trim((string) ($r['description'] ?? '')) !== '') { $msg .= "\n\n📝 " . trim((string) $r['description']); }
+    $msg .= "\n\n👉 Voter : " . trim($lien) . "\n\nJërëjëf.";
+    return $msg;
+}
 /** Message WhatsApp d'annulation d'une réunion. */
 function reunion_message_annulation(array $r, string $commissionNom): string
 {

@@ -26,6 +26,48 @@ function guddi_date_longue(string $date): string
     return guddi_jour_fr($date) . ' ' . date('d/m/Y', strtotime($date));
 }
 
+/**
+ * Options d'un sélecteur d'heure au pas de 30 minutes (« 00h00 » … « 23h30 »).
+ * $selected est mis en surbrillance s'il correspond à l'une des options ;
+ * s'il n'y correspond pas (ancienne valeur libre), il est ajouté en tête pour
+ * ne jamais être perdu.
+ */
+function guddi_options_heures(string $selected = ''): string
+{
+    $selected = trim($selected);
+    $options = [];
+    for ($h = 0; $h < 24; $h++) {
+        foreach ([0, 30] as $m) {
+            $options[] = sprintf('%02dh%02d', $h, $m);
+        }
+    }
+    $html = '';
+    // Valeur existante hors grille (ex. « 20h15 ») : on la conserve en tête.
+    if ($selected !== '' && !in_array($selected, $options, true)) {
+        $html .= '<option value="' . htmlspecialchars($selected, ENT_QUOTES) . '" selected>'
+            . htmlspecialchars($selected) . '</option>';
+    }
+    foreach ($options as $opt) {
+        $sel = ($opt === $selected) ? ' selected' : '';
+        $html .= '<option value="' . $opt . '"' . $sel . '>' . $opt . '</option>';
+    }
+    return $html;
+}
+
+/**
+ * Rend les détails complémentaires (texte simple saisi par l'administrateur)
+ * pour un affichage HTML sûr : le texte est échappé et les retours à la ligne
+ * deviennent des <br>. Aucune balise saisie n'est interprétée.
+ */
+function guddi_details_texte(string $texte): string
+{
+    $texte = trim($texte);
+    if ($texte === '') {
+        return '';
+    }
+    return nl2br(htmlspecialchars($texte, ENT_QUOTES, 'UTF-8'));
+}
+
 /** Tous les jeudis entre deux dates. */
 function guddi_jeudis(string $from, string $to): array
 {
@@ -63,7 +105,7 @@ function guddi_jeudis(string $from, string $to): array
  *    Commission Culte,
  *    Touba Lyon »
  */
-function guddi_message(string $date, string $heure, string $theme, string $presentateur, string $lien, string $livre = '', string $pdfUrl = '', string $mode = 'distance', string $lieu = '', string $pageLien = '', string $heureFin = ''): string
+function guddi_message(string $date, string $heure, string $theme, string $presentateur, string $lien, string $livre = '', string $pdfUrl = '', string $mode = 'distance', string $lieu = '', string $pageLien = '', string $heureFin = '', string $details = ''): string
 {
     $msg = "💎 GUDDI ÀJJUMA 💎\n\n"
         . "Àssalaamu hanlaykum,\n\n"
@@ -99,6 +141,12 @@ function guddi_message(string $date, string $heure, string $theme, string $prese
         }
     }
 
+    // Détails complémentaires saisis pour la séance (texte simple).
+    $detailsTxt = trim($details);
+    if ($detailsTxt !== '') {
+        $msg .= "\n\nℹ️ Infos complémentaires :\n" . $detailsTxt;
+    }
+
     if (trim($pageLien) !== '') {
         $msg .= "\n\n👉 Détails et présence :\n" . trim($pageLien);
     }
@@ -113,7 +161,7 @@ function guddi_message(string $date, string $heure, string $theme, string $prese
 /**
  * Corps HTML d'un e-mail annonçant un Guddi Àjjuma.
  */
-function guddi_email(string $date, string $heure, string $theme, string $presentateur, string $lien, string $livre = '', string $pdfUrl = '', string $mode = 'distance', string $lieu = '', string $heureFin = ''): string
+function guddi_email(string $date, string $heure, string $theme, string $presentateur, string $lien, string $livre = '', string $pdfUrl = '', string $mode = 'distance', string $lieu = '', string $heureFin = '', string $detailsHtml = ''): string
 {
     $date_fr = date('d/m/Y', strtotime($date));
     $jour = guddi_jour_fr($date);
@@ -152,6 +200,12 @@ function guddi_email(string $date, string $heure, string $theme, string $present
     }
     if (trim($pdfUrl) !== '') {
         $inner .= '<p style="color:#333;"><strong>🔗 Lien du livre :</strong><br><a href="' . htmlspecialchars(trim($pdfUrl)) . '" style="color:#1b4332;font-weight:700;">' . htmlspecialchars(trim($pdfUrl)) . '</a></p>';
+    }
+    // Détails complémentaires (texte simple) saisis pour la séance.
+    $detailsSafe = guddi_details_texte($detailsHtml);
+    if ($detailsSafe !== '') {
+        $inner .= '<div style="margin:18px 0;padding:14px 16px;background:#f6f3e8;border:1px solid #e6e6e6;border-radius:12px;color:#333;line-height:1.5;">'
+            . $detailsSafe . '</div>';
     }
     $inner .= '<p style="color:#333;margin-top:18px;">Sëriñ Muntaxaa MBÀKKE yàlla na fi yàgg Lool te wér.<br>'
         . 'Yàlla na Sunu Boroom defar ligéey bi bamu dëppoo ak niko Sëriñ bi bëggee te mu nangul nuko ci bàrkeb xasida yi. 🤲</p>'

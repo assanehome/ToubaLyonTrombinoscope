@@ -7,7 +7,7 @@ require_once __DIR__ . '/admin_redirect.php';
 require_once __DIR__ . '/kourel_access.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 // Redirect to index if already logged in as a member
@@ -82,6 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connexion Membre - Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
+    <script src="password-toggle.js" defer></script>
 </head>
 <body>
 

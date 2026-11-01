@@ -21,6 +21,9 @@ if ($sid > 0) {
     try { $st = $pdo->prepare("SELECT * FROM quran_sessions WHERE id = ?"); $st->execute([$sid]); $session = $st->fetch(); } catch (Exception $e) { $session = null; }
 }
 if (!$session) { header('Location: wird_admin.php'); exit; }
+// Gestionnaire d'un Kamil : accès limité aux sessions qui lui sont confiées
+if (!wird_can_manage_session($session, $__isCulteManager, $__kamilKeys)) { header('Location: wird_admin.php'); exit; }
+$kamilKey = wird_session_key($session);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate()) {
@@ -28,7 +31,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $action = $_POST['action'] ?? '';
         try {
-            if ($action === 'free_part') {
+            if ($action === 'set_kamil_managers') {
+                if (!$__isCulteManager) {
+                    $error = "Action réservée aux responsables de la commission Culte.";
+                } else {
+                    // Gestionnaires du Kamil : membres de la commission Culte uniquement
+                    $eligibles = array_map('intval', $pdo->query("SELECT DISTINCT cm.membre_id FROM commission_membres cm JOIN commissions c ON c.id = cm.commission_id WHERE LOWER(c.nom) LIKE '%culte%'")->fetchAll(PDO::FETCH_COLUMN));
+                    $demandes = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['membre_ids'] ?? [])), function ($v) use ($eligibles) { return $v > 0 && in_array($v, $eligibles, true); })));
+                    $bq = $pdo->prepare("SELECT membre_id FROM quran_session_gestionnaires WHERE session_key = ?");
+                    $bq->execute([$kamilKey]);
+                    $avant = array_map('intval', $bq->fetchAll(PDO::FETCH_COLUMN));
+                    $pdo->beginTransaction();
+                    $pdo->prepare("DELETE FROM quran_session_gestionnaires WHERE session_key = ?")->execute([$kamilKey]);
+                    $insG = $pdo->prepare("INSERT IGNORE INTO quran_session_gestionnaires (session_key, membre_id, granted_by) VALUES (?, ?, ?)");
+                    foreach ($demandes as $gm) { $insG->execute([$kamilKey, $gm, $__wirdMemberId > 0 ? $__wirdMemberId : null]); }
+                    $pdo->commit();
+                    foreach (array_diff($demandes, $avant) as $gm) {
+                        troba_notify_membre($pdo, (int) $gm, 'kamil_gestionnaire', "📖 Gestion d'un Kamil", 'Vous gérez maintenant le Kamil « ' . (string) $session['titre'] . ' » : suivi des lectures et rappels.', 'wird_suivi.php?s=' . (int) $sid);
+                    }
+                    $success = "Gestionnaires du Kamil mis à jour.";
+                }
+            } elseif ($action === 'free_part') {
                 $pid = (int) ($_POST['part_id'] ?? 0);
                 if ($pid > 0) {
                     $pdo->prepare("UPDATE quran_parts SET statut='libre', membre_id=NULL, membre_nom=NULL, owner_token=NULL, reserved_at=NULL, validated_at=NULL WHERE id=? AND session_id=?")->execute([$pid, $sid]);
@@ -40,15 +63,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $q->execute([$sid]);
                 $cible = $q->fetchAll();
                 $sent = 0;
+                $lienRappel = rtrim(dahira_base_url(), '/') . '/wird.php?s=' . $sid . '&t=' . $session['token'];
                 foreach ($cible as $t) {
                     $inner = '<h1 style="margin:0 0 18px;font-size:20px;color:#1b4332;">Rappel — lecture du Coran</h1>'
                         . '<p style="margin:0 0 14px;">Assalamu aleykum <strong>' . htmlspecialchars($t['prenom'] . ' ' . $t['nom']) . '</strong>,</p>'
                         . '<p style="margin:0 0 14px;">Vous avez réservé la <strong>partie ' . (int)$t['numero'] . ' (Juz ' . (int)$t['numero'] . ')</strong> de la lecture « ' . htmlspecialchars($session['titre']) . ' ». '
                         . 'Merci de la lire et de <strong>valider votre lecture</strong> dès que possible, afin de compléter le Khatm.</p>'
-                        . '<p style="margin:0;">Jërëjëf pour votre engagement !</p>';
+                        . '<p style="margin:0 0 14px;"><a href="' . htmlspecialchars($lienRappel) . '" style="color:#1b4332;font-weight:700;">👉 Accéder à la lecture</a></p>'
+                        . '<p style="margin:0;">Jërëjëf pour votre engagement !</p>'
+                        . '<p style="margin:18px 0 0;color:#888;font-size:12px;">— Commission Culte, Touba Lyon</p>';
                     if (@send_smtp_mail($t['email'], $t['prenom'] . ' ' . $t['nom'], 'Rappel — lecture du Coran', dahira_email_wrap($inner, 'Lecture du Coran'))) { $sent++; }
                 }
                 $success = $sent . " rappel(s) e-mail envoyé(s).";
+            } elseif ($action === 'remind_one') {
+                // Rappel e-mail à un seul membre ayant réservé une partie
+                $pid = (int) ($_POST['part_id'] ?? 0);
+                $q = $pdo->prepare("SELECT p.numero, m.prenom, m.nom, m.email FROM quran_parts p JOIN membres m ON m.id = p.membre_id WHERE p.id = ? AND p.session_id = ? AND p.statut = 'reservee'");
+                $q->execute([$pid, $sid]);
+                $t = $q->fetch();
+                if (!$t || empty($t['email'])) {
+                    $error = "Ce membre n'a pas d'adresse e-mail enregistrée.";
+                } else {
+                    $lienRappel = rtrim(dahira_base_url(), '/') . '/wird.php?s=' . $sid . '&t=' . $session['token'];
+                    $inner = '<h1 style="margin:0 0 18px;font-size:20px;color:#1b4332;">Rappel — lecture du Coran</h1>'
+                        . '<p style="margin:0 0 14px;">Assalamu aleykum <strong>' . htmlspecialchars($t['prenom'] . ' ' . $t['nom']) . '</strong>,</p>'
+                        . '<p style="margin:0 0 14px;">Vous avez réservé la <strong>partie ' . (int)$t['numero'] . ' (Juz ' . (int)$t['numero'] . ')</strong> de la lecture « ' . htmlspecialchars($session['titre']) . ' ». '
+                        . 'Merci de la lire et de <strong>valider votre lecture</strong> dès que possible, afin de compléter le Khatm.</p>'
+                        . '<p style="margin:0 0 14px;"><a href="' . htmlspecialchars($lienRappel) . '" style="color:#1b4332;font-weight:700;">👉 Accéder à la lecture</a></p>'
+                        . '<p style="margin:0;">Jërëjëf pour votre engagement !</p>'
+                        . '<p style="margin:18px 0 0;color:#888;font-size:12px;">— Commission Culte, Touba Lyon</p>';
+                    if (@send_smtp_mail($t['email'], $t['prenom'] . ' ' . $t['nom'], 'Rappel — lecture du Coran', dahira_email_wrap($inner, 'Lecture du Coran'))) {
+                        $success = "Rappel e-mail envoyé à " . $t['prenom'] . ' ' . $t['nom'] . ".";
+                    } else {
+                        $error = "L'envoi de l'e-mail a échoué.";
+                    }
+                }
             } elseif ($action === 'set_launch' || $action === 'close_period') {
                 // Contrôle des périodes de la série : lancer / annuler le lancement / clôturer
                 $tid = (int) ($_POST['target_id'] ?? 0);
@@ -193,26 +242,43 @@ try { $waGroup = (string) $pdo->query("SELECT valeur FROM app_settings WHERE cle
 $sessLink = $baseUrl . '/wird.php?s=' . (int) $sid . '&t=' . $session['token'];
 $pendingList = [];
 $doneList = [];
+$libreNumeros = [];
 foreach ($parts as $p) {
     if ($p['statut'] === 'reservee') { $pendingList[] = '• Juz ' . (int) $p['numero'] . ' : ' . ($p['membre_nom'] ?? '?'); }
     elseif ($p['statut'] === 'lue') { $doneList[] = '✅ Juz ' . (int) $p['numero'] . ' : ' . ($p['membre_nom'] ?? '?'); }
+    elseif ($p['statut'] === 'libre') { $libreNumeros[] = (int) $p['numero']; }
+}
+// Échéance de la lecture en cours : date de fin de la période (périodique) ou
+// date de clôture (ponctuelle) — rappelée dans le message de relance.
+$waEcheance = '';
+if (!empty($session['date_fin'])) {
+    $waEcheance = "⏳ *À valider avant le " . date('d/m/Y', strtotime((string)$session['date_fin']))
+        . ($curPeriodic ? "* (fin de la période en cours).\n\n" : "*.\n\n");
 }
 $waReminderMsg = "📖 " . $session['titre'] . "\n🕌 Avancement : " . $nbLues . "/30 lues · " . $nbRes . " réservées · " . $nbLibres . " libres (" . $pct . "%)\n\n"
+    . $waEcheance
     . (!empty($doneList) ? "*Déjà lus :*\n" . implode("\n", $doneList) . "\n\n" : "")
     . (!empty($pendingList) ? "*À lire et valider :*\n" . implode("\n", $pendingList) . "\n\n" : "")
-    . "👉 Lien : " . $sessLink;
+    . (!empty($libreNumeros) ? "🆓 *Juz encore libres (" . count($libreNumeros) . ")* : " . implode(', ', $libreNumeros) . "\n\n" : "")
+    . "👉 Lien : " . $sessLink . "\n\n"
+    . "Qu'Allah accepte nos lectures et nos invocations. 🤲\n"
+    . "Commission Culte,\nTouba Lyon";
 
 // ── Actions complètes (comme wird_admin) : message d'invitation + période suivante ──
 $invPer = wird_period_label($pdo, $session);
+// Session ponctuelle avec date de clôture (échéance de validation)
+$invCloture = (($session['periodicite'] ?? 'ponctuelle') === 'ponctuelle' && !empty($session['date_fin']))
+    ? "⏳ *À valider avant le " . date('d/m/Y', strtotime((string)$session['date_fin'])) . "*.\n"
+    : '';
 $shareMsg = "Assalamu aleykum 🙏\n\n"
     . "📖 *Lecture collective du Coran (Khatm)*\n"
     . "« " . $session['titre'] . " »\n"
     . (!empty($session['description']) ? ($session['description'] . "\n") : "")
     . ($invPer !== '' ? ('🗓️ ' . $invPer . "\n") : "")
-    . "\nChaque personne choisit un ou plusieurs Juz, le(s) lit, puis *valide sa lecture* pour compléter le Khatm ensemble.\n\n"
-    . "👉 Choisissez votre Juz ici :\n" . $sessLink . "\n\n"
+    . $invCloture
+    . "\n👉 Choisissez votre Juz ici :\n" . $sessLink . "\n\n"
     . "Qu'Allah accepte nos lectures et nos invocations. 🤲\n"
-    . "— Dahira Touba Lyon (Mubawwa-A-Sidqin)";
+    . "Commission Culte,\nTouba Lyon";
 // Période suivante de la série (si périodique)
 $nextPerId = null;
 if (($session['periodicite'] ?? 'ponctuelle') !== 'ponctuelle') {
@@ -383,7 +449,7 @@ function wsuivi_badge($s)
                 <div class="ws-prog"><i style="width:<?php echo $pct; ?>%;"></i></div>
                 <div class="ws-remind" style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.85rem;">
                     <?php if ($curLance && $nbRes > 0): ?>
-                    <form action="wird_suivi.php" method="POST" style="margin:0;">
+                    <form action="wird_suivi.php" method="POST" style="margin:0;" data-confirm="Envoyer un rappel par e-mail à tous les membres ayant réservé un Juz sans l'avoir validé ?">
                         <?php echo csrf_field(); ?>
                         <input type="hidden" name="action" value="remind_all">
                         <input type="hidden" name="session_id" value="<?php echo $sid; ?>">
@@ -391,7 +457,7 @@ function wsuivi_badge($s)
                     </form>
                     <?php endif; ?>
                     <?php if ($curLance): ?>
-                    <a href="https://wa.me/?text=<?php echo rawurlencode($waReminderMsg); ?>" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 Rappel WhatsApp</a>
+                    <a data-confirm="Ouvrir WhatsApp pour envoyer le rappel ?" href="https://wa.me/?text=<?php echo rawurlencode($waReminderMsg); ?>" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 Rappel WhatsApp</a>
                     <?php endif; ?>
                     <?php if ($curLance && $nbRes > 0): ?>
                     <form action="wird_admin.php" method="POST" style="margin:0;" data-confirm="Envoyer une notification (cloche + e-mail) aux membres ayant des Juz réservés non validés ?">
@@ -408,10 +474,23 @@ function wsuivi_badge($s)
             </div>
 
             <div class="glass-card" style="border-radius:16px; padding:1.25rem 1.5rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.8rem;">
+                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; flex:1 1 auto;">
+                        <input type="text" id="ws-search" placeholder="🔍 Rechercher un membre…" style="flex:1 1 200px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:50px; padding:0.5rem 1rem; font-size:0.9rem;">
+                        <select id="ws-filtre" style="flex:0 1 200px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:10px; padding:0.5rem 0.8rem; font-size:0.9rem; color-scheme:dark;">
+                            <option value="all">Tous les statuts</option>
+                            <option value="libre">⚪ Libre</option>
+                            <option value="reservee">🟡 Réservé</option>
+                            <option value="lue">✅ Lu</option>
+                        </select>
+                    </div>
+                    <span id="ws-count" style="color:var(--text-muted); font-size:0.82rem;"></span>
+                </div>
                 <div class="ws-list">
                     <?php foreach ($parts as $p): ?>
                         <?php $wa = !empty($p['m_tel']) ? wa_number($p['m_tel']) : ''; ?>
-                        <div class="ws-row">
+                        <?php $wsNomNorm = mb_strtolower(trim((string)($p['membre_nom'] ?? ''))); ?>
+                        <div class="ws-row" data-statut="<?php echo htmlspecialchars((string)$p['statut']); ?>" data-search="<?php echo htmlspecialchars($wsNomNorm, ENT_QUOTES); ?>">
                             <div class="ws-row-juz">Juz <?php echo (int)$p['numero']; ?></div>
                             <div class="ws-row-part">
                                 <?php if (!empty($p['membre_nom'])): ?>
@@ -441,7 +520,16 @@ function wsuivi_badge($s)
                             <?php if ($p['statut'] !== 'libre'): ?>
                             <div class="ws-row-act">
                                 <?php if ($p['statut'] === 'reservee' && $wa !== ''): ?>
-                                    <a href="https://wa.me/<?php echo $wa; ?>?text=<?php echo rawurlencode('Assalamu aleykum, rappel pour la lecture du Juz ' . (int)$p['numero'] . ' (' . $session['titre'] . '). Merci de valider ta lecture.'); ?>" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 WhatsApp</a>
+                                    <a data-confirm="Ouvrir WhatsApp pour rappeler le Juz <?php echo (int)$p['numero']; ?> ?" href="https://wa.me/<?php echo $wa; ?>?text=<?php echo rawurlencode("Assalamu aleykum,\n\n📖 Rappel pour la lecture du Juz " . (int)$p['numero'] . "\n(" . $session['titre'] . ").\nMerci de valider ta lecture.\n\n👉 Lien : " . $sessLink . "\n\nCommission Culte,\nTouba Lyon"); ?>" target="_blank" rel="noopener" class="btn btn-sm" style="background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700;">🟢 WhatsApp</a>
+                                <?php endif; ?>
+                                <?php if ($p['statut'] === 'reservee' && !empty($p['m_email'])): ?>
+                                    <form action="wird_suivi.php" method="POST" style="margin:0;" data-confirm="Envoyer un rappel par e-mail pour le Juz <?php echo (int)$p['numero']; ?> ?">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="remind_one">
+                                        <input type="hidden" name="session_id" value="<?php echo $sid; ?>">
+                                        <input type="hidden" name="part_id" value="<?php echo (int)$p['id']; ?>">
+                                        <button type="submit" class="btn btn-secondary btn-sm">✉️ Rappel</button>
+                                    </form>
                                 <?php endif; ?>
                                 <form action="wird_suivi.php" method="POST" style="margin:0;" data-confirm="Libérer cette partie ?">
                                     <?php echo csrf_field(); ?>
@@ -553,14 +641,51 @@ function wsuivi_badge($s)
                         </form>
                     <?php endif; ?>
                 <?php endif; ?>
+                <?php if ($__isCulteManager): ?>
                 <form action="wird_admin.php" method="POST" style="margin:0;" data-confirm="Supprimer définitivement cette session et tout son suivi ? Cette action est irréversible.">
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="action" value="delete_session">
                     <input type="hidden" name="session_id" value="<?php echo $sid; ?>">
                     <button type="submit" class="btn btn-danger btn-sm">🗑️ Supprimer</button>
                 </form>
+                <?php endif; ?>
             </div>
         </div>
+
+        <?php if ($__isCulteManager):
+            // Membres de la commission Culte proposables comme gestionnaires du Kamil
+            $culteMembres = [];
+            $kamilGest = [];
+            try {
+                $culteMembres = $pdo->query("SELECT DISTINCT m.id, m.prenom, m.nom FROM commission_membres cm JOIN commissions c ON c.id = cm.commission_id JOIN membres m ON m.id = cm.membre_id WHERE LOWER(c.nom) LIKE '%culte%' AND m.status = 'approved' ORDER BY m.prenom, m.nom")->fetchAll();
+                $qg = $pdo->prepare("SELECT membre_id FROM quran_session_gestionnaires WHERE session_key = ?");
+                $qg->execute([$kamilKey]);
+                $kamilGest = array_map('intval', $qg->fetchAll(PDO::FETCH_COLUMN));
+            } catch (Exception $e) {}
+        ?>
+        <div class="glass-card" style="border-radius:16px; padding:1rem 1.25rem; margin-top:1.25rem;">
+            <h3 class="gold-text" style="font-size:1rem; margin:0 0 0.4rem;">👥 Gestionnaires de ce Kamil</h3>
+            <p style="color:var(--text-muted); font-size:0.82rem; margin:0 0 0.75rem;">Les membres cochés (commission Culte) peuvent suivre ce Kamil, envoyer les rappels et gérer les parties<?php echo !empty($session['serie_id']) ? ' — pour toute la série périodique' : ''; ?>.</p>
+            <?php if (empty($culteMembres)): ?>
+                <p style="color:var(--text-muted); font-size:0.85rem; margin:0;">Aucun membre dans la commission Culte pour le moment.</p>
+            <?php else: ?>
+            <form action="wird_suivi.php" method="POST" style="margin:0;">
+                <?php echo csrf_field(); ?>
+                <input type="hidden" name="action" value="set_kamil_managers">
+                <input type="hidden" name="session_id" value="<?php echo $sid; ?>">
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:0.4rem; margin-bottom:0.85rem;">
+                    <?php foreach ($culteMembres as $cmb): ?>
+                    <label style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.4rem 0.7rem; cursor:pointer;">
+                        <input type="checkbox" name="membre_ids[]" value="<?php echo (int) $cmb['id']; ?>"<?php echo in_array((int) $cmb['id'], $kamilGest, true) ? ' checked' : ''; ?>>
+                        <?php echo htmlspecialchars(trim($cmb['prenom'] . ' ' . $cmb['nom'])); ?>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer les gestionnaires</button>
+            </form>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
 
             </div>
         </div>
@@ -596,6 +721,34 @@ function wsuivi_badge($s)
             try { navigator.clipboard.writeText(msg); } catch (e) {}
             window.location.href = link;
         }
+    </script>
+    <script>
+        // Filtre + recherche sur la liste des 30 Juz de la session affichée
+        (function () {
+            var search = document.getElementById('ws-search');
+            var filtre = document.getElementById('ws-filtre');
+            var rows = Array.prototype.slice.call(document.querySelectorAll('.ws-row'));
+            var countEl = document.getElementById('ws-count');
+            if (!rows.length) { return; }
+            function norm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }
+            function apply() {
+                var term = norm(search ? search.value : '');
+                var statut = filtre ? filtre.value : 'all';
+                var n = 0;
+                rows.forEach(function (r) {
+                    var rs = r.getAttribute('data-statut');
+                    var okStatut = (statut === 'all') || (rs === statut);
+                    var okTerm = !term || norm(r.getAttribute('data-search')).indexOf(term) !== -1;
+                    var show = okStatut && okTerm;
+                    r.style.display = show ? '' : 'none';
+                    if (show) { n++; }
+                });
+                if (countEl) { countEl.textContent = n + ' Juz'; }
+            }
+            if (search) { search.addEventListener('input', apply); }
+            if (filtre) { filtre.addEventListener('change', apply); }
+            apply();
+        })();
     </script>
 </body>
 </html>

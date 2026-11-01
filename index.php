@@ -7,7 +7,7 @@ require_once __DIR__ . '/admin_redirect.php';
 require_once __DIR__ . '/csrf.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 // Redirect to login if not authenticated as a member (player)
@@ -158,7 +158,8 @@ $prochainGuddi = null;
 $guddiHeure = '20h00';
 $guddiPresenceFaite = false;
 try {
-    $stG = $pdo->query("SELECT * FROM guddi_plannings WHERE publie = 1 AND actif = 1 AND COALESCE(cloture,0) = 0 ORDER BY (date_guddi >= CURDATE()) DESC, ABS(DATEDIFF(date_guddi, CURDATE())) ASC LIMIT 1");
+    // On inclut les séances annulées (actif = 0) pour pouvoir afficher l'annulation aux membres.
+    $stG = $pdo->query("SELECT * FROM guddi_plannings WHERE publie = 1 AND COALESCE(cloture,0) = 0 ORDER BY (date_guddi >= CURDATE()) DESC, ABS(DATEDIFF(date_guddi, CURDATE())) ASC LIMIT 1");
     $prochainGuddi = $stG->fetch();
     $guddiHeure = dahira_param($pdo, 'guddi_heure', '20h00');
     if ($prochainGuddi && isset($_SESSION['player_id'])) {
@@ -179,6 +180,11 @@ try {
     $prochainDahira = $stD->fetch();
     $dahiraHeure = dahira_param($pdo, 'dahira_debut', '17h00');
     $dahiraFin = dahira_param($pdo, 'dahira_fin', '20h30');
+    // Horaires spécifiques au prochain Dahira s'ils sont définis
+    if ($prochainDahira) {
+        if (trim((string)($prochainDahira['heure_debut'] ?? '')) !== '') { $dahiraHeure = trim((string)$prochainDahira['heure_debut']); }
+        if (trim((string)($prochainDahira['heure_fin'] ?? '')) !== '') { $dahiraFin = trim((string)$prochainDahira['heure_fin']); }
+    }
     $dahiraLieu = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
     if ($prochainDahira && isset($_SESSION['player_id'])) {
         $stP = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'dahira' AND planning_id = ? AND membre_id = ?");
@@ -196,12 +202,13 @@ if (isset($_SESSION['player_id'])) {
         $rqR = $pdo->prepare(
             "SELECT r.*, c.nom AS commission_nom
              FROM commission_reunions r
-             JOIN commission_membres cm ON cm.commission_id = r.commission_id
              LEFT JOIN commissions c ON c.id = r.commission_id
-             WHERE cm.membre_id = ? AND r.publie = 1 AND r.cloture = 0 AND COALESCE(r.annule,0) = 0
+             WHERE r.commission_id IN (SELECT commission_id FROM commission_membres WHERE membre_id = ?
+                                       UNION SELECT commission_id FROM commission_gestionnaires WHERE membre_id = ?)
+               AND r.publie = 1 AND r.cloture = 0 AND COALESCE(r.annule,0) = 0
              ORDER BY (r.date_reunion >= CURDATE()) DESC, r.date_reunion ASC, r.id ASC"
         );
-        $rqR->execute([(int) $_SESSION['player_id']]);
+        $rqR->execute([(int) $_SESSION['player_id'], (int) $_SESSION['player_id']]);
         $mesReunions = $rqR->fetchAll();
     } catch (Exception $e) {
         $mesReunions = [];
@@ -291,6 +298,37 @@ try {
     reunion_check_debut($pdo);
     repetition_check_debut($pdo);
 } catch (Throwable $e) { /* best-effort */ }
+
+// Cotisation : notification mensuelle (une fois par mois) + alerte pour le membre
+$cotisationAlerte = false;
+$cotisationMerciVirement = false;
+$cotisationMontantAff = 0.0;
+$cotisationMoisAff = '';
+$cotisationRetard = 0;
+$cotisationRetardMois = [];
+try {
+    require_once __DIR__ . '/cotisation_helper.php';
+    cotisation_check_mois($pdo);
+    if (isset($_SESSION['player_id'])) {
+        $mid = (int) $_SESSION['player_id'];
+        $per = cotisation_periode_courante();
+        $modeCot = cotisation_mode($pdo, $mid);
+        // Mode effectif pour le mois courant : un virement pas encore entré en
+        // vigueur (mois courant <= référence de bascule) se comporte comme mensuel.
+        $modeCotEff = ($modeCot === 'virement' && !cotisation_virement_couvre($pdo, $mid, $per)) ? 'mensuel' : $modeCot;
+        $cotisationMoisAff = cotisation_libelle_mois($per);
+        // Mois écoulés non réglés (retard) + liste des mois concernés
+        $cotisationRetardMois = cotisation_mois_retard($pdo, $mid);
+        $cotisationRetard = count($cotisationRetardMois);
+        if ($modeCotEff === 'mensuel' && !cotisation_est_paye($pdo, $mid, $per)) {
+            $cotisationAlerte = true;
+            $cotisationMontantAff = cotisation_montant_periode($pdo, $per);
+        } elseif ($modeCotEff === 'virement' && (int) date('j') <= 15) {
+            // Remerciement aux membres en virement automatique, jusqu'au 15 du mois
+            $cotisationMerciVirement = true;
+        }
+    }
+} catch (Throwable $e) { $cotisationAlerte = false; }
 
 // Liste des notifications du membre (affichée sur le tableau de bord)
 $dashNotifs = [];
@@ -404,7 +442,19 @@ try {
         @media (max-width: 480px) {
             .renc-card { text-align: center; }
             .renc-card .btn { width: 100%; }
+            .renc-card > div:first-child { justify-content: center; }
         }
+        /* ── Badges d'état d'une rencontre (en cours / annulé) ── */
+        .renc-badge { font-size: 0.68rem; font-weight: 700; padding: 0.18rem 0.5rem; border-radius: 50px; white-space: nowrap; line-height: 1.2; }
+        .renc-badge-live { background: rgba(37,211,102,0.15); color: #7bd8a6; border: 1px solid rgba(37,211,102,0.45); }
+        .renc-badge-annule { background: rgba(191,33,33,0.15); color: #fca5a5; border: 1px solid rgba(191,33,33,0.45); }
+        /* Carte « en cours » : liseré vert pulsant */
+        .renc-card-live { border-color: rgba(37,211,102,0.55); box-shadow: 0 0 0 1px rgba(37,211,102,0.25) inset; }
+        .renc-badge-live { animation: rencLivePulse 1.8s ease-in-out infinite; }
+        @keyframes rencLivePulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+        /* Carte annulée : grisée, liseré rouge */
+        .renc-card-annule { border-color: rgba(191,33,33,0.5); opacity: 0.9; }
+        @media (prefers-reduced-motion: reduce) { .renc-badge-live { animation: none !important; } }
         /* ── Liste des notifications sur le tableau de bord ── */
         .dash-notif-wrap { position: relative; overflow: hidden; margin-bottom: 1.5rem; padding: 1.4rem 1.5rem; }
         .dash-notif-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
@@ -563,6 +613,91 @@ try {
         </a>
         <?php endif; ?>
 
+        <!-- Informations de paiement (regroupées, repliées par défaut, animées) -->
+        <?php
+            $paieRetard = !empty($cotisationRetard);
+            $paieAlerte = !empty($cotisationAlerte);
+            $paieVirement = !empty($cotisationMerciVirement);
+            if ($paieRetard || $paieAlerte || $paieVirement):
+        ?>
+        <style>
+            .paie-group > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:0.6rem; user-select:none; }
+            .paie-group > summary::-webkit-details-marker { display:none; }
+            .paie-chip { font-size:0.72rem; font-weight:700; padding:0.2rem 0.6rem; border-radius:50px; white-space:nowrap; }
+            .paie-chip-retard { animation:paieChipPulse 1.8s ease-in-out infinite; }
+            @keyframes paieChipPulse { 0%,100%{opacity:1;} 50%{opacity:0.55;} }
+            .paie-chevron { transition:transform 0.25s ease; display:inline-block; }
+            .paie-group[open] > summary .paie-chevron { transform:rotate(90deg); }
+            @keyframes paieIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+            .paie-group[open] .paie-inner > * { animation:paieIn 0.42s cubic-bezier(0.22,1,0.36,1) both; }
+            .paie-group[open] .paie-inner > *:nth-child(2){ animation-delay:0.07s; }
+            .paie-group[open] .paie-inner > *:nth-child(3){ animation-delay:0.14s; }
+            @media (prefers-reduced-motion: reduce){ .paie-group[open] .paie-inner > *, .paie-chip-retard { animation:none !important; } }
+        </style>
+        <details class="glass-card paie-group" style="margin-bottom:1.25rem; padding:1rem 1.2rem;">
+            <summary>
+                <span style="font-size:1.25rem;">💶</span>
+                <span style="color:#fff; font-weight:800; font-size:1rem;">Ma cotisation</span>
+                <span style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">
+                    <?php if ($paieRetard): ?>
+                        <span class="paie-chip paie-chip-retard" style="background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.5);">🔴 <?php echo (int) $cotisationRetard; ?> mois en retard</span>
+                    <?php elseif ($paieAlerte): ?>
+                        <span class="paie-chip" style="background:rgba(99,91,255,0.18); color:#c4b5fd; border:1px solid rgba(99,91,255,0.5);">💳 À régler</span>
+                    <?php elseif ($paieVirement): ?>
+                        <span class="paie-chip" style="background:rgba(37,211,102,0.15); color:#7bd8a6; border:1px solid rgba(37,211,102,0.4);">✅ Virement automatique</span>
+                    <?php endif; ?>
+                    <span class="paie-chevron" style="color:var(--text-muted);">▸</span>
+                </span>
+            </summary>
+            <div class="paie-inner" style="margin-top:0.9rem; display:flex; flex-direction:column; gap:0.9rem;">
+                <?php if ($paieRetard): ?>
+                <a href="cotisation.php" class="glass-card" style="display:block; text-decoration:none; padding:1.1rem 1.35rem; border-radius:16px; border:1px solid rgba(191,33,33,0.55); background:linear-gradient(160deg, rgba(191,33,33,0.16), rgba(255,255,255,0.03));">
+                    <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                        <div style="font-size:1.7rem;">🔴</div>
+                        <div style="flex:1; min-width:180px;">
+                            <div style="color:#fff; font-weight:800; font-size:1rem;"><?php echo (int) $cotisationRetard; ?> mois de cotisation en retard</div>
+                            <?php if (!empty($cotisationRetardMois)): ?>
+                            <div style="display:flex; flex-wrap:wrap; gap:0.3rem; margin-top:0.4rem;">
+                                <?php foreach ($cotisationRetardMois as $mr): ?>
+                                    <span style="font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:50px; background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">🔴 <?php echo htmlspecialchars(cotisation_libelle_mois($mr)); ?></span>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
+                            <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.4rem;">Merci de régulariser votre situation. 🤲</div>
+                        </div>
+                        <span class="btn btn-sm" style="white-space:nowrap; background:linear-gradient(135deg,#c62828,#e04343); border-color:transparent; color:#fff;">💳 Régulariser →</span>
+                    </div>
+                </a>
+                <?php endif; ?>
+
+                <?php if ($paieAlerte): ?>
+                <a href="cotisation.php" class="glass-card" style="display:block; text-decoration:none; padding:1.1rem 1.35rem; border-radius:16px; border:1px solid rgba(99,91,255,0.5); background:linear-gradient(160deg, rgba(99,91,255,0.15), rgba(255,255,255,0.03));">
+                    <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                        <div style="font-size:1.7rem;">💶</div>
+                        <div style="flex:1; min-width:180px;">
+                            <div style="color:#fff; font-weight:800; font-size:1rem;">Cotisation de <?php echo htmlspecialchars($cotisationMoisAff); ?> à régler</div>
+                            <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.15rem;">Votre cotisation du mois (<strong style="color:#c4b5fd;"><?php echo number_format((float) $cotisationMontantAff, 2, ',', ' '); ?> €</strong>) n'est pas encore réglée.</div>
+                        </div>
+                        <span class="btn btn-primary btn-sm" style="white-space:nowrap; background:linear-gradient(135deg,#635bff,#8b5cf6); border-color:transparent;">💳 Cotiser →</span>
+                    </div>
+                </a>
+                <?php endif; ?>
+
+                <?php if ($paieVirement): ?>
+                <div class="glass-card" style="padding:1.1rem 1.35rem; border-radius:16px; border:1px solid rgba(37,211,102,0.45); background:linear-gradient(160deg, rgba(37,211,102,0.14), rgba(255,255,255,0.03));">
+                    <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                        <div style="font-size:1.7rem;">🎉</div>
+                        <div style="flex:1; min-width:180px;">
+                            <div style="color:#fff; font-weight:800; font-size:1rem;">Félicitations et merci ! 🙏</div>
+                            <div style="color:var(--text-muted); font-size:0.86rem; margin-top:0.15rem;">Votre cotisation de <?php echo htmlspecialchars($cotisationMoisAff); ?> est assurée par <strong style="color:#7bd8a6;">virement automatique</strong>. Jërëjëf pour votre engagement et votre régularité. 🤲</div>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+        </details>
+        <?php endif; ?>
+
         <!-- Actualités publiées (Secrétariat Général) -->
         <?php if (!empty($actualitesPubliees)): ?>
         <style>
@@ -667,15 +802,31 @@ try {
         <?php if (!empty($prochainDahira) || !empty($prochainGuddi)): ?>
         <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
             <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🕌 Prochaines rencontres — validez votre présence</div>
+            <?php
+                // Ordre par date : la plus lointaine d'abord, la date la plus ancienne (proche) en dernier
+                $dOrd = 0; $gOrd = 1;
+                if (!empty($prochainDahira) && !empty($prochainGuddi)) {
+                    // Celui dont la date est la plus grande (la plus lointaine) passe en premier
+                    if ((string) $prochainGuddi['date_guddi'] > (string) $prochainDahira['date_dahira']) {
+                        $gOrd = 0; $dOrd = 1; // Guddi plus lointain → en premier
+                    } else {
+                        $dOrd = 0; $gOrd = 1; // Dahira plus lointain (ou égal) → en premier
+                    }
+                }
+            ?>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
 
                 <?php if (!empty($prochainDahira)): ?>
                 <?php
                     $dDate = $prochainDahira['date_dahira'];
                     $dPassed = dahira_presence_ouverte($dDate, $dahiraHeure);
+                    $dEtat = dahira_event_etat($dDate, $dahiraHeure, $dahiraFin !== '' ? $dahiraFin : null);
                 ?>
-                <div class="renc-card">
-                    <div style="font-weight:800; color:#fff;">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></div>
+                <div class="renc-card<?php echo $dEtat === 'encours' ? ' renc-card-live' : ''; ?>" style="order:<?php echo (int) $dOrd; ?>;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <span style="font-weight:800; color:#fff;">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></span>
+                        <?php if ($dEtat === 'encours'): ?><span class="renc-badge renc-badge-live">🔴 En cours</span><?php endif; ?>
+                    </div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem; white-space:pre-line;">🕐 <?php echo htmlspecialchars($dahiraHeure); ?> à <?php echo htmlspecialchars($dahiraFin); ?><br>📍 <?php echo htmlspecialchars($dahiraLieu); ?></div>
                     <div style="margin-top:0.6rem;"><a href="dahira_detail.php?id=<?php echo (int)$prochainDahira['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
                     <?php if (isset($_SESSION['player_id'])): ?>
@@ -696,23 +847,37 @@ try {
                 <?php if (!empty($prochainGuddi)): ?>
                 <?php
                     $gDate = $prochainGuddi['date_guddi'];
-                    $gPassed = dahira_presence_ouverte($gDate, $guddiHeure);
                     $gMode = (string)($prochainGuddi['mode'] ?? '');
                     if ($gMode === '') { $gMode = dahira_param($pdo, 'guddi_mode_defaut', 'distance'); }
+                    // Heures propres à la séance si renseignées, sinon valeurs par défaut
+                    $gHeure = trim((string)($prochainGuddi['heure'] ?? '')) !== '' ? trim((string)$prochainGuddi['heure']) : $guddiHeure;
+                    $gHeureFin = trim((string)($prochainGuddi['heure_fin'] ?? '')) !== '' ? trim((string)$prochainGuddi['heure_fin']) : dahira_param($pdo, 'guddi_heure_fin', '');
+                    $gActif = ((int)($prochainGuddi['actif'] ?? 1)) === 1;
+                    $gEtat = dahira_event_etat($gDate, $gHeure, $gHeureFin !== '' ? $gHeureFin : null);
+                    $gPassed = dahira_presence_ouverte($gDate, $gHeure);
                 ?>
-                <div class="renc-card">
-                    <div style="font-weight:800; color:#fff;">💎 Guddi Àjjuma — <?php echo ucfirst(guddi_jour_fr($gDate)) . ' ' . date('d/m/Y', strtotime($gDate)); ?></div>
-                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🕐 à partir de <?php echo htmlspecialchars($guddiHeure); ?> · <?php echo $gMode === 'presentiel' ? '🏛️ présentiel' : '💻 à distance'; ?></div>
+                <div class="renc-card<?php echo !$gActif ? ' renc-card-annule' : ($gEtat === 'encours' ? ' renc-card-live' : ''); ?>" style="order:<?php echo (int) $gOrd; ?>;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <span style="font-weight:800; color:#fff;">💎 Guddi Àjjuma — <?php echo ucfirst(guddi_jour_fr($gDate)) . ' ' . date('d/m/Y', strtotime($gDate)); ?></span>
+                        <?php if (!$gActif): ?>
+                            <span class="renc-badge renc-badge-annule">‼️ Annulé</span>
+                        <?php elseif ($gEtat === 'encours'): ?>
+                            <span class="renc-badge renc-badge-live">🔴 En cours</span>
+                        <?php endif; ?>
+                    </div>
+                    <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem;">🕐 <?php echo $gHeureFin !== '' ? 'de ' . htmlspecialchars($gHeure) . ' à ' . htmlspecialchars($gHeureFin) : 'à partir de ' . htmlspecialchars($gHeure); ?> · <?php echo $gMode === 'presentiel' ? '🏛️ présentiel' : '💻 à distance'; ?></div>
                     <?php if (!empty($prochainGuddi['theme'])): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.2rem;">🎯 <?php echo htmlspecialchars((string)$prochainGuddi['theme']); ?></div><?php endif; ?>
                     <div style="margin-top:0.6rem;"><a href="guddi_detail.php?id=<?php echo (int)$prochainGuddi['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
-                    <?php if (isset($_SESSION['player_id'])): ?>
+                    <?php if (!$gActif): ?>
+                        <div style="margin-top:0.8rem; color:#fca5a5; font-weight:700;">‼️ Ce Guddi Àjjuma est annulé.</div>
+                    <?php elseif (isset($_SESSION['player_id'])): ?>
                         <?php if ($gPassed && $guddiPresenceFaite): ?>
                             <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Diadieuf</div>
                             <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">↩️ Annuler ma présence</button>
                         <?php elseif ($gPassed): ?>
                             <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
-                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Validation possible à partir de <?php echo htmlspecialchars($guddiHeure); ?> le <?php echo date('d/m/Y', strtotime($gDate)); ?>.</div>
+                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Validation possible à partir de <?php echo htmlspecialchars($gHeure); ?> le <?php echo date('d/m/Y', strtotime($gDate)); ?>.</div>
                         <?php endif; ?>
                     <?php else: ?>
                         <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>

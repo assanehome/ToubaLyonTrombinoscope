@@ -37,8 +37,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $action = $_POST['action'] ?? '';
         $sid = (int) ($_POST['session_id'] ?? 0);
+        // Accès restreint (délégué / gestionnaire de Kamil) : seules la création de session
+        // et la gestion de ses propres Kamils sont permises.
+        $__denied = '';
+        if (!$__isCulteManager) {
+            if (in_array($action, ['save_wa_group', 'add_delegue', 'remove_delegue', 'set_kamil_managers', 'delete_session'], true)) {
+                $__denied = "Action réservée aux responsables de la commission Culte.";
+            } elseif ($action === 'create_session') {
+                if (!$__isCulteDelegate) { $__denied = "Vous n'avez pas le droit de créer une session."; }
+            } elseif ($sid > 0) {
+                try {
+                    $__q = $pdo->prepare("SELECT id, serie_id FROM quran_sessions WHERE id = ?");
+                    $__q->execute([$sid]);
+                    $__row = $__q->fetch();
+                    if (!$__row || !wird_can_manage_session($__row, false, $__kamilKeys)) { $__denied = "Ce Kamil ne vous est pas confié."; }
+                } catch (Exception $e) { $__denied = "Action non autorisée."; }
+            }
+        }
         try {
-            if ($action === 'add_groupe') {
+            if ($__denied !== '') {
+                $error = $__denied;
+            } elseif ($action === 'add_groupe') {
                 $gn = trim($_POST['groupe_nom'] ?? '');
                 if ($gn !== '') {
                     $pdo->prepare("INSERT IGNORE INTO quran_groupes (nom) VALUES (?)")->execute([$gn]);
@@ -60,13 +79,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($titre === '') {
                     $error = "Le titre de la session est obligatoire.";
                 } elseif ($periodicite === 'ponctuelle') {
-                    // Session unique (non datée) — en attente par défaut (non visible des membres)
+                    // Session unique — en attente par défaut (non visible des membres)
+                    // Date de clôture facultative (échéance de validation, réutilise la colonne date_fin)
+                    $dateClotureP = (string)($_POST['date_cloture'] ?? '');
+                    if (!DateTime::createFromFormat('Y-m-d', $dateClotureP)) { $dateClotureP = null; }
                     $token = bin2hex(random_bytes(12));
-                    $pdo->prepare("INSERT INTO quran_sessions (titre, description, groupe, token, periodicite, realloc_meme_membre, lance, un_juz_par_membre) VALUES (?, ?, ?, ?, 'ponctuelle', 0, 0, ?)")
-                        ->execute([$titre, $desc !== '' ? $desc : null, $groupe !== '' ? $groupe : null, $token, $unJuz]);
+                    $pdo->prepare("INSERT INTO quran_sessions (titre, description, groupe, token, periodicite, realloc_meme_membre, lance, un_juz_par_membre, date_fin) VALUES (?, ?, ?, ?, 'ponctuelle', 0, 0, ?, ?)")
+                        ->execute([$titre, $desc !== '' ? $desc : null, $groupe !== '' ? $groupe : null, $token, $unJuz, $dateClotureP]);
                     $newId = (int) $pdo->lastInsertId();
                     $ins = $pdo->prepare("INSERT INTO quran_parts (session_id, numero, statut) VALUES (?, ?, 'libre')");
                     for ($n = 1; $n <= 30; $n++) { $ins->execute([$newId, $n]); }
+                    // Un délégué devient automatiquement gestionnaire du Kamil qu'il crée
+                    if (!$__isCulteManager && $__wirdMemberId > 0) { $pdo->prepare("INSERT IGNORE INTO quran_session_gestionnaires (session_key, membre_id, granted_by) VALUES (?, ?, ?)")->execute([$newId, $__wirdMemberId, $__wirdMemberId]); }
                     $success = "Session « " . $titre . " » créée (30 parties) — en attente. Lancez-la depuis le suivi pour la rendre visible des membres.";
                 } else {
                     // Série périodique : générer le calendrier de la date de début à la date de fin
@@ -96,6 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $curStart = wird_next_start($curStart, $periodicite);
                     }
                     $pdo->commit();
+                    if (!$__isCulteManager && $__wirdMemberId > 0 && $serieId > 0) { $pdo->prepare("INSERT IGNORE INTO quran_session_gestionnaires (session_key, membre_id, granted_by) VALUES (?, ?, ?)")->execute([$serieId, $__wirdMemberId, $__wirdMemberId]); }
                     $success = "Série « " . $titre . " » créée — " . $nbPeriodes . " période(s) planifiées du " . date('d/m/Y', strtotime($dateDebut)) . " au " . date('d/m/Y', strtotime($dateFin)) . ". Toutes en attente : lancez la 1re période depuis le suivi pour la rendre visible des membres.";
                 }
             } elseif ($action === 'next_period' && $sid > 0) {
@@ -293,7 +318,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 . $periodHtml
                                 . '<p style="color:#333;">Pensez à valider votre lecture pour faire avancer le Khatm. 🤲</p>'
                                 . dahira_email_button($lienBase, 'Valider mes Juz')
-                                . '<p style="color:#888;font-size:12px;">— Dahira Touba Lyon (Mubawwa-A-Sidqin)</p>'
+                                . '<p style="color:#888;font-size:12px;">— Commission Culte, Touba Lyon</p>'
                                 . '</div>';
                             $okMail = send_smtp_mail($email, $destinataire, $sujet, $corpsHtml);
                             if ($okMail) { $nEnvoyes++; }
@@ -301,6 +326,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $success = count($byMembre) . ' membre(s) relancé(s) — ' . $nNotif . ' notification(s) cloche, ' . $nEnvoyes . ' e-mail(s) envoyé(s).';
                 }
+            } elseif ($action === 'add_delegue') {
+                $dm = (int) ($_POST['membre_id'] ?? 0);
+                $chk = $pdo->prepare("SELECT id, prenom, nom FROM membres WHERE id = ? AND status = 'approved'");
+                $chk->execute([$dm]);
+                $dmRow = $chk->fetch();
+                if (!$dmRow) {
+                    $error = "Choisissez un membre.";
+                } else {
+                    $ins = $pdo->prepare("INSERT IGNORE INTO culte_delegues (membre_id, granted_by) VALUES (?, ?)");
+                    $ins->execute([$dm, $__wirdMemberId > 0 ? $__wirdMemberId : null]);
+                    if ($ins->rowCount() > 0) {
+                        troba_notify_membre($pdo, $dm, 'culte_delegue', '📖 Création de sessions de lecture', "La commission Culte vous autorise à créer des sessions de lecture du Coran (Kamil). Retrouvez « Lecture Coran » dans votre mode gestion.", 'wird_admin.php');
+                    }
+                    $success = trim($dmRow['prenom'] . ' ' . $dmRow['nom']) . " peut maintenant créer des sessions de lecture.";
+                }
+            } elseif ($action === 'remove_delegue') {
+                $dm = (int) ($_POST['membre_id'] ?? 0);
+                $pdo->prepare("DELETE FROM culte_delegues WHERE membre_id = ?")->execute([$dm]);
+                $success = "Droit de création retiré.";
             } else {
                 $error = "Action non autorisée.";
             }
@@ -314,6 +358,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 try {
     $sessions = $pdo->query("SELECT * FROM quran_sessions ORDER BY (statut='en_cours') DESC, created_at DESC")->fetchAll();
+    // Délégué / gestionnaire de Kamil : uniquement les sessions qui lui sont confiées
+    if (!$__isCulteManager) {
+        $sessions = array_values(array_filter($sessions, function ($row) use ($__kamilKeys) { return wird_can_manage_session($row, false, $__kamilKeys); }));
+    }
     // Indicateurs par session : Juz lus, réservés, libres, et nombre de participants distincts
     $prog = [];
     $rows = $pdo->query("
@@ -336,6 +384,15 @@ $waGroup = '';
 try { $waGroup = (string) $pdo->query("SELECT valeur FROM app_settings WHERE cle='wa_group_link'")->fetchColumn(); } catch (Exception $e) { $waGroup = ''; }
 $groupes = [];
 try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $groupes = []; }
+// Responsables Culte : délégués autorisés à créer des sessions + membres proposables
+$delegues = [];
+$membresPick = [];
+if ($__isCulteManager) {
+    try {
+        $delegues = $pdo->query("SELECT m.id, m.prenom, m.nom FROM culte_delegues d JOIN membres m ON m.id = d.membre_id ORDER BY m.prenom, m.nom")->fetchAll();
+        $membresPick = $pdo->query("SELECT id, prenom, nom FROM membres WHERE status = 'approved' AND id NOT IN (SELECT membre_id FROM culte_delegues) ORDER BY prenom, nom")->fetchAll();
+    } catch (Exception $e) { $delegues = []; $membresPick = []; }
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -469,17 +526,19 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
                             . ($reallocMsg
                                 ? "👥 Les mêmes Juz sont réattribués aux mêmes personnes à chaque période.\n"
                                 : "🆕 Les Juz sont remis à zéro (choix libre) à chaque période.\n");
+                    } elseif (!empty($s['date_fin'])) {
+                        // Session ponctuelle avec date de clôture (échéance de validation)
+                        $periodTxt = "\n⏳ *À valider avant le " . date('d/m/Y', strtotime((string)$s['date_fin'])) . "*.\n";
                     }
                     $shareMsg = "Assalamu aleykum 🙏\n\n"
                         . "📖 *Lecture collective du Coran (Khatm)*\n"
                         . "« " . $s['titre'] . " »\n"
                         . (!empty($s['description']) ? ($s['description'] . "\n") : "")
                         . "\nNous lançons la lecture des *30 Juz* du Saint Coran. 🌙\n"
-                        . "Chaque personne choisit un ou plusieurs Juz, le(s) lit, puis *valide sa lecture* pour compléter le Khatm ensemble.\n"
                         . $periodTxt
                         . "\n👉 Choisissez votre Juz ici :\n" . $link . "\n\n"
                         . "Qu'Allah accepte nos lectures et nos invocations. 🤲\n"
-                        . "— Dahira Touba Lyon (Mubawwa-A-Sidqin)";
+                        . "Commission Culte,\nTouba Lyon";
                     $out = '<div class="glass-card wird-card">';
                     $out .= '<div class="wird-head">';
                     $out .= '<div>';
@@ -556,6 +615,7 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
             <?php endif; ?>
 
             <!-- ════ FORMULAIRE « Lancer une session » (au milieu) ════ -->
+            <?php if ($__isCulteManager || $__isCulteDelegate): ?>
             <div class="form-card" style="max-width:none; margin-top:1.5rem; padding:1.5rem; border:1px solid rgba(212,175,55,0.4);">
                 <h3 class="gold-text" style="font-size:1.15rem; font-weight:700; margin:0 0 1rem;">➕ Lancer une session de lecture (Khatm — 30 Juz)</h3>
                 <form action="wird_admin.php" method="POST">
@@ -577,11 +637,16 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
                     </div>
                     <div class="form-group"><label class="form-label">Périodicité</label>
                         <select name="periodicite" id="wird-periodicite" class="form-input" onchange="wirdTogglePeriod()">
-                            <option value="ponctuelle">Ponctuelle — une seule fois</option>
-                            <option value="semaine" selected>Périodique — chaque semaine</option>
+                            <option value="ponctuelle" selected>Ponctuelle — une seule fois</option>
+                            <option value="semaine">Périodique — chaque semaine</option>
                             <option value="quinzaine">Périodique — toutes les 2 semaines</option>
                             <option value="mois">Périodique — chaque mois</option>
                         </select>
+                    </div>
+                    <div class="form-group" id="wird-ponctuelle-group">
+                        <label class="form-label">🗓️ Date de clôture (facultatif)</label>
+                        <input type="date" name="date_cloture" class="form-input" min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;">
+                        <p style="color:var(--text-muted); font-size:0.78rem; margin:0.35rem 0 0;">Échéance affichée aux membres pour valider leur lecture. Laissez vide si sans limite.</p>
                     </div>
                     <div class="form-group" id="wird-realloc-group">
                         <label class="form-label">🗓️ Calendrier de la série</label>
@@ -614,6 +679,8 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
                 </div>
             </div>
 
+            <?php endif; ?>
+
             <!-- ════ SESSIONS CLÔTURÉES (bas de page, repliées par défaut) ════ -->
             <?php if (!empty($sessionsCloturees)): ?>
                 <div class="wird-section-head" style="margin-top:2rem;">
@@ -628,11 +695,40 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
                 </div>
             <?php endif; ?>
 
+            <?php if ($__isCulteManager): ?>
             <!-- Paramètres (repliable, fermé par défaut) -->
             <div style="margin-top:1.75rem;">
                 <button type="button" class="btn btn-secondary btn-sm" onclick="toggleWirdParams()">⚙️ Paramètres <span id="wp-caret">▾</span></button>
             </div>
             <div id="wird-params" style="display:none; margin-top:0.75rem;">
+                <div class="form-card" style="max-width:none; padding:1.1rem 1.5rem; margin-bottom:1rem;">
+                    <h3 class="gold-text" style="font-size:1rem; font-weight:700; margin:0 0 0.5rem;">👥 Membres autorisés à créer des sessions</h3>
+                    <p style="color:var(--text-muted); font-size:0.82rem; margin:0 0 0.75rem;">Ces membres peuvent créer leurs propres sessions de lecture (Kamil) et en suivre l'avancement. Ils ne voient pas les autres sessions.</p>
+                    <?php if (empty($delegues)): ?>
+                        <p style="color:var(--text-muted); font-size:0.85rem; margin:0 0 0.75rem;">Aucun membre désigné.</p>
+                    <?php else: ?>
+                        <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.85rem;">
+                        <?php foreach ($delegues as $dg): ?>
+                            <form action="wird_admin.php" method="POST" style="margin:0; display:flex; align-items:center; justify-content:space-between; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.4rem 0.75rem;" data-confirm="Retirer le droit de création de sessions à <?php echo htmlspecialchars(trim($dg['prenom'] . ' ' . $dg['nom']), ENT_QUOTES); ?> ?" data-confirm-danger="1">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="remove_delegue">
+                                <input type="hidden" name="membre_id" value="<?php echo (int) $dg['id']; ?>">
+                                <span><?php echo htmlspecialchars(trim($dg['prenom'] . ' ' . $dg['nom'])); ?></span>
+                                <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;">Retirer</button>
+                            </form>
+                        <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                    <form action="wird_admin.php" method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="action" value="add_delegue">
+                        <select name="membre_id" class="form-input" required style="flex:1; min-width:200px;">
+                            <option value="">— Choisir un membre —</option>
+                            <?php foreach ($membresPick as $mp): ?><option value="<?php echo (int) $mp['id']; ?>"><?php echo htmlspecialchars(trim($mp['prenom'] . ' ' . $mp['nom'])); ?></option><?php endforeach; ?>
+                        </select>
+                        <button type="submit" class="btn btn-secondary btn-sm">Autoriser</button>
+                    </form>
+                </div>
                 <div class="form-card" style="max-width:none; padding:1.1rem 1.5rem;">
                     <h3 class="gold-text" style="font-size:1rem; font-weight:700; margin:0 0 0.5rem;">🟢 Groupe WhatsApp par défaut (facultatif)</h3>
                     <p style="color:var(--text-muted); font-size:0.82rem; margin:0 0 0.75rem;">Collez le <strong>lien d'invitation</strong> du groupe (chat.whatsapp.com/…). Le bouton « Groupe » d'une session copiera le message et ouvrira le groupe pour le coller (WhatsApp ne permet pas l'envoi automatique dans un groupe).</p>
@@ -644,6 +740,7 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
                     </form>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
 
             </div>
@@ -673,6 +770,7 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
     </div>
 
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
+    <?php include __DIR__ . '/modern_popup.php'; ?>
     <script>
         var confirmTargetForm = '';
         function confirmWird(formId, title, message) {
@@ -730,8 +828,11 @@ try { $groupes = $pdo->query("SELECT nom FROM quran_groupes ORDER BY nom ASC")->
         function wirdTogglePeriod(){
             var sel = document.getElementById('wird-periodicite');
             var grp = document.getElementById('wird-realloc-group');
+            var grpP = document.getElementById('wird-ponctuelle-group');
             if (!sel || !grp) return;
-            grp.style.display = (sel.value === 'ponctuelle') ? 'none' : 'block';
+            var estPonctuelle = (sel.value === 'ponctuelle');
+            grp.style.display = estPonctuelle ? 'none' : 'block';
+            if (grpP) { grpP.style.display = estPonctuelle ? 'block' : 'none'; }
         }
         document.addEventListener('DOMContentLoaded', wirdTogglePeriod);
         function toggleWirdParams(){

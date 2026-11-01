@@ -56,6 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($nbMembres > 0) { $parts[] = $nbMembres . ' membre(s)'; }
                     $error = "Impossible de supprimer cette commission : elle contient encore " . implode(' et ', $parts) . ". Retirez-les d'abord dans « Espaces commissions ».";
                 } else {
+                    $pdo->prepare("DELETE FROM sous_commission_membres WHERE sous_commission_id IN (SELECT id FROM sous_commissions WHERE commission_id = ?)")->execute([$id]);
+                    $pdo->prepare("DELETE FROM sous_commissions WHERE commission_id = ?")->execute([$id]);
                     $pdo->prepare("DELETE FROM commissions WHERE id = ?")->execute([$id]);
                     $success = "Commission supprimée.";
                 }

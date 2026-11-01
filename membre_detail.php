@@ -13,7 +13,7 @@ require_once __DIR__ . '/dahira_emails.php';
 require_once __DIR__ . '/contact.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 // Accès membre validé (ou admin en lecture)

@@ -8,7 +8,7 @@
  *   if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_validate()) { ... refus ... }
  */
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 /** Renvoie le jeton CSRF de la session (le crée si absent). */

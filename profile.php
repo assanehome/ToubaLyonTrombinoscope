@@ -9,7 +9,7 @@ require_once __DIR__ . '/contact.php';
 require_once __DIR__ . '/dahira_emails.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 // Mode admin lecture seule : un administrateur peut consulter la fiche d'un membre via ?id=.
@@ -286,6 +286,7 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mon Profil - Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
+    <script src="password-toggle.js" defer></script>
     <style>
         .profile-container {
             max-width: 650px;

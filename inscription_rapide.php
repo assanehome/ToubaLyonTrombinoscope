@@ -127,6 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inscription rapide - Dahira - Mubawwa-A-Sidqin Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
+    <script src="password-toggle.js" defer></script>
 </head>
 <body>
 

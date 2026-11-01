@@ -4,7 +4,7 @@
  * Standardized colors & assets including logo and full navigation actions.
  */
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 $currentPage = basename($_SERVER['PHP_SELF']);
@@ -571,8 +571,17 @@ $trobaCsrf = csrf_token();
         n = parseInt(n, 10) || 0;
         badge.textContent = n > 99 ? '99+' : String(n);
         badge.hidden = (n === 0);
+        // Pastille sur l'icône de l'application installée (PWA : iOS 16.4+ et Android)
+        try {
+            if ('setAppBadge' in navigator) {
+                if (n > 0) { navigator.setAppBadge(n).catch(function () {}); }
+                else { navigator.clearAppBadge().catch(function () {}); }
+            }
+        } catch (e) { /* API non disponible */ }
     }
     window.trobaMajBadge = majBadge;
+    // Synchronise la pastille de l'icône avec le compteur affiché au chargement de la page
+    majBadge(<?php echo (int) $notifNonLues; ?>);
 
     function dateCourte(txt) {
         var d = new Date(String(txt).replace(' ', 'T'));

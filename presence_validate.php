@@ -11,7 +11,7 @@ require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_param(), dahira_
 header('Content-Type: application/json; charset=utf-8');
 
 // Membre connecté requis
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (session_status() === PHP_SESSION_NONE) { require_once __DIR__ . '/session_config.php'; session_start(); }
 if (empty($_SESSION['player_id'])) {
     http_response_code(401);
     echo json_encode(['ok' => false, 'msg' => 'Connectez-vous pour valider votre présence.']);

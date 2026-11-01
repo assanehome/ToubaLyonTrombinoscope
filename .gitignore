@@ -16,3 +16,6 @@ uploads/
 # Logs
 *.log
 error_log
+
+# Sessions PHP (créées sur le serveur)
+sessions/

@@ -11,7 +11,7 @@ require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/planning_dahira_helper.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    require_once __DIR__ . '/session_config.php'; session_start();
 }
 
 $__dhAdmin = !empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
@@ -60,6 +60,9 @@ if (!$dahira) {
 $lieu = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
 $debut = dahira_param($pdo, 'dahira_debut', '17h00');
 $fin = dahira_param($pdo, 'dahira_fin', '20h30');
+// Horaires spécifiques à ce Dahira s'ils sont définis
+if (trim((string)($dahira['heure_debut'] ?? '')) !== '') { $debut = trim((string)$dahira['heure_debut']); }
+if (trim((string)($dahira['heure_fin'] ?? '')) !== '') { $fin = trim((string)$dahira['heure_fin']); }
 $signature = dahira_param($pdo, 'dahira_signature', DAHIRA_SIGNATURE_DEFAUT);
 
 $date = $dahira['date_dahira'];
@@ -167,10 +170,16 @@ if ($membreId > 0) {
                 <div class="dh-wrap">
                     <!-- En-tête -->
                     <div class="dh-hero dh-anim dh-anim-1">
+                        <?php if (trim((string)($dahira['titre'] ?? '')) !== ''): ?>
+                            <div style="font-size:1.15rem; font-weight:800; color:var(--white); margin-bottom:0.3rem;">📌 <?php echo htmlspecialchars((string)$dahira['titre']); ?></div>
+                        <?php endif; ?>
                         <div class="dh-date">
                             <?php echo ucfirst(dahira_jour_fr($date)) . ' ' . date('d/m/Y', strtotime($date)); ?>
                             <small>🕐 de <?php echo htmlspecialchars($debut); ?> à <?php echo htmlspecialchars($fin); ?></small>
                         </div>
+                        <?php if (trim((string)($dahira['description'] ?? '')) !== ''): ?>
+                            <div style="color:var(--white); font-size:0.9rem; line-height:1.55; margin-top:0.6rem; white-space:pre-line;"><?php echo nl2br(htmlspecialchars((string)$dahira['description'])); ?></div>
+                        <?php endif; ?>
                         <div class="dh-badges">
                             <?php $etat = dahira_event_etat($date, $debut, $fin); ?>
                             <?php if ($cloture): ?>
@@ -235,14 +244,14 @@ if ($membreId > 0) {
                     <!-- Programme -->
                     <div class="glass-card dh-anim dh-anim-5" style="margin-bottom:1.4rem;">
                         <h3 style="color:var(--white); margin-bottom:0.8rem;">🗓️ Programme</h3>
-                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.85rem; color:var(--white); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:0.9rem;"><?php echo htmlspecialchars($programme); ?></pre>
+                        <div style="color:var(--white); font-size:0.9rem; line-height:1.55;"><?php echo dahira_sanitize_html($programme); ?></div>
                     </div>
                     <?php endif; ?>
 
                     <?php if (trim($signature) !== ''): ?>
                     <!-- Bas de page (signature du Dahira) — format identique au programme -->
                     <div class="glass-card dh-anim dh-anim-5" style="margin-bottom:1.4rem;">
-                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.85rem; color:var(--white); background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); border-radius:10px; padding:0.9rem;"><?php echo htmlspecialchars(trim($signature)); ?></pre>
+                        <pre style="white-space:pre-wrap; font-family:inherit; font-size:0.9rem; color:var(--white); margin:0;"><?php echo htmlspecialchars(trim($signature)); ?></pre>
                     </div>
                     <?php endif; ?>
 

@@ -12,7 +12,7 @@
  * de membres) : jamais de contenu périmé servi depuis le cache. Sans réseau,
  * une page de repli explique la situation.
  */
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = 'trombinoscope-statique-' + VERSION;
 const REPLI = 'hors-ligne.html';
 const STATIQUES = [
@@ -55,12 +55,13 @@ self.addEventListener('push', function (e) {
             donnees.titre = recu.titre || donnees.titre;
             donnees.texte = recu.texte || '';
             donnees.lien = recu.lien || donnees.lien;
+            if (typeof recu.compteur === 'number') { donnees.compteur = recu.compteur; }
         } catch (err) {
             donnees.texte = e.data.text();
         }
     }
 
-    e.waitUntil(
+    const taches = [
         self.registration.showNotification(donnees.titre, {
             body: donnees.texte,
             icon: 'icone_192.png',
@@ -70,7 +71,16 @@ self.addEventListener('push', function (e) {
             renotify: true,
             data: { lien: donnees.lien }
         })
-    );
+    ];
+    // Pastille sur l'icône de l'application installée (iOS 16.4+, Android) :
+    // nombre de notifications non lues transmis par le serveur
+    if (typeof donnees.compteur === 'number' && self.navigator && 'setAppBadge' in self.navigator) {
+        taches.push(
+            (donnees.compteur > 0 ? self.navigator.setAppBadge(donnees.compteur) : self.navigator.clearAppBadge())
+                .catch(function () { /* badge non pris en charge : sans importance */ })
+        );
+    }
+    e.waitUntil(Promise.all(taches));
 });
 
 // Clic sur une notification : on revient sur l'onglet déjà ouvert s'il existe,

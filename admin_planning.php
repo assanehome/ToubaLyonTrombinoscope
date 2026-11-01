@@ -102,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $st->execute([$d, $commissionId > 0 ? $commissionId : null]);
                         if ($st->rowCount() > 0) { $added++; }
                     }
-                    $success = count($dimanches) . " dimanche(s) de Dahira planifié(s) (" . $added . " nouveau(x), " . (count($dimanches) - $added) . " déjà présent(s)).";
+                    $success = count($dimanches) . " dimanche(s) planifié(s) (" . $added . " nouveau(x), " . (count($dimanches) - $added) . " déjà présent(s)).";
                 } catch (Exception $e) {
                     error_log('Touba Lyon planning - génération : ' . $e->getMessage());
                     $error = "Une erreur technique est survenue. Veuillez réessayer plus tard.";
@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Veuillez indiquer une date valide.";
             } else {
                 try {
-                    $st = $pdo->prepare("INSERT IGNORE INTO dahira_plannings (date_dahira, commission_id) VALUES (?, ?)");
+                    $st = $pdo->prepare("INSERT IGNORE INTO dahira_plannings (date_dahira, commission_id, option_dahira) VALUES (?, ?, 1)");
                     $st->execute([$dateExc, $commissionId > 0 ? $commissionId : null]);
                     if ($st->rowCount() > 0) {
                         $success = "Dahira d'exception ajouté le " . date('d/m/Y', strtotime($dateExc)) . ".";
@@ -155,14 +155,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
                 try {
-                    $st = $pdo->prepare("SELECT a_dahira FROM dahira_plannings WHERE id = ?");
+                    $st = $pdo->prepare("SELECT a_dahira, option_dahira FROM dahira_plannings WHERE id = ?");
                     $st->execute([$id]);
-                    $etaitMaintenu = ((int) $st->fetchColumn()) === 1;
-                    $pdo->prepare("UPDATE dahira_plannings SET a_dahira = 1 - a_dahira, updated_at = NOW() WHERE id = ?")->execute([$id]);
-                    $success = $etaitMaintenu
-                        ? "Dahira annulé. Les membres ne le savent pas encore : envoyez l'annulation par WhatsApp et par e-mail."
-                        : "Dahira rétabli.";
+                    $rowTg = $st->fetch();
+                    if (!$rowTg || ((int) ($rowTg['option_dahira'] ?? 0)) !== 1) {
+                        // Annulation possible seulement si le dimanche est défini « Dahira »
+                        $error = "L'annulation n'est possible que pour un dimanche défini Dahira.";
+                    } else {
+                        $etaitMaintenu = ((int) $rowTg['a_dahira']) === 1;
+                        $pdo->prepare("UPDATE dahira_plannings SET a_dahira = 1 - a_dahira, updated_at = NOW() WHERE id = ?")->execute([$id]);
+                        $success = $etaitMaintenu
+                            ? "Dahira annulé. Les membres ne le savent pas encore : envoyez l'annulation par WhatsApp et par e-mail."
+                            : "Dahira rétabli.";
+                    }
                 } catch (Exception $e) {
+                    $error = "Une erreur technique est survenue.";
+                }
+            }
+        }
+
+        // Définir un dimanche planifié comme « Dahira » (ou retirer l'option)
+        elseif ($action === 'set_option_dahira') {
+            $id = (int) ($_POST['id'] ?? 0);
+            $val = ((int) ($_POST['val'] ?? 0)) === 1 ? 1 : 0;
+            if ($id > 0) {
+                try {
+                    if ($val === 1) {
+                        $pdo->prepare("UPDATE dahira_plannings SET option_dahira = 1, a_dahira = 1, updated_at = NOW() WHERE id = ?")->execute([$id]);
+                        $success = "Dimanche défini Dahira : il compte maintenant pour les disponibilités des membres des commissions.";
+                    } else {
+                        // Plus de Dahira : retiré de l'accueil membre et des disponibilités
+                        $pdo->prepare("UPDATE dahira_plannings SET option_dahira = 0, a_dahira = 1, publie = 0, updated_at = NOW() WHERE id = ?")->execute([$id]);
+                        $pdo->prepare("DELETE FROM commission_disponibilites WHERE planning_id = ?")->execute([$id]);
+                        $success = "Option Dahira retirée : ce dimanche reste planifié, sans Dahira.";
+                    }
+                } catch (Exception $e) {
+                    error_log('Touba Lyon planning - option Dahira : ' . $e->getMessage());
                     $error = "Une erreur technique est survenue.";
                 }
             }
@@ -173,11 +201,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
                 try {
-                    $st = $pdo->prepare("SELECT date_dahira, publie, programme FROM dahira_plannings WHERE id = ?");
+                    $st = $pdo->prepare("SELECT date_dahira, publie, programme, option_dahira FROM dahira_plannings WHERE id = ?");
                     $st->execute([$id]);
                     $rowP = $st->fetch();
                     if (!$rowP) {
                         $error = "Ce dimanche n'existe plus.";
+                    } elseif (((int) ($rowP['option_dahira'] ?? 0)) !== 1) {
+                        $error = "Définissez d'abord ce dimanche comme Dahira.";
                     } else {
                         $nouveau = ((int)($rowP['publie'] ?? 0)) === 1 ? 0 : 1;
                         $pdo->prepare("UPDATE dahira_plannings SET publie = ?, updated_at = NOW() WHERE id = ?")->execute([$nouveau, $id]);
@@ -310,7 +340,7 @@ try {
 $prochain = null;
 foreach ($plannings as $p) {
     // Prochain Dahira à venir (qu'il soit actif OU annulé) pour pouvoir le gérer
-    if ($p['date_dahira'] >= date('Y-m-d')) { $prochain = $p; break; }
+    if ($p['date_dahira'] >= date('Y-m-d') && ((int) ($p['option_dahira'] ?? 0)) === 1) { $prochain = $p; break; }
 }
 
 // Séparation à venir / passés
@@ -320,10 +350,14 @@ $today = date('Y-m-d');
 foreach ($plannings as $p) {
     if ($p['date_dahira'] >= $today) {
         $planningsAvenir[] = $p;
-    } else {
+    } elseif (((int) ($p['option_dahira'] ?? 0)) === 1) {
+        // Séances passées : seuls les dimanches définis Dahira
         $planningsPasses[] = $p;
     }
 }
+// À venir : groupe « avec Dahira » et groupe « simplement planifiés » (sans Dahira)
+$planningsAvenirDahira = array_values(array_filter($planningsAvenir, static function ($p) { return ((int) ($p['option_dahira'] ?? 0)) === 1; }));
+$planningsAvenirSimples = array_values(array_filter($planningsAvenir, static function ($p) { return ((int) ($p['option_dahira'] ?? 0)) !== 1; }));
 $planningsPassesCloturees = array_values(array_filter($planningsPasses, static function ($p) {
     return ((int)($p['cloture'] ?? 0)) === 1;
 }));
@@ -348,7 +382,7 @@ $nbPartDahira = static function (array $p) use ($presencesDahira): int {
 
 // Indicateurs globaux (groupe replié, comme admin_guddi)
 $statsGlobales = [
-    'a_venir'       => count($planningsAvenir),
+    'a_venir'       => count($planningsAvenirDahira),
     'seances'       => count($planningsPasses),
     'cloturees'     => count($planningsPassesCloturees),
     'participants'  => 0,
@@ -360,6 +394,7 @@ foreach ($planningsPasses as $p) {
 // Statistiques par année (filtre des indicateurs)
 $statsParAnnee = [];
 foreach ($plannings as $p) {
+    if (((int) ($p['option_dahira'] ?? 0)) !== 1) { continue; } // indicateurs : seulement les Dahira
     $annee = date('Y', strtotime($p['date_dahira']));
     if (!isset($statsParAnnee[$annee])) {
         $statsParAnnee[$annee] = ['a_venir' => 0, 'seances' => 0, 'cloturees' => 0, 'participants' => 0];
@@ -755,9 +790,14 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                     <?php if (empty($planningsAvenir)): ?>
                         <p style="color:var(--text-muted); text-align:center; padding:1rem 0;">Aucun dimanche à venir. Utilisez le générateur ci-dessus.</p>
                     <?php else: ?>
-                    <h4 style="color:var(--accent); font-size:0.9rem; margin:0.5rem 0 0.75rem;">🕌 À venir (<?php echo count($planningsAvenir); ?>)</h4>
+                    <!-- Groupe : dimanches avec Dahira -->
+                    <details open style="margin-bottom:0.5rem;">
+                    <summary style="color:var(--accent); font-size:0.95rem; font-weight:700; cursor:pointer; list-style:none; margin:0.5rem 0 0.75rem;">🕌 Dimanches avec Dahira (<?php echo count($planningsAvenirDahira); ?>)</summary>
+                    <?php if (empty($planningsAvenirDahira)): ?>
+                        <p style="color:var(--text-muted); font-size:0.85rem; margin:0 0 0.8rem;">Aucun dimanche défini Dahira. Utilisez le bouton « 🕌 Dahira » sur un dimanche planifié ci-dessous.</p>
+                    <?php else: ?>
                     <div class="pl-grid">
-                        <?php foreach ($planningsAvenir as $p):
+                        <?php foreach ($planningsAvenirDahira as $p):
                             $d = $p['date_dahira'];
                             $aDahira = ((int) ($p['a_dahira'] ?? 1)) === 1;
                         ?>
@@ -773,16 +813,57 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                                     <span class="pl-badge pl-badge-annul" style="font-size:0.75rem; padding:0.25rem 0.6rem;">‼️ Annulé</span>
                                 <?php endif; ?>
                                 </span>
+                                <span style="display:flex; gap:0.3rem; flex-wrap:wrap;">
                                 <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="<?php echo $aDahira ? 'Marquer ce Dahira comme annulé ?' : 'Rétablir ce Dahira ?'; ?>">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="toggle_dahira">
                                     <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
                                     <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem;<?php echo $aDahira ? ' border-color:rgba(191,33,33,0.6); color:#fca5a5;' : ''; ?>"><?php echo $aDahira ? '‼️ Annuler' : '↩️ Réactiver'; ?></button>
                                 </form>
+                                <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="Retirer l'option Dahira de ce dimanche ? Il restera planifié, sans Dahira (il sera dépublié et retiré des disponibilités)." data-confirm-danger="1">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="set_option_dahira">
+                                    <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                                    <input type="hidden" name="val" value="0">
+                                    <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem;" title="Retirer l'option Dahira">✖️ Retirer</button>
+                                </form>
+                                </span>
                             </div>
                         </div>
                         <?php endforeach; ?>
                     </div>
+                    <?php endif; ?>
+                    </details>
+
+                    <!-- Groupe : dimanches planifiés (sans Dahira) — pas d'annulation possible -->
+                    <details open style="margin-bottom:0.5rem;">
+                    <summary style="color:var(--white); font-size:0.95rem; font-weight:700; cursor:pointer; list-style:none; margin:1rem 0 0.75rem;">📅 Dimanches planifiés — sans Dahira (<?php echo count($planningsAvenirSimples); ?>)</summary>
+                    <?php if (empty($planningsAvenirSimples)): ?>
+                        <p style="color:var(--text-muted); font-size:0.85rem; margin:0 0 0.8rem;">Aucun autre dimanche planifié.</p>
+                    <?php else: ?>
+                    <div class="pl-grid">
+                        <?php foreach ($planningsAvenirSimples as $p):
+                            $d = $p['date_dahira'];
+                        ?>
+                        <div class="glass-card pl-card" style="border-left:3px solid rgba(255,255,255,0.25);">
+                            <div class="pl-date">
+                                <?php echo ucfirst(dahira_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
+                            </div>
+                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                                <span class="pl-badge pl-badge-no" style="font-size:0.75rem; padding:0.25rem 0.6rem;">📅 Planifié</span>
+                                <form action="admin_planning.php" method="POST" style="margin:0;" data-confirm="Définir ce dimanche comme Dahira ?">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="set_option_dahira">
+                                    <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                                    <input type="hidden" name="val" value="1">
+                                    <button type="submit" class="btn btn-primary btn-sm" style="font-size:0.75rem; padding:0.25rem 0.7rem;">🕌 Dahira</button>
+                                </form>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                    </details>
                     <?php endif; ?>
 
                     <!-- Passés -->

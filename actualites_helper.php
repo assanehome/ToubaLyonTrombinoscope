@@ -28,6 +28,7 @@ function actu_type_emoji(string $type): string
     if (strpos($t, 'mariage') !== false || strpos($t, 'mariée') !== false || strpos($t, 'nikah') !== false) { return '💍'; }
     if (strpos($t, 'félicit') !== false || strpos($t, 'felicit') !== false) { return '🎉'; }
     if (strpos($t, 'événement') !== false || strpos($t, 'evenement') !== false) { return '📅'; }
+    if (strpos($t, 'visite') !== false) { return '🤝'; }
     if (strpos($t, 'rappel') !== false) { return '⏰'; }
     if (strpos($t, 'contribution') !== false) { return '🤲'; }
     if (strpos($t, 'compte') !== false) { return '📝'; }
@@ -95,7 +96,7 @@ function actu_mentions_wa(array $membres = []): string
  * Message WhatsApp d'une actualité. $mentions : [id => « Prénom Nom »] pour
  * ajouter en bas les liens vers la page des membres cités.
  */
-function actu_message(string $titre, string $contenu, string $type = '', array $mentions = []): string
+function actu_message(string $titre, string $contenu, string $type = '', array $mentions = [], int $id = 0, string $pdfPath = ''): string
 {
     $emoji = actu_type_emoji($type);
     $msg = $emoji . " " . mb_strtoupper(trim($type !== '' ? $type : 'Actualité')) . " " . $emoji . "\n\n"
@@ -103,8 +104,15 @@ function actu_message(string $titre, string $contenu, string $type = '', array $
     if (trim($titre) !== '') {
         $msg .= "*" . trim($titre) . "*\n\n";
     }
-    $msg .= trim($contenu) . actu_mentions_wa($mentions) . "\n\n"
-        . "Secrétariat Général,\nTouba Lyon";
+    $msg .= trim($contenu) . actu_mentions_wa($mentions);
+    // Liens : page de l'actualité (détails) et document PDF joint le cas échéant
+    if ($id > 0) {
+        $msg .= "\n\n👉 Voir le détail :\n" . dahira_base_url() . '/actualite_detail.php?id=' . $id;
+    }
+    if (trim($pdfPath) !== '') {
+        $msg .= "\n\n📄 Document joint :\n" . dahira_base_url() . '/uploads/' . rawurlencode(trim($pdfPath));
+    }
+    $msg .= "\n\nSecrétariat Général,\nTouba Lyon";
     return $msg;
 }
 

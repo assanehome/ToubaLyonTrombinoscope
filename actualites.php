@@ -378,7 +378,7 @@ foreach ($membresListe as $mm) { $membresIndex[(int) $mm['id']] = trim(($mm['pre
                             if (isset($membresIndex[$mid])) { $mentionMap[$mid] = $membresIndex[$mid]; }
                         }
                         $mentionNoms = array_values($mentionMap);
-                        $waMsg = actu_message((string) ($a['titre'] ?? ''), (string) ($a['contenu'] ?? ''), (string) ($a['type'] ?? ''), $mentionMap);
+                        $waMsg = actu_message((string) ($a['titre'] ?? ''), (string) ($a['contenu'] ?? ''), (string) ($a['type'] ?? ''), $mentionMap, (int) $a['id'], (string) ($a['pdf_path'] ?? ''));
                     ?>
                     <div class="glass-card ac-card" style="<?php echo $clot ? 'opacity:0.7; border-left:3px solid rgba(255,255,255,0.18);' : ($pub ? 'border-left:3px solid rgba(37,211,102,0.5);' : 'border-left:3px solid rgba(255,255,255,0.2);'); ?>">
                         <div style="display:flex; justify-content:space-between; gap:0.7rem; flex-wrap:wrap; align-items:flex-start;">
