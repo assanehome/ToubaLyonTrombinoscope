@@ -108,7 +108,7 @@ function dispo_groupes(PDO $pdo, int $cid): array
     $groupes = [];
     $dansUneSous = [];
     try {
-        $subs = $pdo->prepare("SELECT id, nom FROM sous_commissions WHERE commission_id = ? ORDER BY nom ASC");
+        $subs = $pdo->prepare("SELECT id, nom, responsable_id FROM sous_commissions WHERE commission_id = ? ORDER BY nom ASC");
         $subs->execute([$cid]);
         foreach ($subs->fetchAll() as $sc) {
             $q = $pdo->prepare("SELECT membre_id FROM sous_commission_membres WHERE sous_commission_id = ?");
@@ -119,7 +119,8 @@ function dispo_groupes(PDO $pdo, int $cid): array
                 if (isset($membres[$mid])) { $liste[] = $membres[$mid]; $dansUneSous[$mid] = true; }
             }
             usort($liste, function ($a, $b) { return strcasecmp($a['prenom'] . $a['nom'], $b['prenom'] . $b['nom']); });
-            $groupes[] = ['🧩 ' . $sc['nom'], $liste];
+            $respNom = (!empty($sc['responsable_id']) && isset($membres[(int) $sc['responsable_id']])) ? ' · 🎖️ ' . trim($membres[(int) $sc['responsable_id']]['prenom'] . ' ' . $membres[(int) $sc['responsable_id']]['nom']) : '';
+            $groupes[] = ['🧩 ' . $sc['nom'] . $respNom, $liste];
         }
     } catch (Exception $e) {}
     $sans = array_values(array_filter($membres, function ($m) use ($dansUneSous) { return !isset($dansUneSous[(int) $m['id']]); }));

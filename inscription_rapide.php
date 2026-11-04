@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $prenom = trim($_POST['prenom'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $password = $_POST['password'] ?? '';
+    $passwordConfirm = $_POST['password_confirm'] ?? '';
     $telephone = trim($_POST['telephone'] ?? '');
     $statut = trim($_POST['statut'] ?? '');
     $annee_integration = trim($_POST['annee_integration'] ?? '');
@@ -39,6 +40,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Le prénom, le nom, l'email et le mot de passe sont obligatoires.";
     } elseif (strlen($password) < 6) {
         $error = "Le mot de passe doit contenir au moins 6 caractères.";
+    } elseif ($password !== $passwordConfirm) {
+        $error = "Les deux mots de passe ne sont pas identiques.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "L'adresse email n'est pas valide.";
     } elseif ($telephone === '' || !preg_match('/^[0-9 +().-]{6,30}$/', $telephone)) {
@@ -182,6 +185,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="form-group">
+                    <label for="password_confirm" class="form-label">Confirmer le mot de passe <span style="color:var(--danger)">*</span></label>
+                    <input type="password" id="password_confirm" name="password_confirm" class="form-input" placeholder="Saisissez-le à nouveau" required>
+                    <div id="pw-confirm-msg" style="font-size:0.8rem; margin-top:0.3rem; min-height:1em;"></div>
+                </div>
+
+                <div class="form-group">
                     <label for="telephone" class="form-label">Téléphone <span style="color:var(--danger)">*</span></label>
                     <input type="tel" id="telephone" name="telephone" class="form-input" value="<?php echo htmlspecialchars($telephone); ?>" required>
                 </div>
@@ -273,5 +282,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         });
     </script>
     <script src="modern-select.js"></script>
+    <script>
+        // Confirmation du mot de passe : vérification en direct
+        (function () {
+            var pw = document.getElementById('password');
+            var pc = document.getElementById('password_confirm');
+            var msg = document.getElementById('pw-confirm-msg');
+            if (!pw || !pc || !msg) { return; }
+            function verifier() {
+                if (pc.value === '') { msg.textContent = ''; pc.style.borderColor = ''; return; }
+                if (pc.value === pw.value) {
+                    msg.textContent = '✓ Les mots de passe sont identiques';
+                    msg.style.color = '#7bd8a6';
+                    pc.style.borderColor = 'rgba(37,211,102,0.6)';
+                } else {
+                    msg.textContent = '✗ Les mots de passe ne correspondent pas';
+                    msg.style.color = '#fca5a5';
+                    pc.style.borderColor = 'rgba(191,33,33,0.7)';
+                }
+            }
+            pw.addEventListener('input', verifier);
+            pc.addEventListener('input', verifier);
+            var form = pc.closest('form');
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    if (pc.value !== pw.value) {
+                        e.preventDefault();
+                        verifier();
+                        pc.focus();
+                    }
+                });
+            }
+        })();
+    </script>
 </body>
 </html>

@@ -55,6 +55,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "L'adresse email n'est pas valide.";
         } elseif ($password === '' || strlen($password) < 6) {
             $error = "Veuillez définir un mot de passe d'au moins 6 caractères.";
+        } elseif ($password !== ($_POST['password_confirm'] ?? '')) {
+            $error = "Les deux mots de passe ne sont pas identiques.";
         } elseif (!in_array($f['statut'], $STATUTS, true)) {
             $error = "Veuillez préciser votre statut.";
         } elseif ($f['secteur_activite'] === '') {
@@ -450,6 +452,11 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
                     <label for="password" class="form-label">Mot de passe <span style="color:var(--danger)">*</span></label>
                     <input type="password" id="password" name="password" class="form-input" placeholder="Au moins 6 caractères (pour vous connecter et jouer à Ki Kan La)" minlength="6" required>
                 </div>
+                <div class="form-group">
+                    <label for="password_confirm" class="form-label">Confirmer le mot de passe <span style="color:var(--danger)">*</span></label>
+                    <input type="password" id="password_confirm" name="password_confirm" class="form-input" placeholder="Saisissez-le à nouveau" minlength="6" required>
+                    <div id="pw-confirm-msg" style="font-size:0.8rem; margin-top:0.3rem; min-height:1em;"></div>
+                </div>
 
                 <!-- ── Votre situation ── -->
                 <h2 class="adh-section-title">Votre situation</h2>
@@ -616,6 +623,8 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
                 if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('Adresse email valide', null, fieldEl('email'));
                 // Mot de passe
                 if (fieldEl('password').value.length < 6) fail('Mot de passe (6 caractères minimum)', null, fieldEl('password'));
+                // Confirmation du mot de passe
+                if (fieldEl('password_confirm').value !== fieldEl('password').value) fail('Confirmation du mot de passe (identique)', null, fieldEl('password_confirm'));
                 // Statut (select moderne)
                 const statut = fieldEl('statut');
                 if (!statut.value) {
@@ -741,5 +750,28 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
         })();
     </script>
     <script src="modern-select.js"></script>
+    <script>
+        // Confirmation du mot de passe : vérification en direct
+        (function () {
+            var pw = document.getElementById('password');
+            var pc = document.getElementById('password_confirm');
+            var msg = document.getElementById('pw-confirm-msg');
+            if (!pw || !pc || !msg) { return; }
+            function verifier() {
+                if (pc.value === '') { msg.textContent = ''; pc.style.borderColor = ''; return; }
+                if (pc.value === pw.value) {
+                    msg.textContent = '✓ Les mots de passe sont identiques';
+                    msg.style.color = '#7bd8a6';
+                    pc.style.borderColor = 'rgba(37,211,102,0.6)';
+                } else {
+                    msg.textContent = '✗ Les mots de passe ne correspondent pas';
+                    msg.style.color = '#fca5a5';
+                    pc.style.borderColor = 'rgba(191,33,33,0.7)';
+                }
+            }
+            pw.addEventListener('input', verifier);
+            pc.addEventListener('input', verifier);
+        })();
+    </script>
 </body>
 </html>

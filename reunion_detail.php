@@ -139,7 +139,10 @@ $membresCommissionIndex = [];
 foreach ($membresCommission as $mc) { $membresCommissionIndex[(int) $mc['id']] = trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }
 
 // Compte rendu et tâches : disponibles dès que la réunion est publiée OU clôturée (une réunion clôturée reste modifiable)
-$reunionPubliee = ((int) ($reunion['publie'] ?? 0)) === 1 || ((int) ($reunion['cloture'] ?? 0)) === 1;
+$reunionClosed = ((int) ($reunion['cloture'] ?? 0)) === 1;
+// Contenu visible dès que la réunion est publiée ou clôturée ; modifiable seulement si publiée ET non clôturée
+$reunionPubliee = ((int) ($reunion['publie'] ?? 0)) === 1 || $reunionClosed;
+$contenuEditable = ((int) ($reunion['publie'] ?? 0)) === 1 && !$reunionClosed;
 
 // ---------------------------------------------------------------------------
 // Actions POST : tâches de réunion (après publication, ouvertes à tout membre
@@ -152,7 +155,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'] ?? '';
         try {
             if ($action === 'save_compte_rendu') {
-                if (!$reunionPubliee) {
+                if ($reunionClosed) {
+                    $error = "Réunion clôturée : rouvrez-la pour modifier le compte rendu.";
+                } elseif (!$contenuEditable) {
                     $error = "Le compte rendu sera disponible une fois la réunion publiée.";
                 } else {
                     $cr = reunion_sanitize_html((string) ($_POST['compte_rendu'] ?? ''));
@@ -194,7 +199,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $success = "Compte rendu envoyé par e-mail à $sent membre(s) de la commission.";
                     }
                 }
-            } elseif (!$reunionPubliee) {
+            } elseif ($action === 'edit_reunion_detail') {
+                // Modification d'une réunion non publiée ou clôturée (une réunion publiée doit d'abord être dépubliée)
+                $eTitre = trim($_POST['titre'] ?? '');
+                $eDesc = trim($_POST['description'] ?? '');
+                $eDate = trim($_POST['date_reunion'] ?? '');
+                $eHeure = trim($_POST['heure'] ?? '');
+                $eHeureFin = trim($_POST['heure_fin'] ?? '');
+                $eMode = (($_POST['mode'] ?? '') === 'presentiel') ? 'presentiel' : ((($_POST['mode'] ?? '') === 'distance') ? 'distance' : '');
+                $eLieu = trim($_POST['lieu'] ?? '');
+                $eLien = trim($_POST['lien'] ?? '');
+                $dejaClos = ((int) ($reunion['cloture'] ?? 0)) === 1;
+                if (!$estResponsable) {
+                    $error = "Seul un responsable peut modifier la réunion.";
+                } elseif (((int) ($reunion['publie'] ?? 0)) === 1 && !$dejaClos) {
+                    $error = "Dépubliez la réunion avant de la modifier.";
+                } elseif (((int) ($reunion['annule'] ?? 0)) === 1) {
+                    $error = "Une réunion annulée ne peut pas être modifiée.";
+                } elseif ($eTitre === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $eDate)) {
+                    $error = "Le titre et une date valide sont obligatoires.";
+                } elseif ($eHeure === '') {
+                    $error = "L'heure de début est obligatoire.";
+                } elseif ($eHeureFin === '') {
+                    $error = "L'heure de fin est obligatoire.";
+                } elseif ($eHeureFin <= $eHeure) {
+                    $error = "L'heure de fin doit être après l'heure de début.";
+                } elseif ($eMode === '') {
+                    $error = "Le mode (à distance ou présentiel) est obligatoire.";
+                } elseif ($eMode === 'distance' && $eLien === '') {
+                    $error = "Le lien Zoom est obligatoire pour une réunion à distance.";
+                } elseif ($eMode === 'presentiel' && $eLieu === '') {
+                    $error = "L'adresse est obligatoire pour une réunion en présentiel.";
+                } else {
+                    $pdo->prepare("UPDATE commission_reunions SET titre = ?, description = ?, date_reunion = ?, heure = ?, heure_fin = ?, mode = ?, lieu = ?, lien = ?, updated_at = NOW() WHERE id = ?")
+                        ->execute([$eTitre, ($eDesc !== '' ? $eDesc : null), $eDate, $eHeure, $eHeureFin, $eMode, ($eLieu !== '' ? $eLieu : null), ($eLien !== '' ? $eLien : null), $id]);
+                    $rq = $pdo->prepare("SELECT * FROM commission_reunions WHERE id = ?");
+                    $rq->execute([$id]);
+                    $reunion = $rq->fetch() ?: $reunion;
+                    $success = "Réunion modifiée.";
+                }
+            } elseif ($reunionClosed) {
+                $error = "Réunion clôturée : rouvrez-la pour modifier la liste des tâches.";
+            } elseif (!$contenuEditable) {
                 $error = "Les tâches sont disponibles une fois la réunion publiée.";
             } elseif ($action === 'add_tache') {
                 $tTitre = trim($_POST['tache_titre'] ?? '');
@@ -352,7 +398,7 @@ if (!empty($taches)) {
 
 // Rendu d'une carte de tâche complète (statut, attribution, suppression, commentaires).
 // Réutilisée dans la liste des tâches et dans le bloc « Mes tâches » en haut de page.
-$renderTacheCard = function (array $tc) use ($id, $membresCommission, $membresCommissionIndex, $estResponsable, $membreId, $tachesComs) {
+$renderTacheCard = function (array $tc) use ($id, $membresCommission, $membresCommissionIndex, $estResponsable, $membreId, $tachesComs, $reunionClosed) {
     $tStatut = (string) ($tc['statut'] ?? 'a_faire');
     $tAssId = (int) ($tc['assignee_id'] ?? 0);
     $tAssNom = $tAssId > 0 && isset($membresCommissionIndex[$tAssId]) ? $membresCommissionIndex[$tAssId] : '';
@@ -379,6 +425,7 @@ $renderTacheCard = function (array $tc) use ($id, $membresCommission, $membresCo
                 <span class="tk-chip">📅 <?php echo date('d/m/Y', strtotime((string) $tc['echeance'])); ?></span>
             <?php endif; ?>
         </div>
+        <?php if (!$reunionClosed): ?>
         <div class="tk-actions">
             <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="margin:0;">
                 <?php echo csrf_field(); ?>
@@ -410,6 +457,7 @@ $renderTacheCard = function (array $tc) use ($id, $membresCommission, $membresCo
             </form>
             <?php endif; ?>
         </div>
+        <?php endif; ?>
         <div class="tk-coms">
             <?php foreach ($coms as $cm):
                 $sys = ((int) ($cm['systeme'] ?? 0) === 1);
@@ -421,6 +469,7 @@ $renderTacheCard = function (array $tc) use ($id, $membresCommission, $membresCo
                 <div class="tk-com"><span class="tk-com-auth"><?php echo htmlspecialchars($cAuteur !== '' ? $cAuteur : 'Membre'); ?> :</span> <?php echo nl2br(htmlspecialchars((string) $cm['texte'])); ?> <span class="tk-com-date"><?php echo date('d/m H:i', strtotime((string) $cm['created_at'])); ?></span></div>
                 <?php endif; ?>
             <?php endforeach; ?>
+            <?php if (!$reunionClosed): ?>
             <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" class="tk-com-form">
                 <?php echo csrf_field(); ?>
                 <input type="hidden" name="action" value="add_tache_commentaire">
@@ -428,6 +477,7 @@ $renderTacheCard = function (array $tc) use ($id, $membresCommission, $membresCo
                 <input type="text" name="commentaire" placeholder="💬 Ajouter un commentaire…" maxlength="1000">
                 <button type="submit" class="btn btn-secondary btn-sm">Envoyer</button>
             </form>
+            <?php endif; ?>
         </div>
     </div>
     <?php return ob_get_clean();
@@ -601,9 +651,11 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                             <small>📋 <?php echo htmlspecialchars($commissionNom); ?> · 🗓️ <?php echo date('d/m/Y', strtotime($date)); ?> · 🕐 <?php echo $heureFin !== '' ? 'de ' . htmlspecialchars($heure) . ' à ' . htmlspecialchars($heureFin) : 'à partir de ' . htmlspecialchars($heure); ?></small>
                         </div>
                         <div class="gd-badges">
-                            <?php $etat = $cloture ? 'termine' : dahira_event_etat($date, $heure, ($heureFin !== '' ? $heureFin : null)); ?>
-                            <?php if ($etat === 'termine'): ?>
-                                <span class="pl-badge pl-badge-no">🕌 Terminée</span>
+                            <?php $etat = dahira_event_etat($date, $heure, ($heureFin !== '' ? $heureFin : null)); ?>
+                            <?php if ($cloture): ?>
+                                <span class="pl-badge pl-badge-no">🔒 Clôturée</span>
+                            <?php elseif ($etat === 'termine'): ?>
+                                <span class="pl-badge pl-badge-no">🕌 Terminée — à clôturer</span>
                             <?php elseif ($etat === 'encours'): ?>
                                 <span class="pl-badge pl-badge-ok badge-live">En cours</span>
                             <?php else: ?>
@@ -683,10 +735,43 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                                 </form>
                                 <?php endif; ?>
                             <?php endif; ?>
+                            <button type="button" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);" onclick="openCrPdf()">📄 Compte rendu PDF</button>
+                            <?php if (!$annuleeReu && (!$publie || $cloture)): ?>
+                                <button type="button" class="btn btn-secondary btn-sm" style="border-color:#7dd3fc; color:#7dd3fc;" onclick="var f = document.getElementById('reu-edit-detail'); f.style.display = (f.style.display === 'none' ? 'block' : 'none');">✏️ Modifier la réunion</button>
+                            <?php endif; ?>
                             <?php echo $formAct('delete_reunion', '🗑️ Supprimer', 'btn-secondary', 'Supprimer définitivement cette réunion ?', true); ?>
                         </div>
-                        <?php if (!$publie && !$cloture && !$annuleeReu): ?>
-                        <p style="color:var(--text-muted); font-size:0.8rem; margin:0.7rem 0 0;">Pour modifier le titre, la date ou l'horaire, ouvrez la réunion dans l'espace commission (elle doit être dépubliée).</p>
+                        <?php if ($publie && !$cloture && !$annuleeReu): ?>
+                        <p style="color:var(--text-muted); font-size:0.8rem; margin:0.7rem 0 0;">Pour modifier cette réunion, dépubliez-la d'abord (une réunion clôturée reste modifiable).</p>
+                        <?php endif; ?>
+                        <?php if (!$annuleeReu && (!$publie || $cloture)):
+                            $optsEd = function ($courant, $vide) {
+                                $o = '<option value="">' . $vide . '</option>';
+                                $vus = false;
+                                for ($hh = 7; $hh <= 23; $hh++) { foreach (['00', '30'] as $mm) { $hv = sprintf('%02d:%s', $hh, $mm); $sel = ($courant === $hv); $vus = $vus || $sel; $o .= '<option value="' . $hv . '"' . ($sel ? ' selected' : '') . '>' . $hv . '</option>'; } }
+                                if ($courant !== '' && !$vus) { $o .= '<option value="' . htmlspecialchars($courant) . '" selected>' . htmlspecialchars($courant) . '</option>'; }
+                                return $o;
+                            };
+                        ?>
+                        <div id="reu-edit-detail" style="display:none; margin-top:1rem; padding-top:1rem; border-top:1px solid var(--glass-border);">
+                            <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.7rem; margin:0;">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="edit_reunion_detail">
+                                <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required value="<?php echo htmlspecialchars($titre, ENT_QUOTES); ?>"></div>
+                                <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"><?php echo htmlspecialchars($description); ?></textarea></div>
+                                <div class="form-group" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_reunion" class="form-input" required value="<?php echo htmlspecialchars($date, ENT_QUOTES); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
+                                <div class="form-group" style="margin:0;"><label class="form-label">Heure de début <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input" required style="color-scheme:dark;"><?php echo $optsEd(dahira_heure_hm($heure), '— Heure —'); ?></select></div>
+                                <div class="form-group" style="margin:0;"><label class="form-label">Heure de fin <span style="color:var(--danger)">*</span></label><select name="heure_fin" class="form-input" required style="color-scheme:dark;"><?php echo $optsEd($heureFin !== '' ? dahira_heure_hm($heureFin) : '', '— Heure —'); ?></select></div>
+                                <div class="form-group" style="margin:0;"><label class="form-label">Mode <span style="color:var(--danger)">*</span></label>
+                                    <select name="mode" class="form-input" required style="color-scheme:dark;" onchange="document.getElementById('red-lien').style.display = this.value === 'distance' ? '' : 'none'; document.getElementById('red-lieu').style.display = this.value === 'presentiel' ? '' : 'none';">
+                                        <option value="distance"<?php echo $mode === 'distance' ? ' selected' : ''; ?>>💻 À distance (Zoom)</option>
+                                        <option value="presentiel"<?php echo $mode === 'presentiel' ? ' selected' : ''; ?>>🏛️ Présentiel</option>
+                                    </select></div>
+                                <div class="form-group" id="red-lien" style="grid-column:1 / -1; margin:0;<?php echo $mode === 'distance' ? '' : ' display:none;'; ?>"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input" value="<?php echo htmlspecialchars((string) ($reunion['lien'] ?? ''), ENT_QUOTES); ?>" placeholder="https://us06web.zoom.us/..."></div>
+                                <div class="form-group" id="red-lieu" style="grid-column:1 / -1; margin:0;<?php echo $mode === 'presentiel' ? '' : ' display:none;'; ?>"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input" value="<?php echo htmlspecialchars($lieu, ENT_QUOTES); ?>"></div>
+                                <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer la réunion</button></div>
+                            </form>
+                        </div>
                         <?php endif; ?>
                     </div>
                     <?php endif; ?>
@@ -788,8 +873,12 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                             <p style="color:var(--text-muted); font-size:0.88rem; margin:0.4rem 0 0;">💤 Les tâches seront disponibles une fois la réunion publiée.</p>
                         <?php else: ?>
                             <p style="color:var(--text-muted); font-size:0.84rem; margin:0 0 0.9rem;">Tout membre de la commission peut ajouter des tâches et les attribuer.</p>
+                            <?php if ($reunionClosed): ?>
+                                <p style="color:#ffd873; font-size:0.84rem; margin:0 0 0.9rem;">🔒 Réunion clôturée : la liste des tâches n'est plus modifiable. Rouvrez la réunion pour la modifier.</p>
+                            <?php endif; ?>
 
                             <div style="display:flex; flex-direction:column;">
+                            <?php if (!$reunionClosed): ?>
                             <!-- Créer une tâche (bloc bordé) -->
                             <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="margin:0 0 1.1rem; padding:0.9rem; border:1px solid var(--glass-border); border-radius:12px; background:rgba(255,255,255,0.02);">
                                 <?php echo csrf_field(); ?>
@@ -821,6 +910,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                                 <button type="submit" class="btn btn-primary btn-sm">➕ Ajouter la tâche</button>
                             </form>
 
+                            <?php endif; ?>
                             <!-- Liste des tâches (bloc bordé, affiché au-dessus du formulaire) -->
                             <div style="order:-1; border:1px solid var(--glass-border); border-radius:12px; padding:0.9rem; margin-bottom:1.1rem; background:rgba(255,255,255,0.015);">
                             <div style="font-weight:700; color:#fff; font-size:0.92rem; margin-bottom:0.7rem;">📋 Liste des tâches</div>
@@ -840,6 +930,14 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                         <?php if (!$reunionPubliee): ?>
                             <p style="color:var(--text-muted); font-size:0.88rem; margin:0;">💤 Le compte rendu pourra être saisi une fois la réunion publiée.</p>
                         <?php else: ?>
+                            <?php if ($reunionClosed): ?>
+                                <p style="color:var(--text-muted); font-size:0.84rem; margin:0 0 0.7rem;">🔒 Réunion clôturée : le compte rendu n'est plus modifiable. Rouvrez la réunion pour le modifier.</p>
+                                <?php if (trim(strip_tags($compteRendu)) === ''): ?>
+                                    <p style="color:var(--text-muted); margin:0;">Aucun compte rendu saisi.</p>
+                                <?php else: ?>
+                                    <div class="cr-editor" style="min-height:0; cursor:default;"><?php echo reunion_sanitize_html($compteRendu); ?></div>
+                                <?php endif; ?>
+                            <?php else: ?>
                             <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="margin:0;" onsubmit="document.getElementById('cr-input').value = document.getElementById('cr-editor').innerHTML;">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="save_compte_rendu">
@@ -865,6 +963,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                                     <button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer le compte rendu</button>
                                 </div>
                             </form>
+                            <?php endif; ?>
                             <?php if ($estResponsable && $crWaMsg !== ''): ?>
                             <div style="margin-top:0.7rem; padding-top:0.7rem; border-top:1px solid var(--glass-border); display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                                 <span style="color:var(--text-muted); font-size:0.82rem;">Partager :</span>
@@ -902,7 +1001,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
     </main>
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
 
-    <?php if ($estResponsable && $crWaMsg !== ''): ?>
+    <?php if ($estResponsable ): ?>
     <!-- Popup : aperçu du PDF du compte rendu + partage -->
     <div id="cr-pdf-modal" class="modal-overlay" style="display:none;">
         <div class="modal-card glass-card" style="max-width:900px; width:calc(100vw - 24px); height:88vh; display:flex; flex-direction:column;">

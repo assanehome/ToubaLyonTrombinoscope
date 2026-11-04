@@ -28,11 +28,45 @@ function com_clean_sous_membres(PDO $pdo, int $cid): void
 {
     try {
         $pdo->prepare("DELETE scm FROM sous_commission_membres scm JOIN sous_commissions sc ON sc.id = scm.sous_commission_id
-                       WHERE sc.commission_id = ? AND scm.membre_id NOT IN (SELECT membre_id FROM commission_membres WHERE commission_id = ?)")
+                       WHERE sc.commission_id = ? AND scm.support = 0 AND scm.membre_id NOT IN (SELECT membre_id FROM commission_membres WHERE commission_id = ?)")
             ->execute([$cid, $cid]);
     } catch (Exception $e) { /* best-effort */ }
 }
 
+/**
+ * Ajoute des membres à une sous-commission : ceux qui font partie de la commission
+ * y entrent comme membres, les autres comme « membres supports » (hors commission).
+ * Renvoie ['membres' => n, 'supports' => n] (membres effectivement ajoutés).
+ */
+function com_ajouter_a_sous_commission(PDO $pdo, int $cid, int $scId, array $ids, string $scNom): array
+{
+    $res = ['membres' => 0, 'supports' => 0];
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids), function ($v) { return $v > 0; })));
+    if ($scId <= 0 || empty($ids)) { return $res; }
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    $ok = $pdo->prepare("SELECT id FROM membres WHERE status = 'approved' AND id IN ($ph)");
+    $ok->execute($ids);
+    $valides = array_map('intval', $ok->fetchAll(PDO::FETCH_COLUMN));
+    $inCom = $pdo->prepare("SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?");
+    $inCom->execute([$cid, $cid]);
+    $dansCom = array_map('intval', $inCom->fetchAll(PDO::FETCH_COLUMN));
+    $ins = $pdo->prepare("INSERT IGNORE INTO sous_commission_membres (sous_commission_id, membre_id, support) VALUES (?, ?, ?)");
+    $cnom = com_commission_nom($pdo, $cid);
+    foreach ($valides as $mid) {
+        $support = in_array($mid, $dansCom, true) ? 0 : 1;
+        $ins->execute([$scId, $mid, $support]);
+        if ($ins->rowCount() > 0) {
+            if ($support === 1) {
+                $res['supports']++;
+                troba_notify_membre($pdo, $mid, 'commission', '🤝 Membre support', 'Vous aidez la sous-commission « ' . $scNom . ' » de la commission ' . $cnom . ' en tant que membre support.', 'mes_commissions.php');
+            } else {
+                $res['membres']++;
+                troba_notify_membre($pdo, $mid, 'commission', '🧩 Sous-commission', 'Vous avez été affecté(e) à la sous-commission « ' . $scNom . ' » de la commission ' . $cnom . '.', 'mes_commissions.php');
+            }
+        }
+    }
+    return $res;
+}
 /** Nom d'une commission (pour les notifications / e-mails). */
 function com_commission_nom(PDO $pdo, int $cid): string
 {
@@ -351,9 +385,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($nomSc === '') {
                     $error = "Le nom de la sous-commission est obligatoire.";
                 } else {
-                    $insSc = $pdo->prepare("INSERT IGNORE INTO sous_commissions (commission_id, nom, created_by) VALUES (?, ?, ?)");
-                    $insSc->execute([$cid, mb_substr($nomSc, 0, 150), !empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null]);
-                    $success = $insSc->rowCount() > 0 ? "Sous-commission « " . $nomSc . " » créée." : "Cette sous-commission existe déjà.";
+                    $insSc = $pdo->prepare("INSERT IGNORE INTO sous_commissions (commission_id, nom, created_by, accepte_supports) VALUES (?, ?, ?, ?)");
+                    $insSc->execute([$cid, mb_substr($nomSc, 0, 150), !empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null, !empty($_POST['accepte_supports']) ? 1 : 0]);
+                    if ($insSc->rowCount() > 0) {
+                        $bilanAjout = com_ajouter_a_sous_commission($pdo, $cid, (int) $pdo->lastInsertId(), (!empty($_POST['accepte_supports']) ? (array) ($_POST['membre_ids'] ?? []) : []), $nomSc);
+                        $success = "Sous-commission « " . $nomSc . " » créée"
+                            . (($bilanAjout['membres'] + $bilanAjout['supports']) > 0 ? " — " . $bilanAjout['membres'] . " membre(s) de la commission et " . $bilanAjout['supports'] . " membre(s) support ajouté(s)" : '') . ".";
+                    } else {
+                        $success = "Cette sous-commission existe déjà.";
+                    }
+                }
+            } elseif (($action === 'add_sous_commission_support' || $action === 'remove_sous_commission_support') && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                // Membre support : membre quelconque rattaché à la sous-commission, hors commission
+                $scIdS = (int) ($_POST['sous_commission_id'] ?? 0);
+                $chkS = $pdo->prepare("SELECT nom, accepte_supports FROM sous_commissions WHERE id = ? AND commission_id = ?");
+                $chkS->execute([$scIdS, $cid]);
+                $scRowS = $chkS->fetch();
+                $scNomS = $scRowS ? $scRowS['nom'] : false;
+                if ($scNomS === false) {
+                    $error = "Sous-commission introuvable.";
+                } elseif ($mid <= 0) {
+                    $error = "Choisissez un membre.";
+                } elseif ($action === 'remove_sous_commission_support') {
+                    $pdo->prepare("DELETE FROM sous_commission_membres WHERE sous_commission_id = ? AND membre_id = ? AND support = 1")->execute([$scIdS, $mid]);
+                    $success = "Membre support retiré de la sous-commission « " . $scNomS . " ».";
+                } elseif (empty($scRowS['accepte_supports'])) {
+                    $error = "Cette sous-commission n'accepte pas de membres supports : activez d'abord l'option.";
+                } else {
+                    $okM = $pdo->prepare("SELECT 1 FROM membres WHERE id = ? AND status = 'approved'");
+                    $okM->execute([$mid]);
+                    $dejaS = $pdo->prepare("SELECT 1 FROM sous_commission_membres WHERE sous_commission_id = ? AND membre_id = ?");
+                    $dejaS->execute([$scIdS, $mid]);
+                    $inComS = $pdo->prepare("SELECT 1 FROM (SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?) x WHERE membre_id = ?");
+                    $inComS->execute([$cid, $cid, $mid]);
+                    if ($okM->fetchColumn() === false) {
+                        $error = "Membre introuvable ou non validé.";
+                    } elseif ($dejaS->fetchColumn() !== false) {
+                        $error = "Ce membre fait déjà partie de la sous-commission.";
+                    } elseif ($inComS->fetchColumn() !== false) {
+                        $error = "Ce membre fait déjà partie de la commission : affectez-le avec les membres de la sous-commission.";
+                    } else {
+                        $pdo->prepare("INSERT INTO sous_commission_membres (sous_commission_id, membre_id, support) VALUES (?, ?, 1)")->execute([$scIdS, $mid]);
+                        troba_notify_membre($pdo, $mid, 'commission', '🤝 Membre support', 'Vous aidez la sous-commission « ' . $scNomS . ' » de la commission ' . com_commission_nom($pdo, $cid) . ' en tant que membre support.', 'mes_commissions.php');
+                        $success = "Membre support ajouté à la sous-commission « " . $scNomS . " ».";
+                    }
+                }
+            } elseif (($action === 'add_sous_commission_member' || $action === 'remove_sous_commission_member') && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                // Membre d'une sous-commission (sélecteur à deux listes) : membre de la commission, ou membre support si l'option est active
+                $scIdM = (int) ($_POST['sous_commission_id'] ?? 0);
+                $chkM = $pdo->prepare("SELECT nom, accepte_supports, responsable_id FROM sous_commissions WHERE id = ? AND commission_id = ?");
+                $chkM->execute([$scIdM, $cid]);
+                $scRowM = $chkM->fetch();
+                if (!$scRowM) {
+                    $error = "Sous-commission introuvable.";
+                } elseif ($mid <= 0) {
+                    $error = "Choisissez un membre.";
+                } elseif ($action === 'remove_sous_commission_member') {
+                    $pdo->prepare("DELETE FROM sous_commission_membres WHERE sous_commission_id = ? AND membre_id = ?")->execute([$scIdM, $mid]);
+                    if ((int) ($scRowM['responsable_id'] ?? 0) === $mid) {
+                        $pdo->prepare("UPDATE sous_commissions SET responsable_id = NULL WHERE id = ?")->execute([$scIdM]);
+                    }
+                    $success = "Membre retiré de la sous-commission.";
+                } else {
+                    $inComM = $pdo->prepare("SELECT 1 FROM (SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?) x WHERE membre_id = ?");
+                    $inComM->execute([$cid, $cid, $mid]);
+                    if ($inComM->fetchColumn() === false && empty($scRowM['accepte_supports'])) {
+                        $error = "Ce membre ne fait pas partie de la commission : activez l'option membres supports.";
+                    } else {
+                        com_ajouter_a_sous_commission($pdo, $cid, $scIdM, [$mid], (string) $scRowM['nom']);
+                        $success = "Membre ajouté à la sous-commission.";
+                    }
+                }
+            } elseif ($action === 'set_sous_commission_option' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                $scIdO = (int) ($_POST['sous_commission_id'] ?? 0);
+                $accepteO = !empty($_POST['accepte_supports']) ? 1 : 0;
+                $chkO = $pdo->prepare("SELECT nom FROM sous_commissions WHERE id = ? AND commission_id = ?");
+                $chkO->execute([$scIdO, $cid]);
+                $scNomO = $chkO->fetchColumn();
+                if ($scNomO === false) {
+                    $error = "Sous-commission introuvable.";
+                } else {
+                    $pdo->prepare("UPDATE sous_commissions SET accepte_supports = ? WHERE id = ?")->execute([$accepteO, $scIdO]);
+                    $success = $accepteO ? "Les membres supports sont autorisés dans « " . $scNomO . " »." : "Les membres supports ne sont plus acceptés dans « " . $scNomO . " » (les supports déjà ajoutés restent).";
+                }
+            } elseif ($action === 'set_sous_commission_responsable' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                // Responsable de sous-commission : un membre de la commission (0 = aucun)
+                $scIdR = (int) ($_POST['sous_commission_id'] ?? 0);
+                $chkR = $pdo->prepare("SELECT nom, responsable_id FROM sous_commissions WHERE id = ? AND commission_id = ?");
+                $chkR->execute([$scIdR, $cid]);
+                $scR = $chkR->fetch();
+                if (!$scR) {
+                    $error = "Sous-commission introuvable.";
+                } else {
+                    $okR = true;
+                    if ($mid > 0) {
+                        $inCom = $pdo->prepare("SELECT 1 FROM (SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?) x WHERE membre_id = ?");
+                        $inCom->execute([$cid, $cid, $mid]);
+                        $okR = ($inCom->fetchColumn() !== false);
+                    }
+                    if (!$okR) {
+                        $error = "Le responsable doit être membre de la commission.";
+                    } else {
+                        $pdo->prepare("UPDATE sous_commissions SET responsable_id = ? WHERE id = ?")->execute([($mid > 0 ? $mid : null), $scIdR]);
+                        if ($mid > 0) {
+                            // Le responsable fait partie de la sous-commission
+                            $pdo->prepare("INSERT IGNORE INTO sous_commission_membres (sous_commission_id, membre_id) VALUES (?, ?)")->execute([$scIdR, $mid]);
+                            if ((int) ($scR['responsable_id'] ?? 0) !== $mid) {
+                                troba_notify_membre($pdo, $mid, 'commission', '🎖️ Responsable de sous-commission', 'Vous êtes responsable de la sous-commission « ' . $scR['nom'] . ' » de la commission ' . com_commission_nom($pdo, $cid) . '.', 'mes_commissions.php');
+                            }
+                            $success = "Responsable de la sous-commission « " . $scR['nom'] . " » enregistré.";
+                        } else {
+                            $success = "Responsable retiré de la sous-commission « " . $scR['nom'] . " ».";
+                        }
+                    }
                 }
             } elseif (($action === 'delete_sous_commission' || $action === 'set_sous_commission_members') && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
                 $scId = (int) ($_POST['sous_commission_id'] ?? 0);
@@ -370,12 +514,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Seuls les membres de la commission parente peuvent être affectés
                     $parentIds = array_map('intval', $pdo->query("SELECT membre_id FROM commission_membres WHERE commission_id = " . (int) $cid)->fetchAll(PDO::FETCH_COLUMN));
                     $voulus = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['membre_ids'] ?? [])), function ($v) use ($parentIds) { return $v > 0 && in_array($v, $parentIds, true); })));
-                    $bq = $pdo->prepare("SELECT membre_id FROM sous_commission_membres WHERE sous_commission_id = ?");
+                    $bq = $pdo->prepare("SELECT membre_id FROM sous_commission_membres WHERE sous_commission_id = ? AND support = 0");
                     $bq->execute([$scId]);
                     $avantSc = array_map('intval', $bq->fetchAll(PDO::FETCH_COLUMN));
                     $pdo->beginTransaction();
-                    $pdo->prepare("DELETE FROM sous_commission_membres WHERE sous_commission_id = ?")->execute([$scId]);
-                    $insM = $pdo->prepare("INSERT IGNORE INTO sous_commission_membres (sous_commission_id, membre_id) VALUES (?, ?)");
+                    $pdo->prepare("DELETE FROM sous_commission_membres WHERE sous_commission_id = ? AND support = 0")->execute([$scId]);
+                    $insM = $pdo->prepare("INSERT INTO sous_commission_membres (sous_commission_id, membre_id, support) VALUES (?, ?, 0) ON DUPLICATE KEY UPDATE support = 0");
                     foreach ($voulus as $vm) { $insM->execute([$scId, $vm]); }
                     $pdo->commit();
                     $cnomSc = com_commission_nom($pdo, $cid);
@@ -537,11 +681,11 @@ try {
     // Sous-commissions par commission, avec leurs membres affectés
     $comSous = [];
     try {
-        foreach ($pdo->query("SELECT id, commission_id, nom FROM sous_commissions ORDER BY nom ASC") as $sr) {
-            $comSous[(int) $sr['commission_id']][(int) $sr['id']] = ['id' => (int) $sr['id'], 'nom' => (string) $sr['nom'], 'membres' => []];
+        foreach ($pdo->query("SELECT id, commission_id, nom, responsable_id, accepte_supports FROM sous_commissions ORDER BY nom ASC") as $sr) {
+            $comSous[(int) $sr['commission_id']][(int) $sr['id']] = ['id' => (int) $sr['id'], 'nom' => (string) $sr['nom'], 'resp' => (int) ($sr['responsable_id'] ?? 0), 'accepte' => (int) ($sr['accepte_supports'] ?? 0), 'membres' => [], 'supports' => []];
         }
-        foreach ($pdo->query("SELECT sc.id, sc.commission_id, scm.membre_id FROM sous_commission_membres scm JOIN sous_commissions sc ON sc.id = scm.sous_commission_id") as $sm) {
-            $comSous[(int) $sm['commission_id']][(int) $sm['id']]['membres'][] = (int) $sm['membre_id'];
+        foreach ($pdo->query("SELECT sc.id, sc.commission_id, scm.membre_id, scm.support FROM sous_commission_membres scm JOIN sous_commissions sc ON sc.id = scm.sous_commission_id") as $sm) {
+            $comSous[(int) $sm['commission_id']][(int) $sm['id']][((int) ($sm['support'] ?? 0)) === 1 ? 'supports' : 'membres'][] = (int) $sm['membre_id'];
         }
     } catch (Exception $e) { $comSous = []; }
     // Lien Zoom par défaut propre à chaque commission (prioritaire sur celui du Guddi)
@@ -771,6 +915,8 @@ $membersJs = array_map(function ($m) {
         /* ── Sélecteur à deux listes ── */
         #members-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
         #members-modal.active { display: flex; }
+        #sub-members-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
+        #sub-members-modal.active { display: flex; }
         .tl-card { width: 100%; max-width: 820px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.25); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
         .tl-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg,#1b4332,#2d6a4f); flex-shrink: 0; }
         .tl-head h3 { margin: 0; color: #fff; font-size: 1.05rem; }
@@ -898,10 +1044,13 @@ $membersJs = array_map(function ($m) {
                                 <p class="km-empty">Aucune sous-commission.</p>
                             <?php endif; ?>
                             <?php foreach ($sousDeC as $sc): ?>
-                                <details style="border:1px solid var(--glass-border); border-radius:12px; padding:0.6rem 0.9rem; background:rgba(255,255,255,0.02); margin-bottom:0.5rem;">
+                                <details id="sc-<?php echo (int) $sc['id']; ?>" style="border:1px solid var(--glass-border); border-radius:12px; padding:0.6rem 0.9rem; background:rgba(255,255,255,0.02); margin-bottom:0.5rem;">
                                     <summary style="cursor:pointer; font-weight:700; color:var(--white); display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
                                         🧩 <?php echo htmlspecialchars($sc['nom']); ?>
                                         <span class="badge badge-approved"><?php echo count($sc['membres']); ?> membre(s)</span>
+                                        <?php if (!empty($sc['resp']) && isset($nomsMembres[(int) $sc['resp']])): ?>
+                                            <span class="badge" style="background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.4);">🎖️ <?php echo htmlspecialchars($nomsMembres[(int) $sc['resp']]); ?></span>
+                                        <?php endif; ?>
                                     </summary>
                                     <div class="km-list" style="margin-top:0.6rem;">
                                         <?php if (empty($sc['membres'])): ?>
@@ -910,26 +1059,150 @@ $membersJs = array_map(function ($m) {
                                             <span class="km-chip"><span class="km-name"><?php echo htmlspecialchars($nomsMembres[$smid] ?? ('Membre #' . $smid)); ?></span></span>
                                         <?php endforeach; endif; ?>
                                     </div>
+                                    <?php
+                                        // Membres supports : n'importe quel membre, hors commission
+                                        if (!isset($nomsTous)) {
+                                            $nomsTous = [];
+                                            foreach ($allMembers as $am) { $nomsTous[(int) $am['id']] = trim($am['prenom'] . ' ' . $am['nom']); }
+                                        }
+                                        $deLaSous = array_merge($sc['membres'], $sc['supports'] ?? []);
+                                    ?>
+                                    <div style="margin-top:0.8rem;">
+                                        <div style="color:var(--text-muted); font-size:0.74rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:0.3rem;">🤝 Membres supports (hors commission)</div>
+                                        <div class="km-list">
+                                            <?php if (empty($sc['supports'])): ?>
+                                                <p class="km-empty">Aucun membre support.</p>
+                                            <?php else: foreach ($sc['supports'] as $spId): ?>
+                                                <span class="km-chip"><span class="km-name">🤝 <?php echo htmlspecialchars($nomsTous[$spId] ?? ('Membre #' . $spId)); ?></span>
+                                                    <?php if ($peutSous): ?>
+                                                    <form method="POST" style="display:inline; margin:0;" data-confirm="Retirer <?php echo htmlspecialchars($nomsTous[$spId] ?? 'ce membre', ENT_QUOTES); ?> des membres supports ?" data-confirm-danger="1">
+                                                        <?php echo csrf_field(); ?>
+                                                        <input type="hidden" name="action" value="remove_sous_commission_support">
+                                                        <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                                        <input type="hidden" name="sous_commission_id" value="<?php echo (int) $sc['id']; ?>">
+                                                        <input type="hidden" name="membre_id" value="<?php echo (int) $spId; ?>">
+                                                        <button type="submit" title="Retirer" style="background:none; border:0; color:#fca5a5; cursor:pointer; padding:0 0 0 0.3rem; font-size:0.9rem;">✕</button>
+                                                    </form>
+                                                    <?php endif; ?>
+                                                </span>
+                                            <?php endforeach; endif; ?>
+                                        </div>
+                                        <?php if ($peutSous): ?>
+                                        <form method="POST" style="margin:0.4rem 0 0; display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="set_sous_commission_option">
+                                            <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                            <input type="hidden" name="sous_commission_id" value="<?php echo (int) $sc['id']; ?>">
+                                            <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer; color:var(--white); font-size:0.84rem;">
+                                                <input type="checkbox" name="accepte_supports" value="1"<?php echo !empty($sc['accepte']) ? ' checked' : ''; ?>>
+                                                Autoriser l'ajout de n'importe quel membre
+                                            </label>
+                                            <button type="submit" class="btn btn-secondary btn-sm">💾 Enregistrer</button>
+                                        </form>
+                                        <?php endif; ?>
+                                        <?php if ($peutSous && !empty($sc['accepte'])): ?>
+                                        <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.5rem 0 0;">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="add_sous_commission_support">
+                                            <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                            <input type="hidden" name="sous_commission_id" value="<?php echo (int) $sc['id']; ?>">
+                                            <?php if (empty($supAssets)): $supAssets = true;
+                                                $pairesMembres = [];
+                                                foreach ($allMembers as $am) { $pairesMembres[] = [(int) $am['id'], trim($am['prenom'] . ' ' . $am['nom'])]; }
+                                            ?>
+                                            <style>
+                                                .msel-sup-panel { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 30; margin-top: 4px; max-height: 230px; overflow-y: auto; background: #10241b; border: 1px solid rgba(212,175,55,0.45); border-radius: 12px; box-shadow: 0 14px 34px rgba(0,0,0,0.5); padding: 0.25rem; }
+                                                .msel-sup-opt { padding: 0.5rem 0.8rem; border-radius: 9px; cursor: pointer; color: var(--white); font-size: 0.88rem; }
+                                                .msel-sup-opt:hover, .msel-sup-opt.is-actif { background: rgba(212,175,55,0.18); }
+                                                .msel-sup-vide { padding: 0.7rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+                                            </style>
+                                            <script>
+                                                (function () {
+                                                    var MEMBRES = <?php echo json_encode($pairesMembres, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS); ?>;
+                                                    function norm(s) { return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+                                                    function remplir(box, q) {
+                                                        var panel = box.querySelector('.msel-sup-panel');
+                                                        var ex = (box.getAttribute('data-exclus') || '').split(',').filter(Boolean).map(Number);
+                                                        var qn = norm(q.trim()), n = 0;
+                                                        panel.textContent = '';
+                                                        for (var i = 0; i < MEMBRES.length && n < 40; i++) {
+                                                            var m = MEMBRES[i];
+                                                            if (ex.indexOf(m[0]) !== -1) { continue; }
+                                                            if (qn && norm(m[1]).indexOf(qn) === -1) { continue; }
+                                                            var d = document.createElement('div');
+                                                            d.className = 'msel-sup-opt'; d.textContent = m[1]; d.setAttribute('data-id', m[0]);
+                                                            panel.appendChild(d); n++;
+                                                        }
+                                                        if (n === 0) {
+                                                            var v = document.createElement('div'); v.className = 'msel-sup-vide'; v.textContent = 'Aucun membre trouvé.'; panel.appendChild(v);
+                                                        }
+                                                        panel.style.display = 'block';
+                                                    }
+                                                    function fermerTout(sauf) {
+                                                        document.querySelectorAll('.msel-sup-panel').forEach(function (p) { if (p !== sauf) { p.style.display = 'none'; } });
+                                                    }
+                                                    document.addEventListener('focusin', function (e) {
+                                                        if (e.target.classList && e.target.classList.contains('msel-sup-input')) {
+                                                            var box = e.target.closest('.msel-sup');
+                                                            fermerTout(box.querySelector('.msel-sup-panel'));
+                                                            remplir(box, e.target.value);
+                                                        }
+                                                    });
+                                                    document.addEventListener('input', function (e) {
+                                                        if (e.target.classList && e.target.classList.contains('msel-sup-input')) {
+                                                            var box = e.target.closest('.msel-sup');
+                                                            box.querySelector('input[name="membre_id"]').value = '';   // le choix est à refaire
+                                                            remplir(box, e.target.value);
+                                                        }
+                                                    });
+                                                    document.addEventListener('click', function (e) {
+                                                        var opt = e.target.closest ? e.target.closest('.msel-sup-opt') : null;
+                                                        if (opt) {
+                                                            var box = opt.closest('.msel-sup');
+                                                            box.querySelector('input[name="membre_id"]').value = opt.getAttribute('data-id');
+                                                            box.querySelector('.msel-sup-input').value = opt.textContent;
+                                                            box.querySelector('.msel-sup-panel').style.display = 'none';
+                                                            return;
+                                                        }
+                                                        if (!(e.target.closest && e.target.closest('.msel-sup'))) { fermerTout(null); }
+                                                    });
+                                                    document.addEventListener('submit', function (e) {
+                                                        var box = e.target.querySelector ? e.target.querySelector('.msel-sup') : null;
+                                                        if (box && !box.querySelector('input[name="membre_id"]').value) {
+                                                            e.preventDefault();
+                                                            var inp = box.querySelector('.msel-sup-input'); inp.focus();
+                                                        }
+                                                    });
+                                                })();
+                                            </script>
+                                            <?php endif; ?>
+                                            <?php $exclusSup = array_merge(array_keys($nomsMembres), $deLaSous); ?>
+                                            <div class="form-group msel-sup" data-exclus="<?php echo htmlspecialchars(implode(',', $exclusSup), ENT_QUOTES); ?>" style="flex:1; min-width:200px; margin:0; position:relative;">
+                                                <input type="hidden" name="membre_id" value="">
+                                                <input type="text" class="form-input msel-sup-input" placeholder="🔍 Rechercher un membre à ajouter…" autocomplete="off">
+                                                <div class="msel-sup-panel"></div>
+                                            </div>
+                                            <button type="submit" class="btn btn-secondary btn-sm">🤝 Ajouter</button>
+                                        </form>
+                                        <p style="color:var(--text-muted); font-size:0.74rem; margin:0.3rem 0 0;">Un membre support aide la sous-commission sans devenir membre de la commission.</p>
+                                        <?php endif; ?>
+                                    </div>
                                     <?php if ($peutSous): ?>
-                                    <form method="POST" style="margin:0.8rem 0 0;">
+                                    <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.8rem 0 0;">
                                         <?php echo csrf_field(); ?>
-                                        <input type="hidden" name="action" value="set_sous_commission_members">
+                                        <input type="hidden" name="action" value="set_sous_commission_responsable">
                                         <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
                                         <input type="hidden" name="sous_commission_id" value="<?php echo (int) $sc['id']; ?>">
-                                        <?php if (empty($membersOfC)): ?>
-                                            <p class="km-empty">La commission n'a aucun membre à affecter.</p>
-                                        <?php else: ?>
-                                        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:0.35rem; margin-bottom:0.7rem;">
-                                            <?php foreach ($membersOfC as $mm): ?>
-                                            <label style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.35rem 0.65rem; cursor:pointer;">
-                                                <input type="checkbox" name="membre_ids[]" value="<?php echo (int) $mm['id']; ?>"<?php echo in_array((int) $mm['id'], $sc['membres'], true) ? ' checked' : ''; ?>>
-                                                <?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?>
-                                            </label>
-                                            <?php endforeach; ?>
+                                        <div class="form-group" style="flex:1; min-width:200px; margin:0;">
+                                            <label class="form-label">🎖️ Responsable de la sous-commission</label>
+                                            <select name="membre_id" class="form-input" style="color-scheme:dark;">
+                                                <option value="0">— Aucun —</option>
+                                                <?php foreach ($membersOfC as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"<?php echo ((int) ($sc['resp'] ?? 0)) === (int) $mm['id'] ? ' selected' : ''; ?>><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?>
+                                            </select>
                                         </div>
-                                        <button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer les membres</button>
-                                        <?php endif; ?>
+                                        <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">💾 Enregistrer</button>
                                     </form>
+                                    <div style="margin:0.8rem 0 0;"><button type="button" class="btn btn-primary btn-sm" onclick="smOpen(<?php echo (int) $sc['id']; ?>)">👥 Gérer les membres</button></div>
                                     <form method="POST" style="margin:0.5rem 0 0;" data-confirm="Supprimer la sous-commission « <?php echo htmlspecialchars($sc['nom'], ENT_QUOTES); ?> » ? Les membres restent dans la commission." data-confirm-danger="1">
                                         <?php echo csrf_field(); ?>
                                         <input type="hidden" name="action" value="delete_sous_commission">
@@ -948,6 +1221,80 @@ $membersJs = array_map(function ($m) {
                                 <div class="form-group" style="flex:1; min-width:200px; margin:0;">
                                     <label class="form-label">➕ Nouvelle sous-commission</label>
                                     <input type="text" name="nom" class="form-input" required maxlength="150" placeholder="Ex : Logistique, Accueil…">
+                                </div>
+                                <div style="flex-basis:100%;">
+                                    <label style="display:flex; align-items:center; gap:0.6rem; cursor:pointer; color:var(--white); font-size:0.88rem;">
+                                        <input type="checkbox" name="accepte_supports" value="1" onchange="var z = this.closest('form').querySelector('.mpick-zone'); z.style.display = this.checked ? '' : 'none'; if (!this.checked) { z.querySelectorAll('input[type=checkbox]').forEach(function (c) { c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); }); }">
+                                        🤝 Autoriser l'ajout de n'importe quel membre (membres supports)
+                                    </label>
+                                    <p style="color:var(--text-muted); font-size:0.74rem; margin:0.25rem 0 0 3.6rem;">Si activé, vous pouvez ajouter des membres qui ne font pas partie de la commission. Sinon, seuls les membres de la commission peuvent rejoindre la sous-commission.</p>
+                                </div>
+                                <div class="mpick-zone" style="flex-basis:100%; display:none;">
+                                    <?php if (empty($mpickAssets)): $mpickAssets = true; ?>
+                                    <style>
+                                        .mpick { border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(255,255,255,0.03); overflow: hidden; }
+                                        .mpick-search { width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--white); padding: 0.65rem 0.9rem; font-size: 0.9rem; }
+                                        .mpick-search:focus { outline: none; background: rgba(255,255,255,0.08); }
+                                        .mpick-list { max-height: 210px; overflow-y: auto; padding: 0.3rem; }
+                                        .mpick-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.42rem 0.55rem; border-radius: 10px; cursor: pointer; }
+                                        .mpick-item:hover { background: rgba(212,175,55,0.1); }
+                                        .mpick-item.is-on { background: rgba(212,175,55,0.14); }
+                                        .mpick-nom { flex: 1; color: var(--white); font-size: 0.88rem; }
+                                        .mpick-tag { font-size: 0.68rem; font-weight: 700; padding: 0.12rem 0.5rem; border-radius: 50px; border: 1px solid var(--glass-border); color: var(--text-muted); white-space: nowrap; }
+                                        .mpick-tag.com { color: #7bd8a6; border-color: rgba(37,211,102,0.4); }
+                                        .mpick-tag.sup { color: #8ec5ff; border-color: rgba(45,140,255,0.4); }
+                                        .mpick-foot { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.45rem 0.8rem; border-top: 1px solid var(--glass-border); font-size: 0.78rem; color: var(--text-muted); }
+                                        .mpick-clear { background: none; border: 0; color: var(--gold); cursor: pointer; font-size: 0.78rem; font-weight: 700; }
+                                        .mpick-vide { padding: 0.8rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; display: none; }
+                                    </style>
+                                    <script>
+                                        (function () {
+                                            function norm(s) { return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+                                            function maj(box) {
+                                                var n = box.querySelectorAll('input[type=checkbox]:checked').length;
+                                                box.querySelector('.mpick-count').textContent = n + ' sélectionné' + (n > 1 ? 's' : '');
+                                                box.querySelectorAll('.mpick-item').forEach(function (it) { it.classList.toggle('is-on', it.querySelector('input').checked); });
+                                            }
+                                            document.addEventListener('input', function (e) {
+                                                if (!e.target.classList.contains('mpick-search')) { return; }
+                                                var box = e.target.closest('.mpick'), q = norm(e.target.value.trim()), vus = 0;
+                                                box.querySelectorAll('.mpick-item').forEach(function (it) {
+                                                    var ok = q === '' || norm(it.getAttribute('data-nom')).indexOf(q) !== -1;
+                                                    it.style.display = ok ? '' : 'none';
+                                                    if (ok) { vus++; }
+                                                });
+                                                box.querySelector('.mpick-vide').style.display = vus === 0 ? 'block' : 'none';
+                                            });
+                                            document.addEventListener('change', function (e) {
+                                                var box = e.target.closest ? e.target.closest('.mpick') : null;
+                                                if (box && e.target.type === 'checkbox') { maj(box); }
+                                            });
+                                            document.addEventListener('click', function (e) {
+                                                if (!e.target.classList.contains('mpick-clear')) { return; }
+                                                var box = e.target.closest('.mpick');
+                                                box.querySelectorAll('input[type=checkbox]').forEach(function (c) { c.checked = false; });
+                                                maj(box);
+                                            });
+                                        })();
+                                    </script>
+                                    <?php endif; ?>
+                                    <?php $idsDeLaCom = array_map(function ($m) { return (int) $m['id']; }, $membersOfC); ?>
+                                    <label class="form-label">👥 Ajouter des membres (facultatif) — n'importe quel membre</label>
+                                    <div class="mpick">
+                                        <input type="text" class="mpick-search" placeholder="🔍 Filtrer par nom ou prénom…" autocomplete="off">
+                                        <div class="mpick-list">
+                                            <?php foreach ($allMembers as $am): $amId = (int) $am['id']; $dansCom = in_array($amId, $idsDeLaCom, true); $nomAm = trim($am['prenom'] . ' ' . $am['nom']); ?>
+                                                <label class="mpick-item" data-nom="<?php echo htmlspecialchars($nomAm, ENT_QUOTES); ?>">
+                                                    <input type="checkbox" name="membre_ids[]" value="<?php echo $amId; ?>">
+                                                    <span class="mpick-nom"><?php echo htmlspecialchars($nomAm); ?></span>
+                                                    <span class="mpick-tag <?php echo $dansCom ? 'com' : 'sup'; ?>"><?php echo $dansCom ? '👥 commission' : '🤝 support'; ?></span>
+                                                </label>
+                                            <?php endforeach; ?>
+                                            <div class="mpick-vide">Aucun membre ne correspond.</div>
+                                        </div>
+                                        <div class="mpick-foot"><span class="mpick-count">0 sélectionné</span><button type="button" class="mpick-clear">Tout décocher</button></div>
+                                    </div>
+                                    <p style="color:var(--text-muted); font-size:0.74rem; margin:0.3rem 0 0;">Les membres de la commission rejoignent la sous-commission ; les autres y entrent comme membres supports (sans devenir membres de la commission).</p>
                                 </div>
                                 <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">Créer</button>
                             </form>
@@ -982,135 +1329,6 @@ $membersJs = array_map(function ($m) {
                             ];
                             $reusAnn = array_values(array_filter($reusAll, function ($x) { return (int) ($x['annule'] ?? 0) === 1; }));
                         ?>
-                        <?php if (isset($mgInvolved[(int) $c['id']]) || com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions)):
-                            $mgTaches = $mgTachesParCom[(int) $c['id']] ?? [];
-                            $mgFin = $mgFinParCom[(int) $c['id']] ?? ['lignes' => [], 'rec' => 0.0, 'dep' => 0.0];
-                            $mgPeutAjouter = com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions);
-                            $mgStatuts = magal_statuts_tache();
-                            $mgNbFait = count(array_filter($mgTaches, function ($t) { return $t['statut'] === 'fait'; }));
-                        ?>
-                        <div style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
-                            <details class="com-reu-group" open>
-                                <summary class="com-sub" style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.4rem; margin-top:0;">🕌 Wadial Magal <?php echo (int) $mgAnneeCourante; ?> <span style="color:var(--text-muted); font-weight:600;">(<?php echo $mgNbFait; ?>/<?php echo count($mgTaches); ?> tâche(s) faite(s))</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
-                                <?php if (!isset($mgInvolved[(int) $c['id']])): ?>
-                                    <p style="color:var(--text-muted); font-size:0.82rem; margin:0.6rem 0 0;">ℹ️ Votre commission n'est pas encore inscrite au Wadial Magal : en ajoutant un besoin ou une tâche, elle y sera inscrite automatiquement.</p>
-                                <?php endif; ?>
-
-                                <?php
-                                    $mgBesoins = ($mgBesoinsParCom ?? [])[(int) $c['id']] ?? [];
-                                    $mgStatutsB = magal_statuts_besoin();
-                                    $mgNbObtenus = count(array_filter($mgBesoins, function ($b) { return $b['statut'] === 'obtenu'; }));
-                                ?>
-                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0.7rem 0 0.4rem;">🧰 Liste de besoins de la commission <span style="font-weight:600;">(<?php echo $mgNbObtenus; ?>/<?php echo count($mgBesoins); ?> obtenu(s))</span></div>
-                                <?php if (empty($mgBesoins)): ?>
-                                    <p class="km-empty">Aucun besoin défini pour le moment.</p>
-                                <?php endif; ?>
-                                <?php foreach ($mgBesoins as $mgb): ?>
-                                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 0.75rem; margin-bottom:0.4rem;">
-                                        <div style="flex:1; min-width:160px;">
-                                            <strong<?php echo $mgb['statut'] === 'obtenu' ? ' style="text-decoration:line-through; opacity:0.6;"' : ''; ?>><?php echo htmlspecialchars($mgb['libelle']); ?></strong>
-                                            <?php if (!empty($mgb['quantite'])): ?><div style="color:var(--text-muted); font-size:0.78rem;">Quantité : <?php echo htmlspecialchars($mgb['quantite']); ?></div><?php endif; ?>
-                                        </div>
-                                        <?php if ($mgPeutAjouter): ?>
-                                        <form method="POST" style="margin:0;">
-                                            <?php echo csrf_field(); ?>
-                                            <input type="hidden" name="action" value="magal_set_besoin_statut">
-                                            <input type="hidden" name="besoin_id" value="<?php echo (int) $mgb['id']; ?>">
-                                            <select name="statut" class="form-input" style="padding:0.25rem 0.5rem; font-size:0.82rem; color-scheme:dark;" onchange="this.form.submit()">
-                                                <?php foreach ($mgStatutsB as $mgk => $mgl): ?><option value="<?php echo $mgk; ?>"<?php echo $mgb['statut'] === $mgk ? ' selected' : ''; ?>><?php echo htmlspecialchars($mgl); ?></option><?php endforeach; ?>
-                                            </select>
-                                        </form>
-                                        <form method="POST" style="margin:0;" data-confirm="Supprimer ce besoin de la liste ?" data-confirm-danger="1">
-                                            <?php echo csrf_field(); ?>
-                                            <input type="hidden" name="action" value="magal_delete_besoin">
-                                            <input type="hidden" name="besoin_id" value="<?php echo (int) $mgb['id']; ?>">
-                                            <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;" title="Supprimer">🗑️</button>
-                                        </form>
-                                        <?php else: ?>
-                                            <span class="badge badge-approved"><?php echo htmlspecialchars($mgStatutsB[$mgb['statut']] ?? $mgb['statut']); ?></span>
-                                        <?php endif; ?>
-                                    </div>
-                                <?php endforeach; ?>
-                                <?php if ($mgPeutAjouter): ?>
-                                <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.4rem 0 0;">
-                                    <?php echo csrf_field(); ?>
-                                    <input type="hidden" name="action" value="magal_add_besoin">
-                                    <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
-                                    <div class="form-group" style="flex:2; min-width:200px; margin:0;"><label class="form-label">➕ Nouveau besoin</label><input type="text" name="libelle" class="form-input" required maxlength="255" placeholder="Ex : 20 tables, sono, vaisselle…"></div>
-                                    <div class="form-group" style="flex:1; min-width:110px; margin:0;"><label class="form-label">Quantité</label><input type="text" name="quantite" class="form-input" maxlength="60" placeholder="Ex : 20"></div>
-                                    <button type="submit" class="btn btn-primary btn-sm">➕ Ajouter</button>
-                                </form>
-                                <?php endif; ?>
-                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0.7rem 0 0.4rem;">✅ Tâches de la commission</div>
-                                <?php if (empty($mgTaches)): ?>
-                                    <p class="km-empty">Aucune tâche pour le moment.</p>
-                                <?php endif; ?>
-                                <?php foreach ($mgTaches as $mgt):
-                                    $mgRetard = $mgt['statut'] !== 'fait' && !empty($mgt['echeance']) && $mgt['echeance'] < date('Y-m-d');
-                                ?>
-                                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 0.75rem; margin-bottom:0.4rem;">
-                                        <div style="flex:1; min-width:160px;">
-                                            <strong<?php echo $mgt['statut'] === 'fait' ? ' style="text-decoration:line-through; opacity:0.6;"' : ''; ?>><?php echo htmlspecialchars($mgt['titre']); ?></strong>
-                                            <div style="color:var(--text-muted); font-size:0.78rem;">
-                                                👤 <?php echo trim((string) $mgt['assignee_nom']) !== '' ? htmlspecialchars($mgt['assignee_nom']) : 'Non attribuée'; ?>
-                                                <?php if (!empty($mgt['echeance'])): ?> · 📅 <span<?php echo $mgRetard ? ' style="color:#fca5a5; font-weight:700;"' : ''; ?>><?php echo date('d/m/Y', strtotime($mgt['echeance'])); ?><?php echo $mgRetard ? ' (en retard)' : ''; ?></span><?php endif; ?>
-                                            </div>
-                                        </div>
-                                        <?php if ($mgPeutAjouter): ?>
-                                        <form method="POST" style="margin:0;">
-                                            <?php echo csrf_field(); ?>
-                                            <input type="hidden" name="action" value="magal_set_tache_statut">
-                                            <input type="hidden" name="tache_id" value="<?php echo (int) $mgt['id']; ?>">
-                                            <select name="statut" class="form-input" style="padding:0.25rem 0.5rem; font-size:0.82rem; color-scheme:dark;" onchange="this.form.submit()">
-                                                <?php foreach ($mgStatuts as $mgk => $mgl): ?><option value="<?php echo $mgk; ?>"<?php echo $mgt['statut'] === $mgk ? ' selected' : ''; ?>><?php echo htmlspecialchars($mgl); ?></option><?php endforeach; ?>
-                                            </select>
-                                        </form>
-                                        <?php else: ?>
-                                            <span class="badge badge-approved"><?php echo htmlspecialchars($mgStatuts[$mgt['statut']] ?? $mgt['statut']); ?></span>
-                                        <?php endif; ?>
-                                    </div>
-                                <?php endforeach; ?>
-
-                                <?php if ($mgPeutAjouter): ?>
-                                <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.5rem; align-items:end; margin:0.6rem 0 0;">
-                                    <?php echo csrf_field(); ?>
-                                    <input type="hidden" name="action" value="magal_add_tache">
-                                    <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">➕ Nouvelle tâche Wadial Magal</label><input type="text" name="titre" class="form-input" required maxlength="255" placeholder="Ex : Réserver la salle"></div>
-                                    <div class="form-group" style="margin:0;"><label class="form-label">Responsable</label>
-                                        <select name="assignee_id" class="form-input">
-                                            <option value="0">— Non attribuée —</option>
-                                            <?php foreach ($membersOfC as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?>
-                                        </select>
-                                    </div>
-                                    <div class="form-group" style="margin:0;"><label class="form-label">Échéance</label><input type="date" name="echeance" class="form-input" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Détails (facultatif)</label><input type="text" name="description" class="form-input" placeholder="Précisions"></div>
-                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">➕ Ajouter la tâche</button></div>
-                                </form>
-                                <?php endif; ?>
-
-                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:1rem 0 0.4rem;">💶 Finance de la commission</div>
-                                <?php $mgSolde = $mgFin['rec'] - $mgFin['dep']; ?>
-                                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">
-                                    <span class="badge" style="background:rgba(37,211,102,0.15); color:#7bd8a6; border:1px solid rgba(37,211,102,0.4);">📥 Recettes : <?php echo number_format($mgFin['rec'], 2, ',', ' '); ?> €</span>
-                                    <span class="badge" style="background:rgba(191,33,33,0.15); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">📤 Dépenses : <?php echo number_format($mgFin['dep'], 2, ',', ' '); ?> €</span>
-                                    <span class="badge" style="background:rgba(255,193,7,0.15); color:#ffd873; border:1px solid rgba(255,193,7,0.4);">⚖️ Solde : <?php echo number_format($mgSolde, 2, ',', ' '); ?> €</span>
-                                </div>
-                                <?php if (empty($mgFin['lignes'])): ?>
-                                    <p class="km-empty">Aucune opération financière enregistrée pour cette commission.</p>
-                                <?php else: foreach ($mgFin['lignes'] as $mgl): $mgRec = $mgl['type'] === 'recette'; ?>
-                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.4rem 0.75rem; margin-bottom:0.35rem;">
-                                        <div>
-                                            <strong><?php echo $mgRec ? '📥' : '📤'; ?> <?php echo htmlspecialchars($mgl['libelle']); ?></strong>
-                                            <div style="color:var(--text-muted); font-size:0.78rem;"><?php echo !empty($mgl['date_op']) ? date('d/m/Y', strtotime($mgl['date_op'])) : date('d/m/Y', strtotime($mgl['created_at'])); ?><?php echo !empty($mgl['note']) ? ' · ' . htmlspecialchars($mgl['note']) : ''; ?></div>
-                                        </div>
-                                        <span style="font-weight:700; color:<?php echo $mgRec ? '#7bd8a6' : '#fca5a5'; ?>;"><?php echo $mgRec ? '+' : '−'; ?><?php echo number_format((float) $mgl['montant'], 2, ',', ' '); ?> €</span>
-                                    </div>
-                                <?php endforeach; endif; ?>
-                                <p style="margin:0.6rem 0 0;"><a href="magal.php?annee=<?php echo (int) $mgAnneeCourante; ?>&tab=taches" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">🕌 Ouvrir le Wadial Magal</a></p>
-                            </details>
-                        </div>
-                        <?php endif; ?>
                         <div style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
                             <div class="com-sub" style="margin-top:0;">📅 Réunions de la commission</div>
                             <?php if (empty($reus)): ?>
@@ -1246,6 +1464,135 @@ $membersJs = array_map(function ($m) {
                             </details>
                             <?php endif; ?>
                         </div>
+                        <?php if (isset($mgInvolved[(int) $c['id']]) || com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions)):
+                            $mgTaches = $mgTachesParCom[(int) $c['id']] ?? [];
+                            $mgFin = $mgFinParCom[(int) $c['id']] ?? ['lignes' => [], 'rec' => 0.0, 'dep' => 0.0];
+                            $mgPeutAjouter = com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions);
+                            $mgStatuts = magal_statuts_tache();
+                            $mgNbFait = count(array_filter($mgTaches, function ($t) { return $t['statut'] === 'fait'; }));
+                        ?>
+                        <div style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
+                            <details class="com-reu-group">
+                                <summary class="com-sub" style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.4rem; margin-top:0;">🕌 Wadial Magal <?php echo (int) $mgAnneeCourante; ?> <span style="color:var(--text-muted); font-weight:600;">(<?php echo $mgNbFait; ?>/<?php echo count($mgTaches); ?> tâche(s) faite(s))</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
+                                <?php if (!isset($mgInvolved[(int) $c['id']])): ?>
+                                    <p style="color:var(--text-muted); font-size:0.82rem; margin:0.6rem 0 0;">ℹ️ Votre commission n'est pas encore inscrite au Wadial Magal : en ajoutant un besoin ou une tâche, elle y sera inscrite automatiquement.</p>
+                                <?php endif; ?>
+
+                                <?php
+                                    $mgBesoins = ($mgBesoinsParCom ?? [])[(int) $c['id']] ?? [];
+                                    $mgStatutsB = magal_statuts_besoin();
+                                    $mgNbObtenus = count(array_filter($mgBesoins, function ($b) { return $b['statut'] === 'obtenu'; }));
+                                ?>
+                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0.7rem 0 0.4rem;">🧰 Liste de besoins de la commission <span style="font-weight:600;">(<?php echo $mgNbObtenus; ?>/<?php echo count($mgBesoins); ?> obtenu(s))</span></div>
+                                <?php if (empty($mgBesoins)): ?>
+                                    <p class="km-empty">Aucun besoin défini pour le moment.</p>
+                                <?php endif; ?>
+                                <?php foreach ($mgBesoins as $mgb): ?>
+                                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 0.75rem; margin-bottom:0.4rem;">
+                                        <div style="flex:1; min-width:160px;">
+                                            <strong<?php echo $mgb['statut'] === 'obtenu' ? ' style="text-decoration:line-through; opacity:0.6;"' : ''; ?>><?php echo htmlspecialchars($mgb['libelle']); ?></strong>
+                                            <?php if (!empty($mgb['quantite'])): ?><div style="color:var(--text-muted); font-size:0.78rem;">Quantité : <?php echo htmlspecialchars($mgb['quantite']); ?></div><?php endif; ?>
+                                        </div>
+                                        <?php if ($mgPeutAjouter): ?>
+                                        <form method="POST" style="margin:0;">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="magal_set_besoin_statut">
+                                            <input type="hidden" name="besoin_id" value="<?php echo (int) $mgb['id']; ?>">
+                                            <select name="statut" class="form-input" style="padding:0.25rem 0.5rem; font-size:0.82rem; color-scheme:dark;" onchange="this.form.submit()">
+                                                <?php foreach ($mgStatutsB as $mgk => $mgl): ?><option value="<?php echo $mgk; ?>"<?php echo $mgb['statut'] === $mgk ? ' selected' : ''; ?>><?php echo htmlspecialchars($mgl); ?></option><?php endforeach; ?>
+                                            </select>
+                                        </form>
+                                        <form method="POST" style="margin:0;" data-confirm="Supprimer ce besoin de la liste ?" data-confirm-danger="1">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="magal_delete_besoin">
+                                            <input type="hidden" name="besoin_id" value="<?php echo (int) $mgb['id']; ?>">
+                                            <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;" title="Supprimer">🗑️</button>
+                                        </form>
+                                        <?php else: ?>
+                                            <span class="badge badge-approved"><?php echo htmlspecialchars($mgStatutsB[$mgb['statut']] ?? $mgb['statut']); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                                <?php if ($mgPeutAjouter): ?>
+                                <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.4rem 0 0;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="magal_add_besoin">
+                                    <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                    <div class="form-group" style="flex:2; min-width:200px; margin:0;"><label class="form-label">➕ Nouveau besoin</label><input type="text" name="libelle" class="form-input" required maxlength="255" placeholder="Ex : 20 tables, sono, vaisselle…"></div>
+                                    <div class="form-group" style="flex:1; min-width:110px; margin:0;"><label class="form-label">Quantité</label><input type="text" name="quantite" class="form-input" maxlength="60" placeholder="Ex : 20"></div>
+                                    <button type="submit" class="btn btn-primary btn-sm">➕ Ajouter</button>
+                                </form>
+                                <?php endif; ?>
+                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0.7rem 0 0.4rem;">✅ Tâches de la commission</div>
+                                <?php if (empty($mgTaches)): ?>
+                                    <p class="km-empty">Aucune tâche pour le moment.</p>
+                                <?php endif; ?>
+                                <?php foreach ($mgTaches as $mgt):
+                                    $mgRetard = $mgt['statut'] !== 'fait' && !empty($mgt['echeance']) && $mgt['echeance'] < date('Y-m-d');
+                                ?>
+                                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 0.75rem; margin-bottom:0.4rem;">
+                                        <div style="flex:1; min-width:160px;">
+                                            <strong<?php echo $mgt['statut'] === 'fait' ? ' style="text-decoration:line-through; opacity:0.6;"' : ''; ?>><?php echo htmlspecialchars($mgt['titre']); ?></strong>
+                                            <div style="color:var(--text-muted); font-size:0.78rem;">
+                                                👤 <?php echo trim((string) $mgt['assignee_nom']) !== '' ? htmlspecialchars($mgt['assignee_nom']) : 'Non attribuée'; ?>
+                                                <?php if (!empty($mgt['echeance'])): ?> · 📅 <span<?php echo $mgRetard ? ' style="color:#fca5a5; font-weight:700;"' : ''; ?>><?php echo date('d/m/Y', strtotime($mgt['echeance'])); ?><?php echo $mgRetard ? ' (en retard)' : ''; ?></span><?php endif; ?>
+                                            </div>
+                                        </div>
+                                        <?php if ($mgPeutAjouter): ?>
+                                        <form method="POST" style="margin:0;">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="magal_set_tache_statut">
+                                            <input type="hidden" name="tache_id" value="<?php echo (int) $mgt['id']; ?>">
+                                            <select name="statut" class="form-input" style="padding:0.25rem 0.5rem; font-size:0.82rem; color-scheme:dark;" onchange="this.form.submit()">
+                                                <?php foreach ($mgStatuts as $mgk => $mgl): ?><option value="<?php echo $mgk; ?>"<?php echo $mgt['statut'] === $mgk ? ' selected' : ''; ?>><?php echo htmlspecialchars($mgl); ?></option><?php endforeach; ?>
+                                            </select>
+                                        </form>
+                                        <?php else: ?>
+                                            <span class="badge badge-approved"><?php echo htmlspecialchars($mgStatuts[$mgt['statut']] ?? $mgt['statut']); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+
+                                <?php if ($mgPeutAjouter): ?>
+                                <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.5rem; align-items:end; margin:0.6rem 0 0;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="magal_add_tache">
+                                    <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">➕ Nouvelle tâche Wadial Magal</label><input type="text" name="titre" class="form-input" required maxlength="255" placeholder="Ex : Réserver la salle"></div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Responsable</label>
+                                        <select name="assignee_id" class="form-input">
+                                            <option value="0">— Non attribuée —</option>
+                                            <?php foreach ($membersOfC as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="margin:0;"><label class="form-label">Échéance</label><input type="date" name="echeance" class="form-input" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
+                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Détails (facultatif)</label><input type="text" name="description" class="form-input" placeholder="Précisions"></div>
+                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">➕ Ajouter la tâche</button></div>
+                                </form>
+                                <?php endif; ?>
+
+                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:1rem 0 0.4rem;">💶 Finance de la commission</div>
+                                <?php $mgSolde = $mgFin['rec'] - $mgFin['dep']; ?>
+                                <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+                                    <span class="badge" style="background:rgba(37,211,102,0.15); color:#7bd8a6; border:1px solid rgba(37,211,102,0.4);">📥 Recettes : <?php echo number_format($mgFin['rec'], 2, ',', ' '); ?> €</span>
+                                    <span class="badge" style="background:rgba(191,33,33,0.15); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">📤 Dépenses : <?php echo number_format($mgFin['dep'], 2, ',', ' '); ?> €</span>
+                                    <span class="badge" style="background:rgba(255,193,7,0.15); color:#ffd873; border:1px solid rgba(255,193,7,0.4);">⚖️ Solde : <?php echo number_format($mgSolde, 2, ',', ' '); ?> €</span>
+                                </div>
+                                <?php if (empty($mgFin['lignes'])): ?>
+                                    <p class="km-empty">Aucune opération financière enregistrée pour cette commission.</p>
+                                <?php else: foreach ($mgFin['lignes'] as $mgl): $mgRec = $mgl['type'] === 'recette'; ?>
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.4rem 0.75rem; margin-bottom:0.35rem;">
+                                        <div>
+                                            <strong><?php echo $mgRec ? '📥' : '📤'; ?> <?php echo htmlspecialchars($mgl['libelle']); ?></strong>
+                                            <div style="color:var(--text-muted); font-size:0.78rem;"><?php echo !empty($mgl['date_op']) ? date('d/m/Y', strtotime($mgl['date_op'])) : date('d/m/Y', strtotime($mgl['created_at'])); ?><?php echo !empty($mgl['note']) ? ' · ' . htmlspecialchars($mgl['note']) : ''; ?></div>
+                                        </div>
+                                        <span style="font-weight:700; color:<?php echo $mgRec ? '#7bd8a6' : '#fca5a5'; ?>;"><?php echo $mgRec ? '+' : '−'; ?><?php echo number_format((float) $mgl['montant'], 2, ',', ' '); ?> €</span>
+                                    </div>
+                                <?php endforeach; endif; ?>
+                                <p style="margin:0.6rem 0 0;"><a href="magal.php?annee=<?php echo (int) $mgAnneeCourante; ?>&tab=taches" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">🕌 Ouvrir le Wadial Magal</a></p>
+                            </details>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
                 <div class="empty-state" id="com-noresult" style="display:none;"><div class="empty-state-icon">🔍</div><p>Aucune commission ne correspond à votre recherche.</p></div>
@@ -1443,6 +1790,133 @@ $membersJs = array_map(function ($m) {
             input.addEventListener('input', apply);
             if (sel) sel.addEventListener('change', apply);
             apply();
+        })();
+    </script>
+
+    <!-- Sélecteur à deux listes : membres d'une sous-commission -->
+    <div id="sub-members-modal">
+        <div class="tl-card">
+            <div class="tl-head">
+                <h3 id="sm-title">Membres de la sous-commission</h3>
+                <button type="button" class="tl-x" onclick="smClose()" aria-label="Fermer">&times;</button>
+            </div>
+            <div id="sm-note" style="padding:0.55rem 1.25rem; font-size:0.8rem; color:var(--text-muted); border-bottom:1px solid rgba(255,255,255,0.08);"></div>
+            <div class="tl-cols">
+                <div class="tl-col">
+                    <div class="tl-col-head">
+                        <div class="tl-title">Membres disponibles</div>
+                        <input type="text" id="sm-search" placeholder="🔍 Rechercher un membre…">
+                    </div>
+                    <div class="tl-list" id="sm-available"></div>
+                </div>
+                <div class="tl-col">
+                    <div class="tl-col-head">
+                        <div class="tl-title">Dans la sous-commission (<span id="sm-sel-count">0</span>)</div>
+                    </div>
+                    <div class="tl-list" id="sm-selected"></div>
+                </div>
+            </div>
+            <div class="tl-foot">
+                <span class="tl-count" id="sm-avail-count"></span>
+                <button type="button" class="btn btn-primary btn-sm" onclick="smClose()">Terminé</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Membres de chaque sous-commission (membres de la commission + membres supports)
+        var SM_SUBS = <?php
+            $smData = [];
+            foreach ($comSous as $smCid => $smSubs) {
+                foreach ($smSubs as $smId => $smSub) {
+                    $smData[$smId] = ['cid' => (int) $smCid, 'nom' => $smSub['nom'], 'accepte' => (int) ($smSub['accepte'] ?? 0),
+                        'members' => array_values(array_map('intval', array_merge($smSub['membres'], $smSub['supports'] ?? [])))];
+                }
+            }
+            echo json_encode((object) $smData, JSON_UNESCAPED_UNICODE);
+        ?>;
+        var smId = null, smSel = new Set(), smDirty = false;
+        function smSub() { return SM_SUBS[smId] || { cid: 0, nom: '', accepte: 0, members: [] }; }
+        function smDansCommission(id) {
+            var cid = smSub().cid;
+            return (COM_MEMBERS[cid] || []).map(Number).indexOf(id) !== -1 || (COM_MANAGERS[cid] || []).map(Number).indexOf(id) !== -1;
+        }
+        function smEligible(id) { return smDansCommission(id) || !!smSub().accepte; }
+        function smTag(id) { return smDansCommission(id) ? '' : '<span style="font-size:0.68rem; font-weight:700; color:#8ec5ff; border:1px solid rgba(45,140,255,0.4); border-radius:50px; padding:0.1rem 0.45rem; margin-left:0.3rem;">🤝 support</span>'; }
+        function smRender() {
+            var term = tlNorm(document.getElementById('sm-search').value);
+            var av = document.getElementById('sm-available'), se = document.getElementById('sm-selected');
+            av.innerHTML = ''; se.innerHTML = '';
+            var na = 0, ns = 0;
+            TL_ALL.forEach(function (m) {
+                if (smSel.has(m.id)) {
+                    se.insertAdjacentHTML('beforeend', '<div class="tl-item"><span>' + tlAvatar(m) + '</span><span class="tl-name">' + tlEsc(m.name) + smTag(m.id) + '</span><button type="button" class="tl-rem-btn" onclick="smRemove(' + m.id + ')" title="Retirer">&times;</button></div>');
+                    ns++;
+                } else {
+                    if (!smEligible(m.id)) { return; }
+                    if (term && tlNorm(m.name).indexOf(term) === -1) { return; }
+                    av.insertAdjacentHTML('beforeend', '<div class="tl-item"><span>' + tlAvatar(m) + '</span><span class="tl-name">' + tlEsc(m.name) + smTag(m.id) + '</span><button type="button" class="tl-add-btn" onclick="smAdd(' + m.id + ')" title="Ajouter">+</button></div>');
+                    na++;
+                }
+            });
+            if (!na) { av.innerHTML = '<div class="tl-empty">Aucun membre disponible.</div>'; }
+            if (!ns) { se.innerHTML = '<div class="tl-empty">Aucun membre dans la sous-commission.</div>'; }
+            document.getElementById('sm-sel-count').textContent = ns;
+            document.getElementById('sm-avail-count').textContent = na + ' disponible(s)';
+        }
+        function smPersist(add, mid) {
+            var params = new URLSearchParams();
+            params.append('ajax', '1');
+            params.append('action', add ? 'add_sous_commission_member' : 'remove_sous_commission_member');
+            params.append('commission_id', smSub().cid);
+            params.append('sous_commission_id', smId);
+            params.append('membre_id', mid);
+            params.append('csrf_token', TL_CSRF);
+            return fetch('commission_dashboard.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString(), credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (j) { if (!j.ok) { throw new Error(j.error || 'Erreur'); } });
+        }
+        function smAdd(id) {
+            smSel.add(id); smDirty = true; smRender();
+            smPersist(true, id).catch(function (e) {
+                smSel.delete(id); smRender();
+                modernAlert("Échec de l'ajout : " + e.message, 'Erreur');
+            });
+        }
+        function smRemove(id) {
+            smSel.delete(id); smDirty = true; smRender();
+            smPersist(false, id).catch(function (e) {
+                smSel.add(id); smRender();
+                modernAlert("Échec du retrait : " + e.message, 'Erreur');
+            });
+        }
+        function smOpen(id) {
+            smId = id; smDirty = false;
+            var sub = smSub();
+            smSel = new Set((sub.members || []).map(Number));
+            document.getElementById('sm-title').textContent = 'Membres — ' + sub.nom;
+            document.getElementById('sm-note').textContent = sub.accepte
+                ? 'Membres de la commission et membres supports (hors commission) acceptés.'
+                : 'Membres de la commission uniquement. Activez l\'option « membres supports » pour ajouter d\'autres membres.';
+            document.getElementById('sm-search').value = '';
+            smRender();
+            document.getElementById('sub-members-modal').classList.add('active');
+        }
+        function smClose() {
+            document.getElementById('sub-members-modal').classList.remove('active');
+            // Les listes affichées dans la page sont rafraîchies : on revient sur cette sous-commission
+            if (smDirty) { window.location.href = window.location.pathname + '#sc-' + smId; window.location.reload(); }
+        }
+        document.getElementById('sm-search').addEventListener('input', smRender);
+        document.getElementById('sub-members-modal').addEventListener('click', function (e) { if (e.target === this) { smClose(); } });
+        // Retour sur une sous-commission : ouvre le groupe qui la contient
+        (function () {
+            var h = window.location.hash;
+            if (h.indexOf('#sc-') !== 0) { return; }
+            var el = document.getElementById(h.slice(1));
+            if (!el) { return; }
+            var n = el;
+            while (n) { if (n.tagName === 'DETAILS') { n.open = true; } n = n.parentElement; }
+            el.scrollIntoView({ block: 'center' });
         })();
     </script>
 

@@ -639,40 +639,15 @@ if ($commissionId > 0) {
             border-color: rgba(37,211,102,0.6);
             background: rgba(37,211,102,0.08);
         }
-        .guddi-presentiel-toggle input[type="checkbox"] {
-            appearance: none;
-            -webkit-appearance: none;
-            width: 28px;
-            height: 28px;
-            min-width: 28px;
-            border: 2px solid rgba(255,255,255,0.35);
-            border-radius: 9px;
-            background: rgba(255,255,255,0.05);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: var(--transition);
-            margin: 0;
-        }
-        .guddi-presentiel-toggle input[type="checkbox"]:checked {
-            background: var(--accent);
-            border-color: var(--accent);
-        }
-        .guddi-presentiel-toggle input[type="checkbox"]:checked::after {
-            content: '✓';
-            color: #08150f;
-            font-size: 1.35rem;
-            font-weight: 900;
-            line-height: 1;
-        }
+        /* Case à cocher : le rendu vient du style global (style.css), ici seulement la grande taille tactile */
+        .guddi-presentiel-toggle input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch) { width: 28px; height: 28px; min-width: 28px; border-radius: 9px; }
         .guddi-presentiel-toggle .guddi-toggle-ico { font-size: 1.5rem; }
         .guddi-presentiel-toggle .guddi-toggle-txt { font-size: 1rem; font-weight: 600; color: var(--white); line-height: 1.35; }
         .guddi-presentiel-toggle .guddi-toggle-txt small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-muted); }
         @media (max-width: 520px) {
             .guddi-presentiel-toggle { padding: 1.1rem; }
             .guddi-presentiel-toggle .guddi-toggle-txt { font-size: 1.05rem; }
-            .guddi-presentiel-toggle input[type="checkbox"] { width: 32px; height: 32px; min-width: 32px; }
+            .guddi-presentiel-toggle input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch) { width: 32px; height: 32px; min-width: 32px; }
         }
         /* Boutons de filtre par année (indicateurs) : pilules modernes */
         .guddi-annee-btn {

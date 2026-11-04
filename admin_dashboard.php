@@ -27,6 +27,29 @@ if (empty($_SESSION['csrf_token'])) {
 $error = '';
 $success = '';
 
+/**
+ * Vérifie le mot de passe de l'administrateur connecté (compte admin, ou membre
+ * ayant le rôle administrateur).
+ */
+function admin_password_ok(PDO $pdo, string $motDePasse): bool
+{
+    if ($motDePasse === '') { return false; }
+    try {
+        if (!empty($_SESSION['admin_is_member']) && !empty($_SESSION['admin_member_id'])) {
+            $st = $pdo->prepare("SELECT password FROM membres WHERE id = ? AND is_admin = 1");
+            $st->execute([(int) $_SESSION['admin_member_id']]);
+        } elseif (!empty($_SESSION['admin_id'])) {
+            $st = $pdo->prepare("SELECT password FROM admins WHERE id = ?");
+            $st->execute([(int) $_SESSION['admin_id']]);
+        } else {
+            return false;
+        }
+        $hash = $st->fetchColumn();
+        return $hash !== false && $hash !== null && password_verify($motDePasse, (string) $hash);
+    } catch (Exception $e) {
+        return false;
+    }
+}
 // Handle actions (Approve, Suspend, Delete)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
@@ -43,11 +66,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $member = $stmt->fetch();
 
                 if ($member) {
-                    if ($action === 'approve') {
+                    // Actions sensibles : le mot de passe de l'administrateur connecté est exigé
+                    $actionProtegee = in_array($action, ['delete', 'suspend'], true);
+                    if ($actionProtegee && !admin_password_ok($pdo, (string) ($_POST['admin_password'] ?? ''))) {
+                        usleep(600000);
+                        $error = "Mot de passe incorrect : l'action a été annulée.";
+                    } elseif ($action === 'approve') {
                         $upd = $pdo->prepare("UPDATE membres SET status = 'approved' WHERE id = ?");
                         $upd->execute([$member_id]);
                         @send_validation_email($member['email'], $member['prenom'] . ' ' . $member['nom']);
                         $success = "L'inscription de " . htmlspecialchars($member['prenom'] . ' ' . $member['nom']) . " a été approuvée. Un e-mail de confirmation a été envoyé au membre.";
+                    } elseif ($action === 'send_message') {
+                        // Message au membre (information à compléter, photo non conforme…) envoyé par e-mail
+                        $sujetMsg = trim($_POST['sujet'] ?? '');
+                        $corpsMsg = trim($_POST['corps'] ?? '');
+                        $nomMsg = trim($member['prenom'] . ' ' . $member['nom']);
+                        if ($sujetMsg === '' || $corpsMsg === '') {
+                            $error = "Le sujet et le message sont obligatoires.";
+                        } elseif (trim((string) ($member['email'] ?? '')) === '') {
+                            $error = "Ce membre n'a pas d'adresse e-mail enregistrée.";
+                        } else {
+                            $innerMsg = '<div style="font-family:Arial,sans-serif;color:#333;line-height:1.6;">' . nl2br(htmlspecialchars($corpsMsg)) . '</div>'
+                                . dahira_email_button(rtrim(dahira_base_url(), '/') . '/profile.php', 'Modifier mon profil');
+                            if (send_smtp_mail($member['email'], $nomMsg !== '' ? $nomMsg : 'Cher membre', mb_substr($sujetMsg, 0, 200), dahira_email_wrap($innerMsg, 'Dahira Touba Lyon'))) {
+                                $success = "Message envoyé à " . htmlspecialchars($nomMsg) . " par e-mail.";
+                            } else {
+                                $error = "L'envoi de l'e-mail a échoué. Vérifiez la configuration d'envoi.";
+                            }
+                        }
                     } elseif ($action === 'suspend') {
                         $upd = $pdo->prepare("UPDATE membres SET status = 'pending' WHERE id = ?");
                         $upd->execute([$member_id]);
@@ -356,6 +402,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                                                 $actionFullName = $m['prenom'] . ' ' . $m['nom'];
                                             ?>
                                             <a href="membre.php?id=<?php echo (int)$m['id']; ?>" class="btn btn-secondary btn-sm" style="border-color: var(--accent); color: var(--accent);">Voir la fiche</a>
+                                            <button type="button" class="btn btn-secondary btn-sm msg-btn" data-mid="<?php echo (int)$m['id']; ?>" data-nom="<?php echo htmlspecialchars($m['prenom'] . ' ' . $m['nom'], ENT_QUOTES); ?>" data-prenom="<?php echo htmlspecialchars($m['prenom'], ENT_QUOTES); ?>" style="border-color:#8ec5ff; color:#8ec5ff;" title="Écrire un message au membre">✉️ Écrire</button>
                                             <button onclick="handleAction('approve', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-primary btn-sm" style="background: var(--success); box-shadow: none;">✓ Valider</button>
                                             <button onclick="handleAction('delete', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-danger btn-sm">Rejeter</button>
                                         </div>
@@ -418,6 +465,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                                                 $actionFullName = $m['prenom'] . ' ' . $m['nom'];
                                             ?>
                                             <a href="membre.php?id=<?php echo (int)$m['id']; ?>" class="btn btn-secondary btn-sm" style="border-color: var(--accent); color: var(--accent);">Voir la fiche</a>
+                                            <button type="button" class="btn btn-secondary btn-sm msg-btn" data-mid="<?php echo (int)$m['id']; ?>" data-nom="<?php echo htmlspecialchars($m['prenom'] . ' ' . $m['nom'], ENT_QUOTES); ?>" data-prenom="<?php echo htmlspecialchars($m['prenom'], ENT_QUOTES); ?>" style="border-color:#8ec5ff; color:#8ec5ff;" title="Écrire un message au membre">✉️ Écrire</button>
                                             <button onclick="handleAction('suspend', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-secondary btn-sm" style="color: var(--warning); border-color: var(--warning);">Passer en attente</button>
                                             <button onclick="handleAction('delete', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-danger btn-sm">Supprimer</button>
                                         </div>
@@ -524,6 +572,14 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             <div class="modal-body" style="display: flex; flex-direction: column; align-items: center; gap: 1rem;">
                 <img id="modal-photo" src="" alt="" style="width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2.5px solid var(--accent); display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.4);">
                 <p id="modal-message">Voulez-vous effectuer cette action ?</p>
+                <div id="modal-pw" style="display:none; width:100%;">
+                    <label for="modal-pw-input" style="display:block; color:var(--text-muted); font-size:0.78rem; font-weight:700; margin-bottom:0.35rem;">🔒 Confirmez avec votre mot de passe</label>
+                    <div style="position:relative;">
+                        <input type="password" id="modal-pw-input" autocomplete="current-password" placeholder="Votre mot de passe" style="width:100%; box-sizing:border-box; padding:0.65rem 3rem 0.65rem 0.85rem; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); border-radius:12px; color:var(--white); font-size:0.95rem;">
+                        <button type="button" id="modal-pw-eye" aria-label="Afficher le mot de passe" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); width:2.2rem; height:2.2rem; border:0; background:none; cursor:pointer; font-size:1.1rem;">👁️</button>
+                    </div>
+                    <div id="modal-pw-msg" style="color:#fca5a5; font-size:0.8rem; margin-top:0.3rem; min-height:1em;"></div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button id="modal-cancel-btn" class="btn btn-secondary btn-sm">Annuler</button>
@@ -570,11 +626,116 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
         </div>
     </div>
 
+    <!-- Popup : écrire un message à un membre (information à compléter, photo non conforme…) -->
+    <style>
+        #msg-modal .msgm-card { max-width: 520px; width: calc(100vw - 24px); border-radius: 22px; padding: 0; overflow: hidden; background: linear-gradient(180deg, rgba(20,40,32,0.98), rgba(10,26,20,0.98)); border: 1px solid rgba(212,175,55,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.55); }
+        #msg-modal .msgm-head { display: flex; align-items: center; gap: 0.8rem; padding: 1.1rem 1.3rem; background: linear-gradient(135deg, rgba(212,175,55,0.18), rgba(212,175,55,0.04)); border-bottom: 1px solid rgba(255,255,255,0.08); }
+        #msg-modal .msgm-ic { width: 42px; height: 42px; border-radius: 14px; background: rgba(212,175,55,0.2); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
+        #msg-modal .msgm-head h3 { margin: 0; color: var(--white); font-size: 1.05rem; line-height: 1.2; }
+        #msg-modal .msgm-head small { color: var(--text-muted); font-size: 0.78rem; }
+        #msg-modal .msgm-body { padding: 1.1rem 1.3rem 0.4rem; }
+        #msg-modal .msgm-label { display: block; color: var(--text-muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.4rem; }
+        #msg-modal .msgm-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
+        #msg-modal .msgm-chip { border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: var(--white); border-radius: 50px; padding: 0.38rem 0.85rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+        #msg-modal .msgm-chip:hover { border-color: rgba(212,175,55,0.6); }
+        #msg-modal .msgm-chip.active { background: rgba(212,175,55,0.2); border-color: var(--gold); color: var(--gold); }
+        #msg-modal .msgm-input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; color: var(--white); padding: 0.65rem 0.85rem; font-size: 0.92rem; font-family: inherit; }
+        #msg-modal .msgm-input:focus { outline: none; border-color: var(--gold); }
+        #msg-modal textarea.msgm-input { resize: vertical; min-height: 110px; line-height: 1.5; }
+        #msg-modal .msgm-field { margin-bottom: 0.9rem; }
+        #msg-modal .msgm-foot { display: flex; gap: 0.5rem; justify-content: flex-end; flex-wrap: wrap; padding: 0.9rem 1.3rem 1.2rem; }
+    </style>
+    <div id="msg-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card msgm-card">
+            <form id="msg-form" action="admin_dashboard.php" method="POST" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                <input type="hidden" name="action" value="send_message">
+                <input type="hidden" name="member_id" id="msg-mid" value="">
+                <div class="msgm-head">
+                    <div class="msgm-ic">✉️</div>
+                    <div><h3 id="msg-title">Écrire au membre</h3><small>Message court envoyé par e-mail</small></div>
+                </div>
+                <div class="msgm-body">
+                    <span class="msgm-label">Objet</span>
+                    <div class="msgm-chips" id="msg-objets"></div>
+                    <div class="msgm-field">
+                        <span class="msgm-label">Sujet</span>
+                        <input type="text" name="sujet" id="msg-sujet" class="msgm-input" required maxlength="200">
+                    </div>
+                    <div class="msgm-field">
+                        <span class="msgm-label">Message</span>
+                        <textarea name="corps" id="msg-corps" class="msgm-input" rows="5" required></textarea>
+                    </div>
+                </div>
+                <div class="msgm-foot">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="fermerMsg()">Annuler</button>
+                    <button type="submit" id="msg-send" class="btn btn-primary btn-sm">📧 Envoyer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        // Objets proposés et messages très courts ({prenom} est remplacé par le prénom du membre)
+        var MSG_SIGNATURE = "\nJërëjëf,\nDahira Touba Lyon";
+        var MSG_OBJETS = [
+            { label: 'Information à compléter', sujet: 'Inscription : information à compléter',
+              corps: "Assalamu aleykum {prenom},\nIl manque une information à votre inscription : …\nMerci de la compléter dans votre profil." },
+            { label: 'Photo non conforme', sujet: 'Inscription : photo non conforme',
+              corps: "Assalamu aleykum {prenom},\nVotre photo n'est pas conforme (de face, nette, bien éclairée, visage dégagé).\nMerci d'en envoyer une nouvelle depuis votre profil." },
+            { label: 'Photo manquante', sujet: 'Inscription : photo manquante',
+              corps: "Assalamu aleykum {prenom},\nIl manque votre photo.\nMerci de l'ajouter depuis votre profil." },
+            { label: 'Informations à corriger', sujet: 'Inscription : informations à corriger',
+              corps: "Assalamu aleykum {prenom},\nCertaines informations sont à corriger : …\nMerci de les modifier dans votre profil." },
+            { label: 'Coordonnées à vérifier', sujet: 'Inscription : vos coordonnées',
+              corps: "Assalamu aleykum {prenom},\nPouvez-vous vérifier votre e-mail et votre téléphone ?\nMerci de les mettre à jour dans votre profil." },
+            { label: 'Commission à préciser', sujet: 'Inscription : précision demandée',
+              corps: "Assalamu aleykum {prenom},\nQuelle commission ou quel kurel souhaitez-vous rejoindre ?\nMerci de nous le préciser dans votre profil." },
+            { label: 'Message libre', sujet: 'Message du Dahira Touba Lyon',
+              corps: "Assalamu aleykum {prenom},\n" }
+        ];
+        var msgPrenom = '';
+        (function () {
+            var box = document.getElementById('msg-objets');
+            MSG_OBJETS.forEach(function (o, i) {
+                var b = document.createElement('button');
+                b.type = 'button'; b.className = 'msgm-chip'; b.textContent = o.label;
+                b.addEventListener('click', function () { appliquerObjet(i); });
+                box.appendChild(b);
+            });
+            document.querySelectorAll('.msg-btn').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    msgPrenom = b.getAttribute('data-prenom') || '';
+                    document.getElementById('msg-mid').value = b.getAttribute('data-mid') || '';
+                    document.getElementById('msg-title').textContent = 'Écrire à ' + (b.getAttribute('data-nom') || 'ce membre');
+                    appliquerObjet(0);
+                    var m = document.getElementById('msg-modal');
+                    m.style.display = 'flex';
+                    setTimeout(function () { m.classList.add('active'); }, 10);
+                });
+            });
+            document.getElementById('msg-modal').addEventListener('click', function (e) { if (e.target === this) { fermerMsg(); } });
+            document.getElementById('msg-form').addEventListener('submit', function () {
+                var s = document.getElementById('msg-send'); s.disabled = true; s.textContent = '⏳ Envoi…';
+            });
+        })();
+        function appliquerObjet(i) {
+            var o = MSG_OBJETS[i] || MSG_OBJETS[0];
+            document.querySelectorAll('#msg-objets .msgm-chip').forEach(function (c, k) { c.classList.toggle('active', k === i); });
+            document.getElementById('msg-sujet').value = o.sujet;
+            document.getElementById('msg-corps').value = o.corps.replace(/\{prenom\}/g, msgPrenom) + MSG_SIGNATURE;
+        }
+        function fermerMsg() {
+            var m = document.getElementById('msg-modal');
+            m.classList.remove('active');
+            setTimeout(function () { m.style.display = 'none'; }, 280);
+        }
+    </script>
     <!-- Hidden form for secure POST actions -->
     <form id="action-form" action="admin_dashboard.php" method="POST" style="display:none;">
         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
         <input type="hidden" name="action" id="form-action" value="">
         <input type="hidden" name="member_id" id="form-member-id" value="">
+        <input type="hidden" name="admin_password" id="form-admin-pw" value="">
     </form>
 
     <script>
@@ -675,6 +836,19 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             modalTitle.innerHTML = title;
             modalMessage.innerHTML = msg;
 
+            // Mot de passe administrateur : exigé pour passer en attente ou supprimer
+            const protege = (action === 'delete' || action === 'suspend');
+            const pwBloc = document.getElementById('modal-pw');
+            const pwInput = document.getElementById('modal-pw-input');
+            pwBloc.style.display = protege ? 'block' : 'none';
+            pwInput.value = '';
+            pwInput.type = 'password';
+            pwInput.style.borderColor = '';
+            document.getElementById('modal-pw-msg').textContent = '';
+            const oeil = document.getElementById('modal-pw-eye');
+            oeil.textContent = '👁️';
+            oeil.setAttribute('aria-label', 'Afficher le mot de passe');
+
             // Show modal with animation
             modal.style.display = 'flex';
             setTimeout(() => {
@@ -706,13 +880,35 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             if (e.target === this) closeModal();
         });
 
-        // Submit action
+        // Submit action (mot de passe administrateur exigé pour les actions sensibles)
         document.getElementById('modal-confirm-btn').addEventListener('click', function() {
-            if (activeAction && activeMemberId) {
-                document.getElementById('form-action').value = activeAction;
-                document.getElementById('form-member-id').value = activeMemberId;
-                document.getElementById('action-form').submit();
+            if (!(activeAction && activeMemberId)) { return; }
+            if (activeAction === 'delete' || activeAction === 'suspend') {
+                const pw = document.getElementById('modal-pw-input');
+                if (!pw.value) {
+                    pw.style.borderColor = 'var(--danger)';
+                    document.getElementById('modal-pw-msg').textContent = 'Saisissez votre mot de passe pour confirmer.';
+                    pw.focus();
+                    return;
+                }
+                document.getElementById('form-admin-pw').value = pw.value;
             }
+            document.getElementById('form-action').value = activeAction;
+            document.getElementById('form-member-id').value = activeMemberId;
+            document.getElementById('action-form').submit();
+        });
+        // Entrée dans le champ mot de passe = confirmer
+        document.getElementById('modal-pw-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); document.getElementById('modal-confirm-btn').click(); }
+        });
+        // Bouton œil : afficher / masquer le mot de passe
+        document.getElementById('modal-pw-eye').addEventListener('click', function() {
+            const pw = document.getElementById('modal-pw-input');
+            const visible = pw.type === 'password';
+            pw.type = visible ? 'text' : 'password';
+            this.textContent = visible ? '🙈' : '👁️';
+            this.setAttribute('aria-label', visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe');
+            pw.focus();
         });
 
         // Tabs switcher function

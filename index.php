@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'maj_t
                                      WHERE t.id = ?");
                 $st->execute([$tid]);
                 $t = $st->fetch();
-                $reunionOk = $t && ((int) ($t['publie'] ?? 0) === 1 || (int) ($t['cloture'] ?? 0) === 1);
+                $reunionOk = $t && (int) ($t['publie'] ?? 0) === 1 && (int) ($t['cloture'] ?? 0) !== 1;
                 if ($t && $reunionOk && (int) ($t['assignee_id'] ?? 0) === (int) $_SESSION['player_id']) {
                     $old = (string) ($t['statut'] ?? 'a_faire');
                     if ($old !== $ns) {
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_m
                                      WHERE t.id = ?");
                 $st->execute([$tid]);
                 $t = $st->fetch();
-                $reunionOk = $t && ((int) ($t['publie'] ?? 0) === 1 || (int) ($t['cloture'] ?? 0) === 1);
+                $reunionOk = $t && (int) ($t['publie'] ?? 0) === 1 && (int) ($t['cloture'] ?? 0) !== 1;
                 if ($t && $reunionOk && (int) ($t['assignee_id'] ?? 0) === (int) $_SESSION['player_id']) {
                     $pdo->prepare("INSERT INTO reunion_tache_commentaires (tache_id, membre_id, texte, systeme) VALUES (?,?,?,0)")->execute([$tid, (int) $_SESSION['player_id'], mb_substr($txt, 0, 1000)]);
                     require_once __DIR__ . '/notification_helper.php';
@@ -243,7 +243,7 @@ if (isset($_SESSION['player_id'])) {
              FROM reunion_taches t
              JOIN commission_reunions r ON r.id = t.reunion_id
              LEFT JOIN commissions c ON c.id = t.commission_id
-             WHERE t.assignee_id = ? AND t.statut <> 'fait' AND (r.publie = 1 OR r.cloture = 1)
+             WHERE t.assignee_id = ? AND t.statut <> 'fait' AND r.publie = 1 AND r.cloture = 0
              ORDER BY FIELD(t.statut,'en_cours','a_faire'), (t.echeance IS NULL) ASC, t.echeance ASC, t.created_at ASC"
         );
         $rqT->execute([(int) $_SESSION['player_id']]);

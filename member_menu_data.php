@@ -19,6 +19,7 @@ function troba_member_menu_items(?PDO $pdo = null): array
         'trombinoscope.php'      => '🖼️ Trombinoscope',
         'profile.php'            => '👤 Mon profil',
         'cotisation.php'         => '💶 Ma cotisation',
+        'mes_commissions.php'    => '📋 Mes commissions',
         'notifications_page.php' => '🔔 Notifications',
         'kikanla.php'            => '🎮 Jouer à Ki Kan La',
     ];
@@ -29,7 +30,7 @@ function troba_member_menu_items(?PDO $pdo = null): array
             $nbCom = (int) $pdo->query("SELECT (SELECT COUNT(*) FROM commission_membres WHERE membre_id = $pid) + (SELECT COUNT(*) FROM commission_gestionnaires WHERE membre_id = $pid)")->fetchColumn();
             if ($nbCom > 0) {
                 $apres = ['disponibilites.php' => '🗓️ Mes disponibilités'];
-                $menu = array_slice($menu, 0, 4, true) + $apres + array_slice($menu, 4, null, true);
+                $menu = array_slice($menu, 0, 5, true) + $apres + array_slice($menu, 5, null, true);
             }
         } catch (Throwable $e) {}
     }
@@ -62,7 +63,7 @@ function troba_member_gestion_items(?PDO $pdo = null): array
         $items['kourel_dashboard.php'] = '🎵 Kurels';
     }
     if ($isCom) {
-        $items['commission_dashboard.php'] = '📋 Mes commissions';
+        $items['commission_dashboard.php'] = '🛠️ Gérer mes commissions';
         if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
             $pid = (int) $_SESSION['player_id'];
             $stockOn = false;

@@ -774,7 +774,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                             <div class="form-group"><label class="form-label">Au</label><input type="date" name="period_end" class="form-input" value="<?php echo date('Y-m-d', strtotime('+6 months')); ?>" required></div>
                             <div class="form-group" style="display:flex; align-items:flex-end;">
                                 <label class="form-check" style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem;">
-                                    <input type="checkbox" name="alterner" value="1" checked style="width:auto;"> Un dimanche sur deux
+                                    <input type="checkbox" name="alterner" value="1" checked> Un dimanche sur deux
                                 </label>
                             </div>
                         </div>

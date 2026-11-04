@@ -340,6 +340,15 @@ try {
         PRIMARY KEY (sous_commission_id, membre_id),
         INDEX idx_membre (membre_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Responsable d'une sous-commission (membre de la commission, affecté à la sous-commission)
+    try { $pdo->query("SELECT responsable_id FROM sous_commissions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE sous_commissions ADD COLUMN responsable_id INT NULL DEFAULT NULL"); }
+    // Membre « support » d'une sous-commission : membre quelconque ajouté à la sous-commission,
+    // sans faire partie de la commission parente
+    try { $pdo->query("SELECT support FROM sous_commission_membres LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE sous_commission_membres ADD COLUMN support TINYINT(1) NOT NULL DEFAULT 0"); }
+    // Option d'une sous-commission : autorise l'ajout de n'importe quel membre (membres supports)
+    try { $pdo->query("SELECT accepte_supports FROM sous_commissions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE sous_commissions ADD COLUMN accepte_supports TINYINT(1) NOT NULL DEFAULT 0"); }
+    // Les sous-commissions qui ont déjà des membres supports gardent cette possibilité
+    try { $pdo->exec("UPDATE sous_commissions SET accepte_supports = 1 WHERE accepte_supports = 0 AND id IN (SELECT DISTINCT sous_commission_id FROM sous_commission_membres WHERE support = 1)"); } catch (Exception $e) { /* sans importance */ }
 
     // Lien Zoom par défaut d'une commission (pré-rempli pour ses réunions à distance)
     try {
