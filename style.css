@@ -2084,9 +2084,11 @@ input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch) {
     background-size: 78%;
     transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
 }
-input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch):hover:not(:disabled) {
-    border-color: var(--gold, #d4af37);
-    box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.14);
+@media (hover: hover) {
+    input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch):hover:not(:disabled) {
+        border-color: var(--gold, #d4af37);
+        box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.14);
+    }
 }
 input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch):active:not(:disabled) {
     transform: scale(0.92);
@@ -2175,3 +2177,34 @@ input[type="checkbox"].checkbox-switch:disabled {
     cursor: not-allowed;
 }
 
+/* Cases à cocher : confort tactile (mobile) */
+input[type="checkbox"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+@media (pointer: coarse), (max-width: 768px) {
+    /* Case plus grande, plus facile à toucher */
+    input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch) {
+        width: 1.65rem;
+        height: 1.65rem;
+        min-width: 1.65rem;
+        border-radius: 9px;
+    }
+    input[type="checkbox"].checkbox-switch {
+        width: 3.4rem;
+        height: 2.1rem;
+        min-width: 3.4rem;
+    }
+    input[type="checkbox"].checkbox-switch::before {
+        width: calc(2.1rem - 4px);
+        height: calc(2.1rem - 4px);
+    }
+    input[type="checkbox"].checkbox-switch:checked::before {
+        transform: translateX(1.3rem);
+    }
+    /* Ligne cliquable plus haute quand elle contient une case à cocher */
+    label:has(> input[type="checkbox"]:not(.native-checkbox)) {
+        min-height: 2.75rem;
+        align-items: center;
+    }
+}

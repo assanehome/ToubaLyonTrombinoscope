@@ -32,7 +32,18 @@ try {
     $q->execute([$membreId, $membreId]);
     $mesCommissions = $q->fetchAll();
 } catch (Exception $e) { $mesCommissions = []; }
-if (empty($mesCommissions)) {
+// Sous-commissions où le membre est « membre support » (sans appartenir à la commission)
+$mesSupports = [];
+try {
+    $q = $pdo->prepare("SELECT sc.id, sc.nom, sc.commission_id, c.nom AS commission_nom
+                        FROM sous_commission_membres scm
+                        JOIN sous_commissions sc ON sc.id = scm.sous_commission_id
+                        JOIN commissions c ON c.id = sc.commission_id
+                        WHERE scm.membre_id = ? AND scm.support = 1 ORDER BY c.nom, sc.nom");
+    $q->execute([$membreId]);
+    $mesSupports = $q->fetchAll();
+} catch (Exception $e) { $mesSupports = []; }
+if (empty($mesCommissions) && empty($mesSupports)) {
     header('Location: index.php');
     exit;
 }
@@ -93,6 +104,22 @@ if (!empty($idsDim)) {
     } catch (Exception $e) {}
 }
 
+/** Membres d'une sous-commission, en deux groupes : membres de la commission et membres supports. */
+function dispo_groupes_sous(PDO $pdo, int $scId): array
+{
+    $membres = [];
+    $supports = [];
+    try {
+        $q = $pdo->prepare("SELECT m.id, m.prenom, m.nom, scm.support FROM sous_commission_membres scm JOIN membres m ON m.id = scm.membre_id WHERE scm.sous_commission_id = ? AND m.status = 'approved' ORDER BY m.prenom, m.nom");
+        $q->execute([$scId]);
+        foreach ($q as $r) {
+            if ((int) $r['support'] === 1) { $supports[] = $r; } else { $membres[] = $r; }
+        }
+    } catch (Exception $e) { return []; }
+    $groupes = [['👥 Membres', $membres]];
+    if (!empty($supports)) { $groupes[] = ['🤝 Membres supports', $supports]; }
+    return $groupes;
+}
 /** Membres d'une commission, groupés par sous-commission : [ [titre, [membres]] , ... ]. */
 function dispo_groupes(PDO $pdo, int $cid): array
 {
@@ -126,6 +153,20 @@ function dispo_groupes(PDO $pdo, int $cid): array
     $sans = array_values(array_filter($membres, function ($m) use ($dansUneSous) { return !isset($dansUneSous[(int) $m['id']]); }));
     if (!empty($sans) || empty($groupes)) { $groupes[] = [empty($groupes) ? '👥 Membres' : '👥 Sans sous-commission', $sans]; }
     return $groupes;
+}
+
+// Blocs du planning : une table par commission, et une par sous-commission où le membre est « support »
+$blocsPlanning = [];
+if (!empty($dimanches)) {
+    foreach ($mesCommissions as $c) {
+        $blocsPlanning[] = ['titre' => '📋 Planning des disponibilités — ' . $c['nom'], 'groupes' => dispo_groupes($pdo, (int) $c['id'])];
+    }
+    foreach ($mesSupports as $sp) {
+        $blocsPlanning[] = [
+            'titre' => '🧩 Planning des disponibilités — ' . $sp['nom'] . ' (' . $sp['commission_nom'] . ')',
+            'groupes' => dispo_groupes_sous($pdo, (int) $sp['id']),
+        ];
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -196,11 +237,11 @@ function dispo_groupes(PDO $pdo, int $cid): array
                     <?php endif; ?>
                 </div>
 
-                <?php if (!empty($dimanches)): foreach ($mesCommissions as $c):
-                    $groupes = dispo_groupes($pdo, (int) $c['id']);
+                <?php if (!empty($dimanches)): foreach ($blocsPlanning as $c):
+                    $groupes = $c['groupes'];
                 ?>
                 <div class="glass-card dp-card">
-                    <h2>📋 Planning des disponibilités — <?php echo $h($c['nom']); ?></h2>
+                    <h2><?php echo $h($c['titre']); ?></h2>
                     <p class="dp-hint">✅ disponible · ❌ indisponible · — non précisé</p>
                     <div class="dp-table-wrap">
                     <table class="dp-table">

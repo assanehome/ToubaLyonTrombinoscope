@@ -1214,7 +1214,7 @@ $membersJs = array_map(function ($m) {
                                 </details>
                             <?php endforeach; ?>
                             <?php if ($peutSous): ?>
-                            <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin-top:0.5rem;">
+                            <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin-top:0.8rem; padding:1rem 1.1rem; border:1px solid rgba(212,175,55,0.45); border-radius:14px; background:rgba(255,255,255,0.03);">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="create_sous_commission">
                                 <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
@@ -1321,11 +1321,12 @@ $membersJs = array_map(function ($m) {
                                 else { $reusNonPubliees[] = $rx; }
                             }
                             // Groupes par statut : publiées et non publiées (non affichées aux membres) ouverts par défaut
+                            $htmlCloturees = '';
                             $blocsReunions = [
                                 ['titre' => '🚀 Publiées — en cours ou à venir', 'liste' => $reusPubliees, 'open' => true, 'vide' => "Aucune réunion publiée en cours ou à venir."],
                                 ['titre' => '⏳ Non publiées — masquées aux membres', 'liste' => $reusNonPubliees, 'open' => true, 'vide' => ''],
                                 ['titre' => '⏰ Passées — à clôturer', 'liste' => $reusAClore, 'open' => true, 'vide' => ''],
-                                ['titre' => '✅ Clôturées', 'liste' => $reusTerminees, 'open' => false, 'vide' => ''],
+                                ['titre' => '✅ Clôturées', 'liste' => $reusTerminees, 'open' => false, 'vide' => '', 'bas' => true],
                             ];
                             $reusAnn = array_values(array_filter($reusAll, function ($x) { return (int) ($x['annule'] ?? 0) === 1; }));
                         ?>
@@ -1336,7 +1337,7 @@ $membersJs = array_map(function ($m) {
                             <?php else: foreach ($blocsReunions as $bloc): ?>
                                 <?php if (empty($bloc['liste'])): ?>
                                     <?php if ($bloc['vide'] !== ''): ?><p class="km-empty"><?php echo htmlspecialchars($bloc['vide']); ?></p><?php endif; ?>
-                                <?php else: $reus = $bloc['liste']; ?>
+                                <?php else: $reus = $bloc['liste']; if (!empty($bloc['bas'])) { ob_start(); } ?>
                                 <details class="com-reu-group" style="margin-bottom:0.75rem;"<?php echo $bloc['open'] ? ' open' : ''; ?>>
                                     <summary style="cursor:pointer; color:var(--white); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem; margin-bottom:0.5rem;"><?php echo $bloc['titre']; ?> <span style="color:var(--text-muted); font-weight:600;">(<?php echo count($bloc['liste']); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
                                 <?php
@@ -1399,6 +1400,7 @@ $membersJs = array_map(function ($m) {
                                 <?php endforeach; ?>
                                 </div>
                                 </details>
+                                <?php if (!empty($bloc['bas'])) { $htmlCloturees = ob_get_clean(); } ?>
                                 <?php endif; ?>
                             <?php endforeach; endif; ?>
                             <?php if (!empty($reusAnn)): ?>
@@ -1448,6 +1450,7 @@ $membersJs = array_map(function ($m) {
                                     <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Créer la réunion</button></div>
                                 </form>
                             </details>
+                            <?php echo $htmlCloturees ?? ''; ?>
                             <?php if (com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions)): ?>
                             <details class="com-reu-group" style="margin:0.5rem 0;">
                             <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">⚙️ Paramètres <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>

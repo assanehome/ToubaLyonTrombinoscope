@@ -8,6 +8,8 @@
  */
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_event_etat()
+require_once __DIR__ . '/csrf.php';
+require_once __DIR__ . '/notification_helper.php'; // troba_notify_membre()
 
 if (session_status() === PHP_SESSION_NONE) {
     require_once __DIR__ . '/session_config.php'; session_start();
@@ -31,6 +33,60 @@ function mc_cr_html(string $html): string
     return (string) $clean;
 }
 
+// Gestion des membres d'une sous-commission par son responsable (appels AJAX)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax'] ?? '') === 'sub_member') {
+    header('Content-Type: application/json; charset=UTF-8');
+    $rep = ['ok' => false, 'error' => 'Action refusée.'];
+    try {
+        if (!csrf_validate()) {
+            $rep['error'] = 'Échec de validation de sécurité. Rechargez la page.';
+        } else {
+            $scId = (int) ($_POST['sous_commission_id'] ?? 0);
+            $mid = (int) ($_POST['membre_id'] ?? 0);
+            $act = (string) ($_POST['action'] ?? '');
+            $q = $pdo->prepare("SELECT id, commission_id, nom, accepte_supports, responsable_id FROM sous_commissions WHERE id = ?");
+            $q->execute([$scId]);
+            $sc = $q->fetch();
+            if (!$sc || (int) ($sc['responsable_id'] ?? 0) !== $membreId) {
+                $rep['error'] = "Vous n'êtes pas responsable de cette sous-commission.";
+            } elseif ($mid <= 0) {
+                $rep['error'] = 'Membre invalide.';
+            } elseif ($act === 'remove') {
+                if ($mid === $membreId) {
+                    $rep['error'] = 'Vous ne pouvez pas vous retirer : vous êtes le responsable de cette sous-commission.';
+                } else {
+                    $pdo->prepare("DELETE FROM sous_commission_membres WHERE sous_commission_id = ? AND membre_id = ?")->execute([$scId, $mid]);
+                    $rep = ['ok' => true];
+                }
+            } elseif ($act === 'add') {
+                $cidSc = (int) $sc['commission_id'];
+                $ok = $pdo->prepare("SELECT 1 FROM membres WHERE id = ? AND status = 'approved'");
+                $ok->execute([$mid]);
+                $inCom = $pdo->prepare("SELECT 1 FROM (SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?) x WHERE membre_id = ?");
+                $inCom->execute([$cidSc, $cidSc, $mid]);
+                $dansCom = ($inCom->fetchColumn() !== false);
+                if ($ok->fetchColumn() === false) {
+                    $rep['error'] = 'Membre introuvable ou non validé.';
+                } elseif (!$dansCom && empty($sc['accepte_supports'])) {
+                    $rep['error'] = "Ce membre ne fait pas partie de la commission et la sous-commission n'accepte pas de membres supports.";
+                } else {
+                    $ins = $pdo->prepare("INSERT IGNORE INTO sous_commission_membres (sous_commission_id, membre_id, support) VALUES (?, ?, ?)");
+                    $ins->execute([$scId, $mid, $dansCom ? 0 : 1]);
+                    if ($ins->rowCount() > 0) {
+                        troba_notify_membre($pdo, $mid, 'commission', $dansCom ? '🧩 Sous-commission' : '🤝 Membre support',
+                            ($dansCom ? 'Vous avez été affecté(e) à' : 'Vous aidez') . ' la sous-commission « ' . $sc['nom'] . ' »' . ($dansCom ? '.' : ' en tant que membre support.'), 'mes_commissions.php');
+                    }
+                    $rep = ['ok' => true];
+                }
+            }
+        }
+    } catch (Exception $e) {
+        error_log('Touba Lyon mes_commissions (sous-commission) : ' . $e->getMessage());
+        $rep['error'] = 'Une erreur technique est survenue.';
+    }
+    echo json_encode($rep);
+    exit;
+}
 // Commissions du membre, avec son rôle
 $commissions = [];
 try {
@@ -56,6 +112,15 @@ try {
                         WHERE scm.membre_id = ? AND scm.support = 1 ORDER BY c.nom, sc.nom");
     $q->execute([$membreId]);
     $mesSupports = $q->fetchAll();
+    // Membres de ces sous-commissions (membres de la commission et supports)
+    $mesSupportsMembres = [];
+    if (!empty($mesSupports)) {
+        $idsSc = array_map(function ($x) { return (int) $x['id']; }, $mesSupports);
+        $phSc = implode(',', array_fill(0, count($idsSc), '?'));
+        $qm = $pdo->prepare("SELECT scm.sous_commission_id, scm.support, m.prenom, m.nom FROM sous_commission_membres scm JOIN membres m ON m.id = scm.membre_id WHERE scm.sous_commission_id IN ($phSc) AND m.status = 'approved' ORDER BY scm.support, m.prenom, m.nom");
+        $qm->execute($idsSc);
+        foreach ($qm as $rm) { $mesSupportsMembres[(int) $rm['sous_commission_id']][] = ['nom' => trim($rm['prenom'] . ' ' . $rm['nom']), 'support' => (int) $rm['support'] === 1]; }
+    }
 } catch (Exception $e) { $mesSupports = []; }
 
 $responsables = [];   // [cid] => [noms]
@@ -79,14 +144,15 @@ if (!empty($ids)) {
         $q->execute(array_merge($ids, $ids));
         foreach ($q as $r) { $membres[(int) $r['commission_id']][(int) $r['id']] = trim($r['prenom'] . ' ' . $r['nom']); }
 
-        $q = $pdo->prepare("SELECT sc.commission_id, sc.id, sc.nom, sc.responsable_id, scm.membre_id, scm.support, ms.prenom AS ms_prenom, ms.nom AS ms_nom FROM sous_commissions sc LEFT JOIN sous_commission_membres scm ON scm.sous_commission_id = sc.id LEFT JOIN membres ms ON ms.id = scm.membre_id WHERE sc.commission_id IN ($ph) ORDER BY sc.nom");
+        $q = $pdo->prepare("SELECT sc.commission_id, sc.id, sc.nom, sc.responsable_id, sc.accepte_supports, scm.membre_id, scm.support, ms.prenom AS ms_prenom, ms.nom AS ms_nom FROM sous_commissions sc LEFT JOIN sous_commission_membres scm ON scm.sous_commission_id = sc.id LEFT JOIN membres ms ON ms.id = scm.membre_id WHERE sc.commission_id IN ($ph) ORDER BY sc.nom");
         $q->execute($ids);
         $tmp = [];
         foreach ($q as $r) {
             $cid = (int) $r['commission_id'];
-            if (!isset($tmp[$cid][(int) $r['id']])) { $tmp[$cid][(int) $r['id']] = ['nom' => (string) $r['nom'], 'resp' => (isset($membres[$cid][(int) ($r['responsable_id'] ?? 0)]) ? $membres[$cid][(int) $r['responsable_id']] : ''), 'membres' => [], 'supports' => []]; }
+            if (!isset($tmp[$cid][(int) $r['id']])) { $tmp[$cid][(int) $r['id']] = ['id' => (int) $r['id'], 'cid' => $cid, 'resp_id' => (int) ($r['responsable_id'] ?? 0), 'accepte' => (int) ($r['accepte_supports'] ?? 0), 'ids' => [], 'nom' => (string) $r['nom'], 'resp' => (isset($membres[$cid][(int) ($r['responsable_id'] ?? 0)]) ? $membres[$cid][(int) $r['responsable_id']] : ''), 'membres' => [], 'supports' => []]; }
             if ($r['membre_id'] !== null && (int) ($r['support'] ?? 0) === 1) { $tmp[$cid][(int) $r['id']]['supports'][] = trim($r['ms_prenom'] . ' ' . $r['ms_nom']); }
             elseif ($r['membre_id'] !== null && isset($membres[$cid][(int) $r['membre_id']])) { $tmp[$cid][(int) $r['id']]['membres'][] = $membres[$cid][(int) $r['membre_id']]; }
+            if ($r['membre_id'] !== null) { $tmp[$cid][(int) $r['id']]['ids'][] = (int) $r['membre_id']; }
         }
         foreach ($tmp as $cid => $liste) { $sousComs[$cid] = array_values($liste); }
 
@@ -101,6 +167,24 @@ if (!empty($ids)) {
         $q->execute([$magalAnnee]);
         foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $mc) { $magalCommissions[(int) $mc] = true; }
     } catch (Exception $e) { error_log('Touba Lyon mes_commissions : ' . $e->getMessage()); }
+}
+
+// Sous-commissions dont le membre est responsable (gestion depuis son espace)
+$smgData = [];
+foreach ($sousComs as $cidG => $subsG) {
+    foreach ($subsG as $sg) {
+        if ((int) ($sg['resp_id'] ?? 0) === $membreId) {
+            $smgData[(int) $sg['id']] = ['cid' => (int) $cidG, 'nom' => $sg['nom'], 'accepte' => (int) $sg['accepte'], 'ids' => array_values(array_map('intval', $sg['ids'])), 'cmembers' => array_map('intval', array_keys($membres[$cidG] ?? []))];
+        }
+    }
+}
+$tousMembres = [];
+if (!empty($smgData)) {
+    try {
+        foreach ($pdo->query("SELECT id, prenom, nom FROM membres WHERE status = 'approved' ORDER BY prenom, nom") as $rm) {
+            $tousMembres[] = ['id' => (int) $rm['id'], 'name' => trim($rm['prenom'] . ' ' . $rm['nom'])];
+        }
+    } catch (Exception $e) { $tousMembres = []; }
 }
 ?>
 <!DOCTYPE html>
@@ -154,9 +238,13 @@ if (!empty($ids)) {
                     <?php foreach ($mesSupports as $ms): ?>
                         <div class="mc-reu">
                             <div class="mc-reu-top"><span class="mc-reu-titre">🧩 <?php echo $h($ms['nom']); ?></span><span class="badge">📋 <?php echo $h($ms['commission_nom']); ?></span></div>
+                            <div class="mc-chips" style="margin-top:0.4rem;">
+                                <?php foreach (($mesSupportsMembres[(int) $ms['id']] ?? []) as $mb): ?><span class="mc-chip"><?php echo $mb['support'] ? '🤝 ' : ''; ?><?php echo $h($mb['nom']); ?></span><?php endforeach; ?>
+                            </div>
                             <?php if (!empty(trim((string) $ms['resp_nom']))): ?><div class="mc-reu-meta">🎖️ Responsable : <?php echo $h($ms['resp_nom']); ?></div><?php endif; ?>
                         </div>
                     <?php endforeach; ?>
+                    <div class="mc-actions"><a href="disponibilites.php" class="btn btn-secondary btn-sm">🗓️ Mes disponibilités</a></div>
                 </div>
                 <?php endif; ?>
                 <?php foreach ($commissions as $c):
@@ -201,11 +289,14 @@ if (!empty($ids)) {
                     <details class="mc-grp">
                         <summary>🧩 Sous-commissions (<?php echo count($sousComs[$cid]); ?>)</summary>
                         <?php foreach ($sousComs[$cid] as $sc): ?>
-                            <div style="margin-top:0.6rem;">
+                            <div id="sc-<?php echo (int) $sc['id']; ?>" style="margin-top:0.6rem;">
                                 <strong style="color:var(--white); font-size:0.88rem;">🧩 <?php echo $h($sc['nom']); ?></strong>
                                 <span style="color:var(--text-muted); font-size:0.78rem;">(<?php echo count($sc['membres']); ?>)</span>
                                 <?php if (!empty($sc['resp'])): ?>
                                     <span style="color:var(--gold); font-size:0.8rem; font-weight:700;">🎖️ Responsable : <?php echo $h($sc['resp']); ?></span>
+                                <?php endif; ?>
+                                <?php if ((int) $sc['resp_id'] === $membreId): ?>
+                                    <div style="margin:0.4rem 0 0.2rem;"><button type="button" class="btn btn-primary btn-sm" onclick="smgOpen(<?php echo (int) $sc['id']; ?>)">👥 Gérer les membres</button> <span style="color:var(--text-muted); font-size:0.78rem;">Vous êtes responsable de cette sous-commission.</span></div>
                                 <?php endif; ?>
                                 <div class="mc-chips" style="margin-top:0.3rem;">
                                     <?php if (empty($sc['membres'])): ?><span style="color:var(--text-muted); font-size:0.82rem;">Aucun membre affecté.</span><?php endif; ?>
@@ -299,5 +390,133 @@ if (!empty($ids)) {
     </main>
     <?php include __DIR__ . '/modern_popup.php'; ?>
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
+    <?php if (!empty($smgData)): ?>
+    <!-- Gestion des membres d'une sous-commission par son responsable -->
+    <style>
+        #smg-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
+        #smg-modal.active { display: flex; }
+        .smg-card { width: 100%; max-width: 760px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.3); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
+        .smg-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg,#1b4332,#2d6a4f); }
+        .smg-head h3 { margin: 0; color: #fff; font-size: 1.05rem; }
+        .smg-x { background: none; border: 0; color: #fff; font-size: 1.7rem; line-height: 1; cursor: pointer; }
+        .smg-note { padding: 0.55rem 1.25rem; font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .smg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 0; flex: 1; overflow: hidden; }
+        .smg-col { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid rgba(255,255,255,0.08); }
+        .smg-col:last-child { border-right: 0; }
+        .smg-col-head { padding: 0.7rem 0.9rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .smg-title { color: var(--gold); font-weight: 700; font-size: 0.82rem; margin-bottom: 0.4rem; }
+        .smg-col-head input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; color: #fff; padding: 0.5rem 0.7rem; font-size: 0.88rem; }
+        .smg-list { overflow-y: auto; padding: 0.4rem; min-height: 180px; max-height: 50vh; }
+        .smg-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border-radius: 10px; }
+        .smg-item:hover { background: rgba(255,255,255,0.05); }
+        .smg-av { width: 30px; height: 30px; border-radius: 50%; background: rgba(212,175,55,0.22); color: var(--gold); display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 800; flex-shrink: 0; }
+        .smg-name { flex: 1; color: #fff; font-size: 0.88rem; min-width: 0; }
+        .smg-tag { font-size: 0.66rem; font-weight: 700; color: #8ec5ff; border: 1px solid rgba(45,140,255,0.4); border-radius: 50px; padding: 0.08rem 0.45rem; margin-left: 0.3rem; white-space: nowrap; }
+        .smg-btn { width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer; font-size: 1.15rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
+        .smg-btn.add { background: rgba(37,211,102,0.2); color: #7bd8a6; }
+        .smg-btn.rem { background: rgba(191,33,33,0.2); color: #fca5a5; }
+        .smg-vide { padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+        .smg-foot { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; padding: 0.8rem 1.25rem; border-top: 1px solid rgba(255,255,255,0.08); color: var(--text-muted); font-size: 0.8rem; }
+        @media (max-width: 600px) { .smg-cols { grid-template-columns: 1fr; overflow-y: auto; } .smg-col { border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.08); } .smg-list { max-height: 34vh; } }
+    </style>
+    <div id="smg-modal">
+        <div class="smg-card">
+            <div class="smg-head"><h3 id="smg-title">Membres</h3><button type="button" class="smg-x" onclick="smgClose()" aria-label="Fermer">&times;</button></div>
+            <div class="smg-note" id="smg-note"></div>
+            <div class="smg-cols">
+                <div class="smg-col">
+                    <div class="smg-col-head"><div class="smg-title">Membres disponibles</div><input type="text" id="smg-search" placeholder="🔍 Rechercher un membre…" autocomplete="off"></div>
+                    <div class="smg-list" id="smg-available"></div>
+                </div>
+                <div class="smg-col">
+                    <div class="smg-col-head"><div class="smg-title">Dans la sous-commission (<span id="smg-count">0</span>)</div></div>
+                    <div class="smg-list" id="smg-selected"></div>
+                </div>
+            </div>
+            <div class="smg-foot"><span id="smg-avail">&nbsp;</span><button type="button" class="btn btn-primary btn-sm" onclick="smgClose()">Terminé</button></div>
+        </div>
+    </div>
+    <script>
+        var SMG = <?php echo json_encode((object) $smgData, JSON_UNESCAPED_UNICODE); ?>;
+        var SMG_TOUS = <?php echo json_encode($tousMembres, JSON_UNESCAPED_UNICODE); ?>;
+        var SMG_CSRF = <?php echo json_encode(csrf_token()); ?>;
+        var smgId = null, smgSel = new Set(), smgDirty = false;
+        function smgNorm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(); }
+        function smgEsc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+        function smgSub() { return SMG[smgId] || { cid: 0, nom: '', accepte: 0, ids: [], cmembers: [] }; }
+        function smgDansCom(id) { return (smgSub().cmembers || []).map(Number).indexOf(id) !== -1; }
+        function smgIni(n) { var p = String(n).trim().split(/\s+/); return ((p[0] || '').charAt(0) + (p[1] || '').charAt(0)).toUpperCase() || '?'; }
+        function smgTag(id) { return smgDansCom(id) ? '' : '<span class="smg-tag">🤝 support</span>'; }
+        function smgRender() {
+            var term = smgNorm(document.getElementById('smg-search').value);
+            var av = document.getElementById('smg-available'), se = document.getElementById('smg-selected');
+            av.innerHTML = ''; se.innerHTML = '';
+            var na = 0, ns = 0, sub = smgSub();
+            SMG_TOUS.forEach(function (m) {
+                if (smgSel.has(m.id)) {
+                    se.insertAdjacentHTML('beforeend', '<div class="smg-item"><span class="smg-av">' + smgEsc(smgIni(m.name)) + '</span><span class="smg-name">' + smgEsc(m.name) + smgTag(m.id) + '</span><button type="button" class="smg-btn rem" onclick="smgRemove(' + m.id + ')" title="Retirer">&times;</button></div>');
+                    ns++;
+                } else {
+                    if (!smgDansCom(m.id) && !sub.accepte) { return; }
+                    if (term && smgNorm(m.name).indexOf(term) === -1) { return; }
+                    av.insertAdjacentHTML('beforeend', '<div class="smg-item"><span class="smg-av">' + smgEsc(smgIni(m.name)) + '</span><span class="smg-name">' + smgEsc(m.name) + smgTag(m.id) + '</span><button type="button" class="smg-btn add" onclick="smgAdd(' + m.id + ')" title="Ajouter">+</button></div>');
+                    na++;
+                }
+            });
+            if (!na) { av.innerHTML = '<div class="smg-vide">Aucun membre disponible.</div>'; }
+            if (!ns) { se.innerHTML = '<div class="smg-vide">Aucun membre dans la sous-commission.</div>'; }
+            document.getElementById('smg-count').textContent = ns;
+            document.getElementById('smg-avail').textContent = na + ' disponible(s)';
+        }
+        function smgPersist(add, mid) {
+            var params = new URLSearchParams();
+            params.append('ajax', 'sub_member');
+            params.append('action', add ? 'add' : 'remove');
+            params.append('sous_commission_id', smgId);
+            params.append('membre_id', mid);
+            params.append('csrf_token', SMG_CSRF);
+            return fetch('mes_commissions.php', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString(), credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (j) { if (!j.ok) { throw new Error(j.error || 'Erreur'); } });
+        }
+        function smgAlert(msg) { if (window.modernAlert) { window.modernAlert(msg, 'Erreur'); } else { alert(msg); } }
+        function smgAdd(id) {
+            smgSel.add(id); smgDirty = true; smgRender();
+            smgPersist(true, id).catch(function (e) { smgSel.delete(id); smgRender(); smgAlert("Échec de l'ajout : " + e.message); });
+        }
+        function smgRemove(id) {
+            smgSel.delete(id); smgDirty = true; smgRender();
+            smgPersist(false, id).catch(function (e) { smgSel.add(id); smgRender(); smgAlert("Échec du retrait : " + e.message); });
+        }
+        function smgOpen(id) {
+            smgId = id; smgDirty = false;
+            var sub = smgSub();
+            smgSel = new Set((sub.ids || []).map(Number));
+            document.getElementById('smg-title').textContent = 'Membres — ' + sub.nom;
+            document.getElementById('smg-note').textContent = sub.accepte
+                ? 'Membres de la commission et membres supports (hors commission) acceptés.'
+                : 'Membres de la commission uniquement.';
+            document.getElementById('smg-search').value = '';
+            smgRender();
+            document.getElementById('smg-modal').classList.add('active');
+        }
+        function smgClose() {
+            document.getElementById('smg-modal').classList.remove('active');
+            if (smgDirty) { window.location.href = window.location.pathname + '#sc-' + smgId; window.location.reload(); }
+        }
+        document.getElementById('smg-search').addEventListener('input', smgRender);
+        document.getElementById('smg-modal').addEventListener('click', function (e) { if (e.target === this) { smgClose(); } });
+        // Retour sur la sous-commission modifiée : ouvre les groupes qui la contiennent
+        (function () {
+            var h = window.location.hash;
+            if (h.indexOf('#sc-') !== 0) { return; }
+            var el = document.getElementById(h.slice(1));
+            if (!el) { return; }
+            var n = el;
+            while (n) { if (n.tagName === 'DETAILS') { n.open = true; } n = n.parentElement; }
+            el.scrollIntoView({ block: 'center' });
+        })();
+    </script>
+    <?php endif; ?>
 </body>
 </html>

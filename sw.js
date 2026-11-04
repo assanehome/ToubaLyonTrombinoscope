@@ -12,7 +12,7 @@
  * de membres) : jamais de contenu périmé servi depuis le cache. Sans réseau,
  * une page de repli explique la situation.
  */
-const VERSION = 'v10';
+const VERSION = 'v12';
 const CACHE = 'trombinoscope-statique-' + VERSION;
 const REPLI = 'hors-ligne.html';
 const STATIQUES = [
@@ -28,7 +28,12 @@ const STATIQUES = [
 self.addEventListener('install', function (e) {
     e.waitUntil(
         caches.open(CACHE)
-            .then(function (c) { return c.addAll(STATIQUES); })
+            .then(function (c) {
+                // « reload » : toujours la version du serveur, jamais une copie du cache HTTP du navigateur
+                return Promise.all(STATIQUES.map(function (u) {
+                    return c.add(new Request(u, { cache: 'reload' })).catch(function () { /* fichier absent : sans importance */ });
+                }));
+            })
             .catch(function () { /* un fichier absent ne doit pas bloquer l'installation */ })
             .then(function () { return self.skipWaiting(); })
     );
@@ -124,6 +129,23 @@ self.addEventListener('fetch', function (e) {
 
     const estStatique = /\.(css|js|png|jpg|jpeg|webp|svg|ico|woff2?)$/i.test(url.pathname)
         || url.pathname.endsWith('manifest.json');
+
+    // Feuilles de style et scripts : affichés tout de suite depuis le cache, mais rafraîchis en
+    // arrière-plan à chaque visite, pour que les changements de style arrivent sans attendre
+    if (estStatique && /\.(css|js)$/i.test(url.pathname)) {
+        e.respondWith(
+            caches.open(CACHE).then(function (c) {
+                return c.match(req).then(function (rep) {
+                    const maj = fetch(req, { cache: 'no-cache' }).then(function (reseau) {
+                        if (reseau && reseau.ok) { c.put(req, reseau.clone()); }
+                        return reseau;
+                    }).catch(function () { return rep; });
+                    return rep || maj;
+                });
+            })
+        );
+        return;
+    }
 
     if (estStatique) {
         // Cache d'abord : ces fichiers ne changent que lors d'une mise à jour
