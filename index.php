@@ -171,6 +171,23 @@ try {
     $prochainGuddi = null;
 }
 
+// Sondages en cours (publiés, non clôturés) — affichés sur l'accueil membre
+$sondagesEnCours = [];
+if (isset($_SESSION['player_id'])) {
+    try {
+        require_once __DIR__ . '/sondage_helper.php';
+        $stS = $pdo->query("SELECT s.*, c.nom AS commission_nom FROM sondages s LEFT JOIN commissions c ON c.id = s.commission_id WHERE s.statut = 'publie' AND (s.date_fin IS NULL OR s.date_fin >= CURDATE()) ORDER BY s.published_at DESC, s.id DESC LIMIT 6");
+        foreach ($stS->fetchAll() as $sRow) {
+            $sRow['_repondu'] = !empty(sondage_mes_choix($pdo, (int) $sRow['id'], (int) $_SESSION['player_id']));
+            $sondagesEnCours[] = $sRow;
+        }
+        // Les sondages auxquels le membre n'a pas encore répondu d'abord
+        usort($sondagesEnCours, static function ($x, $y) { return (int) $x['_repondu'] <=> (int) $y['_repondu']; });
+    } catch (Exception $e) {
+        $sondagesEnCours = [];
+    }
+}
+
 // Prochain Dahira publié (validation de présence)
 $prochainDahira = null;
 $dahiraHeure = '';
@@ -885,6 +902,30 @@ try {
                 </div>
                 <?php endif; ?>
 
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Sondages en cours -->
+        <?php if (!empty($sondagesEnCours)): ?>
+        <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.9rem;">
+                <div style="color: #fff; font-weight: 800; font-size: 1.05rem;">📊 Sondages en cours</div>
+                <a href="sondages.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Voir tous les sondages →</a>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+                <?php foreach ($sondagesEnCours as $sd): ?>
+                <div class="renc-card">
+                    <div style="font-weight:800; color:#fff; line-height:1.35;">📊 <?php echo htmlspecialchars((string) $sd['question']); ?></div>
+                    <div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.35rem;">📋 <?php echo htmlspecialchars((string) ($sd['commission_nom'] ?? '')); ?><?php if (!empty($sd['date_fin'])): ?> · ⏳ jusqu'au <?php echo htmlspecialchars(date('d/m/Y', strtotime((string) $sd['date_fin']))); ?><?php endif; ?></div>
+                    <?php if ($sd['_repondu']): ?>
+                        <div style="margin-top:0.6rem; color:#7bd8a6; font-weight:700; font-size:0.85rem;">✅ Vous avez répondu</div>
+                        <a href="sondages.php#s<?php echo (int) $sd['id']; ?>" class="btn btn-secondary btn-sm" style="margin-top:0.5rem; width:100%; text-align:center;">Voir / modifier ma réponse</a>
+                    <?php else: ?>
+                        <a href="sondages.php#s<?php echo (int) $sd['id']; ?>" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%; text-align:center;">🗳️ Répondre au sondage</a>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
             </div>
         </div>
         <?php endif; ?>

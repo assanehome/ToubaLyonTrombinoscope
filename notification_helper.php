@@ -204,6 +204,22 @@ function troba_notifications_delete(PDO $pdo, int $membre_id, int $id): void
 }
 
 /**
+ * Suppression douce de toutes les notifications d'un membre.
+ */
+function troba_notifications_delete_all(PDO $pdo, int $membre_id): void
+{
+    if ($membre_id <= 0) {
+        return;
+    }
+    try {
+        $stmt = $pdo->prepare("UPDATE notifications SET deleted_at = NOW() WHERE membre_id = ? AND deleted_at IS NULL");
+        $stmt->execute([$membre_id]);
+    } catch (PDOException $e) {
+        error_log('Touba Lyon - suppression de toutes les notifications : ' . $e->getMessage());
+    }
+}
+
+/**
  * Marque comme affichées les notifications que le navigateur vient de montrer.
  */
 function troba_notifications_mark_shown(PDO $pdo, int $membre_id, array $ids): void

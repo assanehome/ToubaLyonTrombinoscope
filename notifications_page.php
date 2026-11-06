@@ -36,6 +36,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_validate()) {
         header('Location: notifications_page.php');
         exit;
     }
+    if ($action === 'tout_supprimer') {
+        troba_notifications_delete_all($pdo, $membre_id);
+        header('Location: notifications_page.php');
+        exit;
+    }
     if ($action === 'supprimer') {
         $id = (int)($_POST['id'] ?? 0);
         troba_notifications_delete($pdo, $membre_id, $id);
@@ -128,11 +133,18 @@ function notif_date_fr($iso)
                     <div class="nt-head">
                         <h1 class="admin-page-title nt-title">📬 Mes notifications</h1>
                         <?php if (!empty($notifs)): ?>
+                            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                             <form method="POST" action="notifications_page.php" style="margin:0;" data-confirm="Marquer toutes les notifications comme lues ?">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="tout_lu">
                                 <button type="submit" class="btn btn-secondary btn-sm">✓ Tout marquer comme lu</button>
                             </form>
+                            <form method="POST" action="notifications_page.php" style="margin:0;" data-confirm="Supprimer toutes vos notifications ? Cette action est définitive." data-confirm-danger="1">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="tout_supprimer">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="border-color:rgba(191,33,33,0.5); color:#fca5a5;">🗑️ Tout supprimer</button>
+                            </form>
+                            </div>
                         <?php endif; ?>
                     </div>
 
