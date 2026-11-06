@@ -2067,5 +2067,6 @@ $membersJs = array_map(function ($m) {
         })();
     </script>
     <?php include __DIR__ . '/modern_popup.php'; ?>
+<script src="modern-date.js" defer></script>
 </body>
 </html>

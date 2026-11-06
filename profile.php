@@ -309,6 +309,18 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
             flex-shrink: 0;
         }
+        .profile-large-photo-wrap.editable { position: relative; cursor: pointer; overflow: visible; }
+        .profile-large-photo-wrap.editable .pp-clip { width: 100%; height: 100%; border-radius: 50%; overflow: hidden; display: block; }
+        .profile-large-photo-wrap.editable .pp-cam {
+            position: absolute; right: -4px; bottom: -4px; width: 38px; height: 38px; border-radius: 50%;
+            background: var(--accent); color: #1b1b1b; border: 3px solid #0d2b1f; font-size: 1.05rem;
+            display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+            transition: transform .15s;
+        }
+        .profile-large-photo-wrap.editable:hover .pp-cam, .profile-large-photo-wrap.editable:focus-within .pp-cam { transform: scale(1.1); }
+        .profile-large-photo-wrap.editable:hover .pp-clip img { filter: brightness(0.8); }
+        .pp-save-bar { display: none; margin-top: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 12px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.4); font-size: 0.85rem; color: var(--white); }
+        .pp-save-bar .btn { margin-top: 0.45rem; }
         .profile-large-photo-wrap img {
             width: 100%;
             height: 100%;
@@ -435,16 +447,30 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
 
             <!-- Profile Summary Card -->
             <div class="profile-header-card glass-card">
+                <?php if (!$readonly): ?>
+                <label for="photo-input" class="profile-large-photo-wrap editable" id="pp-wrap" title="Cliquez pour changer votre photo" aria-label="Changer ma photo de profil">
+                    <span class="pp-clip">
+                <?php else: ?>
                 <div class="profile-large-photo-wrap">
+                <?php endif; ?>
                     <?php if (!empty($member['photo_path'])): ?>
                         <img src="uploads/<?php echo htmlspecialchars($member['photo_path']); ?>" alt="Photo de <?php echo htmlspecialchars($member['prenom']); ?>">
                     <?php else: ?>
                         <div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:2.4rem; font-weight:700; color:var(--gold); background:#081c15;"><?php echo htmlspecialchars(strtoupper(mb_substr($member['prenom'] ?? '?', 0, 1))); ?></div>
                     <?php endif; ?>
+                <?php if (!$readonly): ?>
+                    </span>
+                    <span class="pp-cam" aria-hidden="true">📷</span>
+                </label>
+                <?php else: ?>
                 </div>
+                <?php endif; ?>
                 <div class="profile-title-info">
                     <h2><?php echo htmlspecialchars($member['prenom'] . ' ' . $member['nom']); ?></h2>
                     <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 0.75rem;"><?php echo htmlspecialchars($member['email']); ?></p>
+                    <?php if (!$readonly): ?>
+                    <div class="pp-save-bar" id="pp-save-bar">📷 Nouvelle photo choisie : <strong id="pp-save-name"></strong>.<br><button type="button" class="btn btn-primary btn-sm" id="pp-save-btn">💾 Enregistrer ma nouvelle photo</button> <button type="button" class="btn btn-secondary btn-sm" id="pp-cancel-btn" style="margin-top:0.45rem;">Annuler</button></div>
+                    <?php endif; ?>
                     <?php if ($member['status'] === 'approved'): ?>
                         <span class="profile-status-badge">Compte Validé</span>
                     <?php else: ?>
@@ -775,6 +801,35 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
         (function () {
             var m = document.getElementById('integ-mail-modal');
             if (m) m.addEventListener('click', function (e) { if (e.target === this) closeIntegMail(); });
+        })();
+
+        // Clic sur la photo du profil : aperçu immédiat + enregistrement en un clic
+        (function () {
+            var input = document.getElementById('photo-input');
+            var wrap = document.getElementById('pp-wrap');
+            var bar = document.getElementById('pp-save-bar');
+            if (!input || !wrap || !bar) { return; }
+            var clip = wrap.querySelector('.pp-clip');
+            var original = clip.innerHTML;
+            input.addEventListener('change', function () {
+                var f = input.files && input.files[0];
+                if (!f) { clip.innerHTML = original; bar.style.display = 'none'; return; }
+                var r = new FileReader();
+                r.onload = function (ev) {
+                    clip.innerHTML = '<img src="' + ev.target.result + '" alt="Nouvelle photo" style="width:100%;height:100%;object-fit:cover;">';
+                };
+                r.readAsDataURL(f);
+                document.getElementById('pp-save-name').textContent = f.name;
+                bar.style.display = 'block';
+            });
+            document.getElementById('pp-save-btn').addEventListener('click', function () {
+                var form = input.form;
+                if (form && form.requestSubmit) { form.requestSubmit(); } else if (form) { form.submit(); }
+            });
+            document.getElementById('pp-cancel-btn').addEventListener('click', function () {
+                input.value = '';
+                input.dispatchEvent(new Event('change'));
+            });
         })();
 
         const fileInput = document.getElementById('photo-input');

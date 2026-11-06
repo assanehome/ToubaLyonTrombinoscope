@@ -590,5 +590,6 @@ $aujourdhui = date('Y-m-d');
 
     <?php include __DIR__ . '/modern_popup.php'; ?>
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
+<script src="modern-date.js" defer></script>
 </body>
 </html>

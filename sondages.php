@@ -22,7 +22,15 @@ require_once __DIR__ . '/player_approved_guard.php';
 $membreId = (int) $_SESSION['player_id'];
 $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES); };
 $estBureau = sondage_est_bureau($pdo, $membreId);
+// Commissions dont le membre est responsable : il peut créer des sondages
+$mesCommissions = [];
+try {
+    $stc = $pdo->prepare("SELECT c.id, c.nom FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = ? ORDER BY c.nom ASC");
+    $stc->execute([$membreId]);
+    $mesCommissions = $stc->fetchAll();
+} catch (Exception $e) { $mesCommissions = []; }
 $success = '';
+if (!empty($_SESSION['sondage_flash'])) { $success = (string) $_SESSION['sondage_flash']; unset($_SESSION['sondage_flash']); }
 $error = '';
 $sondageRepondu = 0;
 
@@ -135,6 +143,7 @@ $carte = function (array $s) use ($pdo, $h, $membreId, $estBureau, $csrf): strin
     <title>📊 Sondages — Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
     <?php echo sondage_css(); ?>
+    <?php if (!empty($mesCommissions)) { echo sondage_form_css(); } ?>
 </head>
 <body>
     <?php include __DIR__ . '/header.php'; ?>
@@ -147,8 +156,9 @@ $carte = function (array $s) use ($pdo, $h, $membreId, $estBureau, $csrf): strin
                     <?php if ($success !== ''): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo $h($success); ?></div><?php endif; ?>
                     <?php if ($error !== ''): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo $h($error); ?></div><?php endif; ?>
 
-                    <?php if (!empty($_SESSION['is_gestion_commission'])): ?>
-                        <p style="margin:0 0 1rem;"><a href="sondage_gestion.php" class="btn btn-secondary btn-sm">🛠️ Créer / gérer mes sondages</a></p>
+                    <?php if (!empty($mesCommissions)): ?>
+                        <?php echo sondage_formulaire_creation($mesCommissions, csrf_field(), 'sondage_gestion.php', 'sondages'); ?>
+                        <p style="margin:0 0 1rem;"><a href="sondage_gestion.php" class="btn btn-secondary btn-sm">🛠️ Gérer mes sondages (brouillons, clôture, suppression)</a></p>
                     <?php endif; ?>
 
                     <?php if (empty($tous)): ?>
@@ -180,5 +190,6 @@ $carte = function (array $s) use ($pdo, $h, $membreId, $estBureau, $csrf): strin
             el.scrollIntoView({ block: 'center' });
         })();
     </script>
+<script src="modern-date.js" defer></script>
 </body>
 </html>

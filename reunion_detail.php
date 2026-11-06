@@ -1164,5 +1164,6 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
             }
         })();
     </script>
+<script src="modern-date.js" defer></script>
 </body>
 </html>

@@ -811,5 +811,6 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
         })();
     </script>
 <script src="modern-file.js" defer></script>
+<script src="modern-date.js" defer></script>
 </body>
 </html>

@@ -1356,5 +1356,6 @@ $membersJs = array_map(function ($m) {
 
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
     <?php include __DIR__ . '/modern_popup.php'; ?>
+<script src="modern-date.js" defer></script>
 </body>
 </html>

@@ -849,5 +849,6 @@ if ($__isCulteManager) {
             if (c) c.textContent = open ? '▴' : '▾';
         }
     </script>
+<script src="modern-date.js" defer></script>
 </body>
 </html>
