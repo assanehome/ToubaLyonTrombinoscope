@@ -8,6 +8,15 @@
  * partagées par la page magal.php et les menus.
  */
 
+/** Première édition gérée dans l'application : la liste des années commence ici. */
+const MAGAL_PREMIERE_ANNEE = 2027;
+
+/** Édition proposée par défaut : l'année en cours, mais jamais avant la première édition. */
+function magal_annee_defaut(): int
+{
+    return max(MAGAL_PREMIERE_ANNEE, (int) date('Y'));
+}
+
 /**
  * Le membre est-il « organisateur » du Wadial Magal ? Oui s'il est responsable
  * d'une commission Secrétariat, Finance / Trésorerie ou Magal.

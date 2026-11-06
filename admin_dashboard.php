@@ -139,7 +139,7 @@ try {
     $approvedMembers = $stmt->fetchAll();
 
     // Nombre d'inscriptions Dahira (adhésions) pour le lien dédié
-    $adhesionsCount = (int) $pdo->query("SELECT COUNT(*) FROM membres WHERE type_adhesion IS NOT NULL")->fetchColumn();
+    $adhesionsCount = (int) $pdo->query("SELECT COUNT(*) FROM membres WHERE type_adhesion IS NOT NULL AND status <> 'email_a_verifier'")->fetchColumn();
 
 } catch (Exception $e) {
     error_log('Touba Lyon admin_dashboard (load): ' . $e->getMessage());

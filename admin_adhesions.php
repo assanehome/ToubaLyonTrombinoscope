@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Chargement des inscriptions Dahira (avec le nom de l'intégrateur assigné)
 try {
-    $stmt = $pdo->query("SELECT m.*, TRIM(CONCAT(COALESCE(i.prenom,''), ' ', i.nom)) AS integrateur_nom FROM membres m LEFT JOIN membres i ON m.integrateur_id = i.id ORDER BY m.created_at DESC");
+    $stmt = $pdo->query("SELECT m.*, TRIM(CONCAT(COALESCE(i.prenom,''), ' ', i.nom)) AS integrateur_nom FROM membres m LEFT JOIN membres i ON m.integrateur_id = i.id WHERE m.status <> 'email_a_verifier' ORDER BY m.created_at DESC");
     $adhesions = $stmt->fetchAll();
     $countPending = 0;
     $countApproved = 0;

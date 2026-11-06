@@ -6,6 +6,7 @@
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/inscription_suivi_helper.php'; // encart de connexion après inscription
 require_once __DIR__ . '/email_unique_helper.php'; // une adresse = un seul compte
+require_once __DIR__ . '/inscription_verif_helper.php'; // validation de l'e-mail par code après l'inscription
 require_once __DIR__ . '/rgpd_helper.php'; // consentement RGPD
 require_once __DIR__ . '/admin_redirect.php';
 require_once __DIR__ . '/csrf.php';
@@ -28,6 +29,21 @@ $TYPES   = ['Membre actif', 'Membre sympathisant'];
 $GENRES  = ['Homme', 'Femme'];
 $STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
 try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }
+
+// Abandon de l'inscription en cours de validation d'e-mail (« recommencer »)
+if (isset($_GET['recommencer'])) {
+    verif_annuler($pdo);
+    header('Location: adhesion.php');
+    exit;
+}
+// Retour après la saisie du bon code : inscription envoyée, en attente de validation par un administrateur
+$etapeCode = false;
+$emailVerif = '';
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && !empty($_SESSION['verif_termine'])) {
+    $emailInscrit = (string) $_SESSION['verif_termine'];
+    unset($_SESSION['verif_termine']);
+    $success = "Adresse e-mail validée ! Votre inscription est envoyée : un administrateur va la valider prochainement. Un e-mail de confirmation vous a été envoyé.";
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate()) {
@@ -80,6 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 // Vérification directe en base : cet email est-il déjà utilisé ?
                 // (comparaison insensible à la casse, statut réel pris en compte)
+                verif_liberer_email($pdo, $f['email']);
                 $stmt = $pdo->prepare("SELECT id, status FROM membres WHERE LOWER(email) = LOWER(?) LIMIT 1");
                 $stmt->execute([$f['email']]);
                 $existing = $stmt->fetch();
@@ -136,7 +153,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                          type_adhesion, genre, test_kourel, adresse, code_postal, commune,
                          telephone, statut, secteur_activite, profession, commentaires,
                          annee_integration, charte_acceptee, rgpd_accepte, rgpd_date, rgpd_version)
-                        VALUES (?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(),?)";
+                        VALUES (?,?,?,?,?,?,'" . verif_statut_initial($pdo) . "',?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(),?)";
                     $stmt = $pdo->prepare($sql);
                     $stmt->execute([
                         $f['nom'], $f['prenom'], $civilite, $f['email'], $newFilename, $hashedPassword,
@@ -146,41 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ($f['commentaires'] ?: null), $f['annee_integration'], 1, RGPD_VERSION,
                     ]);
 
-                    // Notification e-mail au secrétariat (best effort)
-                    $rows = '';
-                    $recap = [
-                        "Type d'adhésion" => $f['type_adhesion'],
-                        'Nom' => $f['nom'], 'Prénom' => $f['prenom'], 'Genre' => $f['genre'],
-                        'Test Kourel' => ($f['test_kourel'] ?: '—'),
-                        'Adresse' => ($f['adresse'] ?: '—'), 'Code postal' => $f['code_postal'],
-                        'Commune' => $f['commune'], 'Téléphone' => $f['telephone'], 'Email' => $f['email'],
-                        'Statut' => $f['statut'], "Secteur d'activité" => $f['secteur_activite'],
-                        'Profession' => $f['profession'], 'Commentaires' => ($f['commentaires'] ?: '—'),
-                        "Année d'intégration" => $f['annee_integration'], 'Charte acceptée' => 'Oui',
-                    ];
-                    foreach ($recap as $label => $val) {
-                        $rows .= '<tr><td style="padding:6px 12px;border:1px solid #e0e0e0;font-weight:bold;background:#f7f7f7;">'
-                            . htmlspecialchars($label) . '</td><td style="padding:6px 12px;border:1px solid #e0e0e0;">'
-                            . nl2br(htmlspecialchars($val)) . '</td></tr>';
-                    }
-                    $html = '<div style="font-family:Arial,sans-serif;color:#1a1a1a;">'
-                        . '<h2 style="color:#1b4332;">Nouvelle inscription Dahira Touba Lyon</h2>'
-                        . '<p>Une nouvelle demande d\'adhésion vient d\'être soumise :</p>'
-                        . '<table style="border-collapse:collapse;font-size:14px;">' . $rows . '</table>'
-                        . '<p style="font-size:0.85em;color:#888;margin-top:16px;">Touba Lyon — notification automatique.</p>'
-                        . '</div>';
+                    // Vérification de l'e-mail par code : les e-mails (secrétariat et confirmation) partent une fois le code validé
+                    $etapeCode = verif_apres_insertion($pdo, (int) $pdo->lastInsertId(), 'adhesion');
 
-                    @send_smtp_mail(
-                        SMTP_TO_EMAIL, 'Secrétariat Touba Lyon',
-                        'Nouvelle inscription Dahira : ' . $f['prenom'] . ' ' . $f['nom'],
-                        $html
-                    );
-
-                    // Confirmation d'inscription à l'adhérent (avec la charte)
-                    @send_inscription_email($f['email'], $f['prenom'] . ' ' . $f['nom']);
-
-                    $success = "Votre inscription a bien été enregistrée. Jërëjëf ! Le secrétariat vous contactera prochainement.";
-                    $emailInscrit = $f['email'];
+                    if (!$etapeCode) { $success = "Votre inscription a bien été enregistrée. Jërëjëf ! Le secrétariat vous contactera prochainement."; $emailInscrit = $f['email']; }
                     foreach ($f as $k => $_) {
                         $f[$k] = '';
                     }
@@ -320,8 +306,10 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
                 </p>
             </div>
 
+            <?php if (empty($success)) { $emailVerif = verif_etat($pdo); $etapeCode = ($emailVerif !== ''); } ?>
+            <?php if ($etapeCode) { echo verif_ecran_html($emailVerif, 'adhesion.php'); } ?>
             <?php if (!empty($success)) { echo inscription_login_card_html($emailInscrit, $success); } ?>
-            <form action="adhesion.php" method="POST" enctype="multipart/form-data" id="adhesion-form" novalidate<?php echo !empty($success) ? ' style="display:none"' : ''; ?>>
+            <form action="adhesion.php" method="POST" enctype="multipart/form-data" id="adhesion-form" novalidate<?php echo (!empty($success) || $etapeCode) ? ' style="display:none"' : ''; ?>>
                 <?php echo csrf_field(); ?>
 
                 <!-- ── Charte (lecteur paginé) ── -->

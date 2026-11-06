@@ -32,19 +32,3 @@ function email_autre_compte(PDO $pdo, string $email): ?string
     }
     return null;
 }
-
-/** L'adresse a-t-elle été validée par code dans cette session (moins de 30 minutes) ? */
-function email_est_verifie(string $email): bool
-{
-    if (session_status() === PHP_SESSION_NONE) { return false; }
-    $v = $_SESSION['email_verifie'] ?? null;
-    return is_array($v)
-        && strtolower(trim($email)) === ($v['email'] ?? '')
-        && (int) ($v['ts'] ?? 0) > time() - 1800;
-}
-
-/** Oublie la validation (après une inscription réussie). */
-function email_verifie_effacer(): void
-{
-    unset($_SESSION['email_verifie'], $_SESSION['email_code']);
-}

@@ -63,7 +63,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: profile.php');
                     exit;
                 } else {
-                    $error = "Votre inscription a été refusée.";
+                    $error = ($member['status'] === 'email_a_verifier')
+                        ? "Votre adresse e-mail n'est pas encore validée. Refaites votre inscription pour recevoir un nouveau code de validation."
+                        : "Votre inscription a été refusée.";
                 }
             } else {
                 $error = "Identifiants incorrects ou compte inexistant.";

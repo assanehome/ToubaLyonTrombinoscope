@@ -559,12 +559,12 @@ try {
         <?php if (empty($me['is_admin']) && !empty($gestionItems)): ?>
             <details class="glass-card adm-switch" style="margin-top: 2rem; padding: 0.75rem 1.15rem; border-color: rgba(212, 175, 55, 0.45);">
                 <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:var(--gold); font-weight:700; font-size:0.9rem;">
-                    🛠️ Mode Administrateur
+                    🛠️ Mode gestion
                     <span class="adm-switch-chevron" style="margin-left:auto; color:var(--text-muted); transition:transform 0.2s;">▸</span>
                 </summary>
                 <div style="margin-top: 0.8rem;">
                     <div style="font-size: 0.86rem; color: #fff; line-height: 1.5; margin-bottom: 0.75rem;">
-                        🛠️ Vous avez des responsabilités au sein du Dahira. Accédez ci-dessous aux espaces de gestion dont vous avez la charge.
+                        🛠️ Vous avez des responsabilités au sein du Dahira : gérez vos commissions depuis votre espace membre (aussi dans « Mes commissions »), sans passer en mode administration.
                     </div>
                     <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
                         <?php foreach ($gestionItems as $gHref => $gLabel): ?>

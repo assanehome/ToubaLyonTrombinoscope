@@ -12,7 +12,7 @@
  * de membres) : jamais de contenu périmé servi depuis le cache. Sans réseau,
  * une page de repli explique la situation.
  */
-const VERSION = 'v14';
+const VERSION = 'v15';
 const CACHE = 'trombinoscope-statique-' + VERSION;
 const REPLI = 'hors-ligne.html';
 const STATIQUES = [
@@ -21,6 +21,7 @@ const STATIQUES = [
     'modern-select.js',
     'modern-file.js',
     'modern-date.js',
+    'soft-submit.js',
     'touba_lyon_logo.png',
     'icone_192.png',
     'icone_512.png',

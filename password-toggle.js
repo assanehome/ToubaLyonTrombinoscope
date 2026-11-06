@@ -39,4 +39,5 @@
         document.querySelectorAll('input[type="password"]').forEach(enhance);
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+    document.addEventListener('soft:updated', function () { document.querySelectorAll('input[type="password"]').forEach(enhance); });
 })();

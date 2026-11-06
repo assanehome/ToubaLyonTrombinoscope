@@ -122,4 +122,6 @@
     } else {
         init();
     }
+    // contenu mis à jour sans rechargement (soft-submit.js) : nouvelles listes à transformer
+    document.addEventListener('soft:updated', init);
 })();

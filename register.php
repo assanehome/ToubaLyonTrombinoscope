@@ -5,6 +5,8 @@
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/inscription_suivi_helper.php'; // encart de connexion après inscription
 require_once __DIR__ . '/email_unique_helper.php'; // une adresse = un seul compte
+require_once __DIR__ . '/inscription_verif_helper.php'; // validation de l'e-mail par code après l'inscription
+require_once __DIR__ . '/dahira_emails.php'; // e-mail de confirmation d'inscription
 require_once __DIR__ . '/admin_redirect.php';
 
 $error = '';
@@ -20,6 +22,21 @@ $souhait_commission = '';
 $STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
 try { $commissionsList = $pdo->query("SELECT nom FROM commissions ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $commissionsList = []; }
 try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }
+
+// Abandon de l'inscription en cours de validation d'e-mail (« recommencer »)
+if (isset($_GET['recommencer'])) {
+    verif_annuler($pdo);
+    header('Location: register.php');
+    exit;
+}
+// Retour après la saisie du bon code : inscription envoyée, en attente de validation par un administrateur
+$etapeCode = false;
+$emailVerif = '';
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && !empty($_SESSION['verif_termine'])) {
+    $emailInscrit = (string) $_SESSION['verif_termine'];
+    unset($_SESSION['verif_termine']);
+    $success = "Adresse e-mail validée ! Votre inscription est envoyée : un administrateur va la valider prochainement. Un e-mail de confirmation vous a été envoyé.";
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $civilite = trim($_POST['civilite'] ?? 'Goor Yalla');
@@ -64,11 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Veuillez saisir une année d'intégration valide (ex: 2022).";
     } elseif (!$photo || $photo['error'] === UPLOAD_ERR_NO_FILE) {
         $error = "La photo de profil est obligatoire.";
-    } elseif (!email_est_verifie($email)) {
-        $error = "Validez d'abord votre adresse e-mail avec le code reçu, avant de confirmer l'inscription.";
     } else {
         try {
             // Check if email already exists
+            verif_liberer_email($pdo, $email);
             $stmt = $pdo->prepare("SELECT status FROM membres WHERE email = ?");
             $stmt->execute([$email]);
             $existing = $stmt->fetch();
@@ -119,11 +135,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 // Save to DB
                                 $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
                                 $genre = ($civilite === 'Sokhna') ? 'Femme' : 'Homme';
-                                $stmt = $pdo->prepare("INSERT INTO membres (nom, prenom, civilite, genre, email, photo_path, password, status, type_adhesion, charte_acceptee, adresse, code_postal, commune, telephone, statut, secteur_activite, profession, annee_integration, commentaires, souhait_commission) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'Membre actif', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                                $stmt = $pdo->prepare("INSERT INTO membres (nom, prenom, civilite, genre, email, photo_path, password, status, type_adhesion, charte_acceptee, adresse, code_postal, commune, telephone, statut, secteur_activite, profession, annee_integration, commentaires, souhait_commission) VALUES (?, ?, ?, ?, ?, ?, ?, '" . verif_statut_initial($pdo) . "', 'Membre actif', 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                                 $stmt->execute([$nom, $prenom, $civilite, $genre, $email, $newFilename, $hashedPassword, ($adresse ?: null), $code_postal, $commune, $telephone, $statut, $secteur_activite, $profession, $annee_integration, ($commentaires ?: null), ($souhait_commission ?: null)]);
                                 
-                                $success = "Votre inscription a été soumise avec succès ! Un administrateur va la valider prochainement.";
-                                $emailInscrit = $email; email_verifie_effacer();
+                                $etapeCode = verif_apres_insertion($pdo, (int) $pdo->lastInsertId(), 'register');
+                                if (!$etapeCode) { $success = "Votre inscription a été soumise avec succès ! Un administrateur va la valider prochainement."; $emailInscrit = $email; }
                                 
                                 // Reset variables
                                 $nom = '';
@@ -161,8 +177,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h1 class="form-title">Rejoindre le Dahira - Mubawwa-A-Sidqin</h1>
 
 
+            <?php if (empty($success)) { $emailVerif = verif_etat($pdo); $etapeCode = ($emailVerif !== ''); } ?>
+            <?php if ($etapeCode) { echo verif_ecran_html($emailVerif, 'register.php'); } ?>
             <?php if (!empty($success)) { echo inscription_login_card_html($emailInscrit, $success); } ?>
-            <form action="register.php" method="POST" enctype="multipart/form-data"<?php echo !empty($success) ? ' style="display:none"' : ''; ?>>
+            <form action="register.php" method="POST" enctype="multipart/form-data"<?php echo (!empty($success) || $etapeCode) ? ' style="display:none"' : ''; ?>>
                 <div class="form-group">
                     <label class="form-label">Photo de profil <span style="color:var(--danger)">*</span></label>
                     <div class="file-upload-wrapper">
@@ -353,6 +371,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <script src="modern-file.js" defer></script>
 <script>window.TROBA_EMAIL_ERREUR = <?php echo json_encode((!empty($error) && empty($success) && stripos((string) $error, 'adresse email') !== false) ? $error : '', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;</script>
 <script src="email-check.js" defer></script>
-<script src="email-verify.js" defer></script>
 </body>
 </html>

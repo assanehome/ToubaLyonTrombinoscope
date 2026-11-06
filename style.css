@@ -2330,3 +2330,28 @@ html.mdp-open { overflow-x: hidden; }
     .mdp-nav { width: 44px; height: 44px; }
     .mdp-lien { padding: 0.7rem 0.9rem; font-size: 0.95rem; }
 }
+
+/* ==========================================================================
+   Mobile : une ligne par bouton, sur toute la largeur, libellé centré
+   (exceptions : en-tête, .btn-inline / .btn-icon, boutons masqués)
+   ========================================================================== */
+@media (max-width: 600px) {
+    .btn:not(.btn-inline):not(.btn-icon):not(.home-return-btn):not([hidden]):not(.hidden):not(.d-none) {
+        display: flex;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        margin-left: 0;
+        margin-right: 0;
+    }
+    header .btn, .site-header .btn, .app-header .btn, .modal-header .btn {
+        display: inline-flex; width: auto;
+    }
+    /* groupes de boutons : empilés, un par ligne */
+    .modal-footer { flex-direction: column-reverse; align-items: stretch; }
+    .modal-footer .btn { width: 100%; }
+    form .btn + .btn, .btn + form, form + .btn, .btn + .btn { margin-top: 0.3rem; }
+}

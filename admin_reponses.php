@@ -185,7 +185,7 @@ try {
     $sql = "SELECT m.*, TRIM(CONCAT(COALESCE(i.prenom,''), ' ', i.nom)) AS integrateur_nom
             FROM membres m
             LEFT JOIN membres i ON m.integrateur_id = i.id
-            WHERE m.type_adhesion IS NOT NULL";
+            WHERE m.type_adhesion IS NOT NULL AND m.status <> 'email_a_verifier'";
     if ($isIntegrateur && !$canAll) {
         $sql .= " AND m.integrateur_id = " . $integId;
     }

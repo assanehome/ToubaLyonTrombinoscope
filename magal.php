@@ -48,9 +48,9 @@ $mgPeutEditer = function (int $cid) use ($mgOrganisateur, $mgGeres) {
 };
 
 // Édition (année) et onglet
-$anneeCourante = (int) date('Y');
+$anneeCourante = magal_annee_defaut(); // édition proposée par défaut (à partir de 2027)
 $annee = (int) ($_GET['annee'] ?? $_POST['annee'] ?? $anneeCourante);
-if ($annee < $anneeCourante - 3 || $annee > $anneeCourante + 3) { $annee = $anneeCourante; }
+if ($annee < MAGAL_PREMIERE_ANNEE || $annee > $anneeCourante + 3) { $annee = $anneeCourante; }
 $onglets = ['commissions' => '📋 Commissions', 'besoins' => '🧰 Besoins', 'taches' => '✅ Tâches'];
 if ($mgOrganisateur || $mgFinance) { $onglets['finance'] = '💶 Finance'; }
 $tab = (string) ($_GET['tab'] ?? $_POST['tab'] ?? 'commissions');
@@ -328,7 +328,7 @@ $aujourdhui = date('Y-m-d');
                     <input type="hidden" name="tab" value="<?php echo $h($tab); ?>">
                     <label for="mg-annee" style="color:var(--text-muted); font-size:0.85rem;">Édition</label>
                     <select id="mg-annee" name="annee" class="mg-sel" onchange="this.form.submit()">
-                        <?php for ($y = $anneeCourante - 2; $y <= $anneeCourante + 2; $y++): ?>
+                        <?php for ($y = MAGAL_PREMIERE_ANNEE; $y <= $anneeCourante + 2; $y++): ?>
                             <option value="<?php echo $y; ?>"<?php echo $y === $annee ? ' selected' : ''; ?>><?php echo $y; ?></option>
                         <?php endfor; ?>
                     </select>

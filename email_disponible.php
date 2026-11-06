@@ -34,6 +34,7 @@ try {
     $st = $pdo->prepare("SELECT status FROM membres WHERE email = ? LIMIT 1");
     $st->execute([$email]);
     $row = $st->fetch();
+    if ($row && $row['status'] === 'email_a_verifier') { $row = false; } // inscription jamais vérifiée : adresse libre
     if ($row) {
         $rep['used'] = true;
         if ($row['status'] === 'approved') {

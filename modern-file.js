@@ -149,4 +149,5 @@
 
     function init() { tout(); zonesExistantes(); }
     if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', init); } else { init(); }
+    document.addEventListener('soft:updated', tout);
 })();

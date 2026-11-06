@@ -28,7 +28,7 @@ function troba_member_menu_items(?PDO $pdo = null): array
     if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
         $pid = (int) $_SESSION['player_id'];
         try {
-            $nbCom = (int) $pdo->query("SELECT (SELECT COUNT(*) FROM commission_membres WHERE membre_id = $pid) + (SELECT COUNT(*) FROM commission_gestionnaires WHERE membre_id = $pid) + (SELECT COUNT(*) FROM sous_commission_membres WHERE membre_id = $pid)")->fetchColumn();
+            $nbCom = (int) $pdo->query("SELECT COUNT(*) FROM commissions c WHERE COALESCE(c.dispo_active, 1) = 1 AND (c.id IN (SELECT commission_id FROM commission_membres WHERE membre_id = $pid) OR c.id IN (SELECT commission_id FROM commission_gestionnaires WHERE membre_id = $pid) OR c.id IN (SELECT sc.commission_id FROM sous_commission_membres scm JOIN sous_commissions sc ON sc.id = scm.sous_commission_id WHERE scm.membre_id = $pid))")->fetchColumn();
             if ($nbCom > 0) {
                 $apres = ['disponibilites.php' => '🗓️ Mes disponibilités'];
                 $menu = array_slice($menu, 0, 5, true) + $apres + array_slice($menu, 5, null, true);

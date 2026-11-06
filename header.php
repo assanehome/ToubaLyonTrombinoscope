@@ -881,3 +881,6 @@ $trobaCsrf = csrf_token();
 
 <?php /* Actualisation par glissement vers le bas — sur toutes les pages qui incluent l'en-tête */ ?>
 <?php include __DIR__ . '/pull_refresh.php'; ?>
+
+<?php /* Actions sans rechargement : notification + page conservée (groupes ouverts, défilement…) — sur toutes les pages qui incluent l'en-tête */ ?>
+<script src="soft-submit.js" defer></script>

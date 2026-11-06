@@ -7,6 +7,8 @@
  * comptes rendus, et le lien vers le Wadial Magal et les disponibilités.
  */
 require_once __DIR__ . '/db_setup.php';
+require_once __DIR__ . '/magal_helper.php'; // magal_annee_defaut() (liste des années à partir de 2027)
+require_once __DIR__ . '/sous_commission_helper.php'; // un membre = une seule sous-commission par commission
 require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_event_etat()
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/notification_helper.php'; // troba_notify_membre()
@@ -69,6 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax'] ?? '') === 'sub_mem
                     $rep['error'] = 'Membre introuvable ou non validé.';
                 } elseif (!$dansCom && empty($sc['accepte_supports'])) {
                     $rep['error'] = "Ce membre ne fait pas partie de la commission et la sous-commission n'accepte pas de membres supports.";
+                } elseif ($dansCom && ($autreSc = sc_autre_sous_commission($pdo, $cidSc, $scId, $mid)) !== null) {
+                    $rep['error'] = sc_message_deja_dans($autreSc);
                 } else {
                     $ins = $pdo->prepare("INSERT IGNORE INTO sous_commission_membres (sous_commission_id, membre_id, support) VALUES (?, ?, ?)");
                     $ins->execute([$scId, $mid, $dansCom ? 0 : 1]);
@@ -91,11 +95,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['ajax'] ?? '') === 'sub_mem
 $commissions = [];
 try {
     $q = $pdo->prepare("SELECT c.id, c.nom,
-                               EXISTS(SELECT 1 FROM commission_gestionnaires g WHERE g.commission_id = c.id AND g.membre_id = :m1) AS est_resp
+                               EXISTS(SELECT 1 FROM commission_gestionnaires g WHERE g.commission_id = c.id AND g.membre_id = :m1) AS est_resp,
+                               COALESCE(c.dispo_active, 1) AS dispo_active,
+                               COALESCE(c.stock_enabled, 0) AS stock_enabled
                         FROM commissions c
                         WHERE c.id IN (SELECT commission_id FROM commission_membres WHERE membre_id = :m2
                                        UNION SELECT commission_id FROM commission_gestionnaires WHERE membre_id = :m3)
-                        ORDER BY c.nom ASC");
+                        ORDER BY est_resp DESC, c.nom ASC");
     $q->execute([':m1' => $membreId, ':m2' => $membreId, ':m3' => $membreId]);
     $commissions = $q->fetchAll();
 } catch (Exception $e) { $commissions = []; }
@@ -127,7 +133,7 @@ $responsables = [];   // [cid] => [noms]
 $membres = [];        // [cid] => [id => nom]
 $sousComs = [];       // [cid] => [ [nom, [noms]] ]
 $reunions = [];       // [cid] => [rows]
-$magalAnnee = (int) date('Y');
+$magalAnnee = magal_annee_defaut();
 $magalCommissions = [];
 
 if (!empty($ids)) {
@@ -174,7 +180,9 @@ $smgData = [];
 foreach ($sousComs as $cidG => $subsG) {
     foreach ($subsG as $sg) {
         if ((int) ($sg['resp_id'] ?? 0) === $membreId) {
-            $smgData[(int) $sg['id']] = ['cid' => (int) $cidG, 'nom' => $sg['nom'], 'accepte' => (int) $sg['accepte'], 'ids' => array_values(array_map('intval', $sg['ids'])), 'cmembers' => array_map('intval', array_keys($membres[$cidG] ?? []))];
+            $autresIds = [];
+            foreach ($subsG as $og) { if ((int) $og['id'] !== (int) $sg['id']) { foreach ($og['ids'] as $oid) { if (isset($membres[$cidG][(int) $oid])) { $autresIds[(int) $oid] = true; } } } }
+            $smgData[(int) $sg['id']] = ['autres' => array_keys($autresIds), 'cid' => (int) $cidG, 'nom' => $sg['nom'], 'accepte' => (int) $sg['accepte'], 'ids' => array_values(array_map('intval', $sg['ids'])), 'cmembers' => array_map('intval', array_keys($membres[$cidG] ?? []))];
         }
     }
 }
@@ -247,6 +255,11 @@ if (!empty($smgData)) {
                     <div class="mc-actions"><a href="disponibilites.php" class="btn btn-secondary btn-sm">🗓️ Mes disponibilités</a></div>
                 </div>
                 <?php endif; ?>
+                <?php
+                    // Wadial Magal : accès du membre (pour le raccourci de gestion des responsables)
+                    $accesMagal = false;
+                    try { require_once __DIR__ . '/magal_helper.php'; $accesMagal = magal_membre_a_acces($pdo, $membreId); } catch (Throwable $e) { $accesMagal = false; }
+                ?>
                 <?php foreach ($commissions as $c):
                     $cid = (int) $c['id'];
                     $estResp = !empty($c['est_resp']);
@@ -260,6 +273,18 @@ if (!empty($smgData)) {
                     $aVenir = array_reverse($aVenir); // prochaines d'abord
                     $nbMembres = count($membres[$cid] ?? []);
                 ?>
+                <?php
+                    // Intitulés de groupe : commissions dont je suis responsable, puis celles dont je suis membre
+                    $groupeCourant = $estResp ? 'resp' : 'membre';
+                    if ($groupeCourant !== ($groupePrec ?? null)) {
+                        $nbResp = count(array_filter($commissions, static function ($x) { return !empty($x['est_resp']); }));
+                        if ($nbResp > 0 && $nbResp < count($commissions)) {
+                            echo '<h2 style="margin:' . (($groupePrec ?? null) === null ? '0' : '1.6rem') . ' 0 0.7rem; font-size:1.05rem; color:var(--gold);">'
+                                . ($estResp ? '🎖️ Commissions dont je suis responsable (' . $nbResp . ')' : '👥 Commissions dont je suis membre (' . (count($commissions) - $nbResp) . ')') . '</h2>';
+                        }
+                        $groupePrec = $groupeCourant;
+                    }
+                ?>
                 <div class="glass-card mc-card" id="commission-<?php echo $cid; ?>">
                     <div class="mc-head">
                         <h2>📋 <?php echo $h($c['nom']); ?></h2>
@@ -268,6 +293,34 @@ if (!empty($smgData)) {
                             <span class="badge"><?php echo $nbMembres; ?> membre(s)</span>
                         </span>
                     </div>
+
+                    <?php if ($estResp):
+                        $nomL = mb_strtolower((string) $c['nom']);
+                        $dash = 'commission_dashboard.php?ouvrir=%s#com-card-' . $cid;
+                        $liensGestion = [
+                            [sprintf($dash, 'creer-reunion'), '➕ Créer une réunion'],
+                            [sprintf($dash, 'membres'), '👥 Membres'],
+                            [sprintf($dash, 'sous-ajout'), '➕ Ajouter une sous-commission'],
+                            [sprintf($dash, 'sous'), '🧩 Gérer les sous-commissions'],
+                            [sprintf($dash, 'parametres'), '⚙️ Paramètres (lien Zoom…)'],
+                            ['sondage_gestion.php', '📊 Nouveau sondage'],
+                        ];
+                        // Wadial Magal : seulement si cette commission est impliquée dans l'édition en cours
+                        if (isset($magalCommissions[$cid])) { $liensGestion[] = ['magal.php?annee=' . (int) $magalAnnee, '🕌 Wadial Magal']; }
+                        if (!empty($c['stock_enabled'])) { $liensGestion[] = ['stock_index.php', '📦 Stock']; }
+                        if (strpos($nomL, 'culte') !== false) { $liensGestion[] = ['wird_admin.php', '📖 Lecture Coran']; $liensGestion[] = ['admin_guddi.php', '💎 Guddi Àjjuma']; }
+                        if (strpos($nomL, 'secrétar') !== false || strpos($nomL, 'secretar') !== false) { $liensGestion[] = ['admin_planning.php', '📅 Planning Dahira']; $liensGestion[] = ['actualites.php', '📰 Actualités']; }
+                        if (strpos($nomL, 'financ') !== false) { $liensGestion[] = ['admin_cotisations.php', '💶 Cotisations']; }
+                        if (strpos($nomL, 'kourel') !== false || strpos($nomL, 'kurel') !== false) { $liensGestion[] = ['kourel_dashboard.php', '🎵 Kurels']; }
+                    ?>
+                    <details class="mc-grp" style="margin:0.4rem 0 0.8rem; border-color:rgba(212,175,55,0.45); background:rgba(212,175,55,0.07);">
+                        <summary style="color:var(--gold);">🛠️ Gérer cette commission <span style="color:var(--text-muted); font-weight:400; font-size:0.78rem;">(actions de responsable)</span></summary>
+                        <div style="color:var(--text-muted); font-size:0.8rem; margin:0.6rem 0;">Vous êtes responsable : vous gérez la commission depuis votre espace membre, sans passer en mode administration.</div>
+                        <div style="display:flex; flex-direction:column; gap:0.45rem;">
+                            <?php foreach ($liensGestion as $lg): ?><a href="<?php echo $h($lg[0]); ?>" class="btn btn-secondary btn-sm" style="width:100%; box-sizing:border-box; padding:0.75rem 1.1rem; justify-content:center; text-align:center; border-color:rgba(212,175,55,0.5); color:var(--gold);"><?php echo $h($lg[1]); ?></a><?php endforeach; ?>
+                        </div>
+                    </details>
+                    <?php endif; ?>
 
                     <div class="mc-sub">🎖️ Responsable(s)</div>
                     <?php if (empty($responsables[$cid])): ?>
@@ -373,7 +426,7 @@ if (!empty($smgData)) {
                     <?php endif; ?>
 
                     <div class="mc-actions">
-                        <a href="disponibilites.php" class="btn btn-secondary btn-sm">🗓️ Mes disponibilités</a>
+                        <?php if ((int) ($c['dispo_active'] ?? 1) === 1): ?><a href="disponibilites.php#c<?php echo $cid; ?>" class="btn btn-secondary btn-sm">🗓️ Mes disponibilités</a><?php endif; ?>
                         <?php if (isset($magalCommissions[$cid])): ?>
                             <a href="magal.php?annee=<?php echo (int) $magalAnnee; ?>&tab=taches" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">🕌 Wadial Magal <?php echo (int) $magalAnnee; ?></a>
                         <?php endif; ?>
@@ -458,6 +511,7 @@ if (!empty($smgData)) {
                     ns++;
                 } else {
                     if (!smgDansCom(m.id) && !sub.accepte) { return; }
+                    if (smgDansCom(m.id) && (sub.autres || []).map(Number).indexOf(m.id) !== -1) { return; } // déjà dans une autre sous-commission
                     if (term && smgNorm(m.name).indexOf(term) === -1) { return; }
                     av.insertAdjacentHTML('beforeend', '<div class="smg-item"><span class="smg-av">' + smgEsc(smgIni(m.name)) + '</span><span class="smg-name">' + smgEsc(m.name) + smgTag(m.id) + '</span><button type="button" class="smg-btn add" onclick="smgAdd(' + m.id + ')" title="Ajouter">+</button></div>');
                     na++;

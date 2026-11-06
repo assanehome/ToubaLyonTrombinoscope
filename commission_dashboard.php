@@ -9,6 +9,8 @@
  */
 require_once __DIR__ . '/commission_guard.php'; // $__isAdmin, $__managedCommissions, $pdo
 require_once __DIR__ . '/csrf.php';
+require_once __DIR__ . '/magal_helper.php';        // magal_annee_defaut() (liste des années à partir de 2027)
+require_once __DIR__ . '/sous_commission_helper.php'; // un membre = une seule sous-commission par commission
 require_once __DIR__ . '/dahira_emails.php';       // send_smtp_mail(), dahira_base_url(), dahira_email_button()
 require_once __DIR__ . '/notification_helper.php'; // cloche + Web Push
 require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_param()
@@ -54,6 +56,7 @@ function com_ajouter_a_sous_commission(PDO $pdo, int $cid, int $scId, array $ids
     $cnom = com_commission_nom($pdo, $cid);
     foreach ($valides as $mid) {
         $support = in_array($mid, $dansCom, true) ? 0 : 1;
+        if ($support === 0 && sc_autre_sous_commission($pdo, $cid, $scId, $mid) !== null) { continue; } // déjà dans une autre sous-commission
         $ins->execute([$scId, $mid, $support]);
         if ($ins->rowCount() > 0) {
             if ($support === 1) {
@@ -158,6 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     foreach ($ids as $one) { $one = (int) $one; if ($one > 0) { $ins->execute([$cid, $one]); $demandes[] = $one; } }
                 }
                 $pdo->commit();
+                // Un responsable doit être membre : ceux qui ne le sont plus perdent le rôle.
+                $pdo->prepare("DELETE FROM commission_gestionnaires WHERE commission_id = ? AND membre_id NOT IN (SELECT membre_id FROM commission_membres WHERE commission_id = ?)")->execute([$cid, $cid]);
                 com_clean_sous_membres($pdo, $cid);
                 $success = "Les membres de la commission ont été mis à jour.";
                 // Notifier uniquement les membres nouvellement ajoutés
@@ -176,12 +181,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("DELETE FROM commission_gestionnaires WHERE commission_id = ?")->execute([$cid]);
                 if (is_array($ids) && !empty($ids)) {
                     $ins = $pdo->prepare("INSERT IGNORE INTO commission_gestionnaires (commission_id, membre_id) VALUES (?, ?)");
-                    // Un responsable est aussi membre de la commission : ajout automatique.
-                    $insMbr = $pdo->prepare("INSERT IGNORE INTO commission_membres (commission_id, membre_id) VALUES (?, ?)");
-                    foreach ($ids as $one) { $one = (int) $one; if ($one > 0) { $ins->execute([$cid, $one]); $insMbr->execute([$cid, $one]); $demandes[] = $one; } }
+                    // Un responsable doit être membre de la commission : les autres sont refusés.
+                    $mq = $pdo->prepare("SELECT membre_id FROM commission_membres WHERE commission_id = ?");
+                    $mq->execute([$cid]);
+                    $deLaCom = array_map('intval', $mq->fetchAll(PDO::FETCH_COLUMN));
+                    $refuses = 0;
+                    foreach ($ids as $one) {
+                        $one = (int) $one;
+                        if ($one <= 0) { continue; }
+                        if (!in_array($one, $deLaCom, true)) { $refuses++; continue; }
+                        $ins->execute([$cid, $one]); $demandes[] = $one;
+                    }
                 }
                 $pdo->commit();
-                $success = "Les responsables de la commission ont été mis à jour.";
+                $success = "Les responsables de la commission ont été mis à jour." . (!empty($refuses) ? " $refuses membre(s) ignoré(s) : un responsable doit d'abord être membre de la commission." : '');
                 // Notifier uniquement les responsables nouvellement nommés
                 $nouveaux = array_diff(array_unique($demandes), $avant);
                 if (!empty($nouveaux)) {
@@ -195,15 +208,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($st->rowCount() > 0) { com_notify_membre_ajout($pdo, $mid, com_commission_nom($pdo, $cid), false); }
             } elseif ($action === 'remove_commission_member' && $cid > 0 && $mid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
                 $pdo->prepare("DELETE FROM commission_membres WHERE commission_id = ? AND membre_id = ?")->execute([$cid, $mid]);
+                // Un responsable doit être membre : retiré de la commission, il n'en est plus responsable.
+                $pdo->prepare("DELETE FROM commission_gestionnaires WHERE commission_id = ? AND membre_id = ?")->execute([$cid, $mid]);
                 com_clean_sous_membres($pdo, $cid);
                 $success = "Membre retiré.";
             } elseif ($action === 'add_commission_manager' && $cid > 0 && $mid > 0 && $__isAdmin) {
-                $st = $pdo->prepare("INSERT IGNORE INTO commission_gestionnaires (commission_id, membre_id) VALUES (?, ?)");
-                $st->execute([$cid, $mid]);
-                // Un responsable est aussi membre de la commission : ajout automatique.
-                $pdo->prepare("INSERT IGNORE INTO commission_membres (commission_id, membre_id) VALUES (?, ?)")->execute([$cid, $mid]);
-                $success = "Responsable ajouté.";
-                if ($st->rowCount() > 0) { com_notify_membre_ajout($pdo, $mid, com_commission_nom($pdo, $cid), true); }
+                // Un responsable doit être membre de la commission.
+                $ok = $pdo->prepare("SELECT 1 FROM commission_membres WHERE commission_id = ? AND membre_id = ?");
+                $ok->execute([$cid, $mid]);
+                if ($ok->fetchColumn() === false) {
+                    $error = "Ce membre ne fait pas partie de la commission : ajoutez-le d'abord comme membre, puis nommez-le responsable.";
+                } else {
+                    $st = $pdo->prepare("INSERT IGNORE INTO commission_gestionnaires (commission_id, membre_id) VALUES (?, ?)");
+                    $st->execute([$cid, $mid]);
+                    $success = "Responsable ajouté.";
+                    if ($st->rowCount() > 0) { com_notify_membre_ajout($pdo, $mid, com_commission_nom($pdo, $cid), true); }
+                }
             } elseif ($action === 'create_reunion' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
                 $titre = trim($_POST['titre'] ?? '');
                 $desc = trim($_POST['description'] ?? '');
@@ -449,8 +469,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $inComM = $pdo->prepare("SELECT 1 FROM (SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?) x WHERE membre_id = ?");
                     $inComM->execute([$cid, $cid, $mid]);
-                    if ($inComM->fetchColumn() === false && empty($scRowM['accepte_supports'])) {
+                    $dansComM = ($inComM->fetchColumn() !== false);
+                    $autreM = $dansComM ? sc_autre_sous_commission($pdo, $cid, $scIdM, $mid) : null;
+                    if (!$dansComM && empty($scRowM['accepte_supports'])) {
                         $error = "Ce membre ne fait pas partie de la commission : activez l'option membres supports.";
+                    } elseif ($autreM !== null) {
+                        $error = sc_message_deja_dans($autreM);
                     } else {
                         com_ajouter_a_sous_commission($pdo, $cid, $scIdM, [$mid], (string) $scRowM['nom']);
                         $success = "Membre ajouté à la sous-commission.";
@@ -483,8 +507,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $inCom->execute([$cid, $cid, $mid]);
                         $okR = ($inCom->fetchColumn() !== false);
                     }
+                    $autreR = ($okR && $mid > 0) ? sc_autre_sous_commission($pdo, $cid, $scIdR, $mid) : null;
                     if (!$okR) {
                         $error = "Le responsable doit être membre de la commission.";
+                    } elseif ($autreR !== null) {
+                        $error = sc_message_deja_dans($autreR);
                     } else {
                         $pdo->prepare("UPDATE sous_commissions SET responsable_id = ? WHERE id = ?")->execute([($mid > 0 ? $mid : null), $scIdR]);
                         if ($mid > 0) {
@@ -514,6 +541,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Seuls les membres de la commission parente peuvent être affectés
                     $parentIds = array_map('intval', $pdo->query("SELECT membre_id FROM commission_membres WHERE commission_id = " . (int) $cid)->fetchAll(PDO::FETCH_COLUMN));
                     $voulus = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['membre_ids'] ?? [])), function ($v) use ($parentIds) { return $v > 0 && in_array($v, $parentIds, true); })));
+                    // Un membre ne peut être que dans une seule sous-commission de la commission
+                    $refusesSc = 0;
+                    $voulus = array_values(array_filter($voulus, function ($v) use ($pdo, $cid, $scId, &$refusesSc) { if (sc_autre_sous_commission($pdo, $cid, $scId, $v) !== null) { $refusesSc++; return false; } return true; }));
                     $bq = $pdo->prepare("SELECT membre_id FROM sous_commission_membres WHERE sous_commission_id = ? AND support = 0");
                     $bq->execute([$scId]);
                     $avantSc = array_map('intval', $bq->fetchAll(PDO::FETCH_COLUMN));
@@ -526,11 +556,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     foreach (array_diff($voulus, $avantSc) as $vm) {
                         troba_notify_membre($pdo, (int) $vm, 'commission', '🧩 Sous-commission', 'Vous avez été affecté(e) à la sous-commission « ' . $scNom . ' » de la commission ' . $cnomSc . '.', 'index.php');
                     }
-                    $success = "Membres de la sous-commission « " . $scNom . " » mis à jour.";
+                    $success = "Membres de la sous-commission « " . $scNom . " » mis à jour." . ($refusesSc > 0 ? " $refusesSc membre(s) ignoré(s) : déjà dans une autre sous-commission." : '');
                 }
             } elseif ($action === 'magal_add_tache' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
                 // Tâche du Wadial Magal pour cette commission (la commission doit être impliquée)
-                $mgAnnee = (int) date('Y');
+                $mgAnnee = magal_annee_defaut();
                 $mgTitre = trim($_POST['titre'] ?? '');
                 $mgDesc = trim($_POST['description'] ?? '');
                 $mgAss = (int) ($_POST['assignee_id'] ?? 0);
@@ -559,7 +589,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } elseif ($action === 'magal_add_besoin' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
                 // Liste de besoins du Wadial Magal pour cette commission (la commission doit être impliquée)
-                $mgAnneeB = (int) date('Y');
+                $mgAnneeB = magal_annee_defaut();
                 $mgLib = trim($_POST['libelle'] ?? '');
                 $mgQte = trim($_POST['quantite'] ?? '');
                 $mgChkB = $pdo->prepare("SELECT 1 FROM magal_commissions WHERE annee = ? AND commission_id = ?");
@@ -608,6 +638,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("UPDATE magal_taches SET statut = ?, updated_at = NOW() WHERE id = ?")->execute([$mgSt, $mgTid]);
                     $success = "Statut de la tâche mis à jour.";
                 }
+            } elseif ($action === 'set_commission_dispo' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                // Définition des disponibilités des membres : activée ou non pour cette commission
+                $actif = !empty($_POST['dispo_active']) ? 1 : 0;
+                $pdo->prepare("UPDATE commissions SET dispo_active = ? WHERE id = ?")->execute([$actif, $cid]);
+                $success = $actif ? "Disponibilités des membres activées pour cette commission." : "Disponibilités des membres désactivées pour cette commission.";
             } elseif ($action === 'set_commission_zoom' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
                 // Lien Zoom par défaut de la commission (pré-rempli pour ses réunions à distance)
                 $zoom = trim($_POST['lien_zoom'] ?? '');
@@ -693,9 +728,14 @@ try {
     try {
         foreach ($pdo->query("SELECT id, lien_zoom FROM commissions WHERE lien_zoom IS NOT NULL AND lien_zoom <> ''") as $zr) { $comZoom[(int) $zr['id']] = (string) $zr['lien_zoom']; }
     } catch (Exception $e) { $comZoom = []; }
+    // Option « disponibilités des membres » par commission (activée par défaut)
+    $comDispo = [];
+    try {
+        foreach ($pdo->query("SELECT id, COALESCE(dispo_active, 1) AS a FROM commissions") as $dr) { $comDispo[(int) $dr['id']] = ((int) $dr['a'] === 1); }
+    } catch (Exception $e) { $comDispo = []; }
     // Wadial Magal (année en cours) : commissions impliquées, leurs tâches et leur partie finance
     require_once __DIR__ . '/magal_helper.php';
-    $mgAnneeCourante = (int) date('Y');
+    $mgAnneeCourante = magal_annee_defaut();
     $mgInvolved = [];
     $mgTachesParCom = [];
     $mgFinParCom = [];
@@ -942,6 +982,31 @@ $membersJs = array_map(function ($m) {
         .tl-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.85rem 1.25rem; border-top: 1px solid var(--glass-border); flex-wrap: wrap; flex-shrink: 0; }
         .tl-count { font-size: 0.8rem; color: var(--text-muted); }
         @media (max-width: 600px) { .tl-cols { flex-direction: column; } .tl-col + .tl-col { border-left: 0; border-top: 1px solid var(--glass-border); } .tl-list { max-height: 30vh; } }
+        /* Wadial Magal dans une commission : groupes repliables et cartes bordées */
+        .mg-grp { border: 1px solid var(--glass-border); border-radius: 16px; background: rgba(255,255,255,0.025); margin: 0.7rem 0; overflow: hidden; }
+        .mg-grp > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; color: var(--white); font-weight: 800; font-size: 0.92rem; }
+        .mg-grp > summary::-webkit-details-marker { display: none; }
+        .mg-grp > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
+        .mg-grp[open] > summary::after { transform: rotate(90deg); }
+        .mg-grp[open] > summary { border-bottom: 1px solid var(--glass-border); background: rgba(212,175,55,0.07); }
+        .mg-n { color: var(--text-muted); font-weight: 600; font-size: 0.8rem; }
+        .mg-body { padding: 0.8rem 1rem 1rem; }
+        .mg-item { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.045); border: 1px solid rgba(212,175,55,0.35); border-left: 4px solid var(--text-muted); border-radius: 14px; padding: 0.65rem 0.9rem; margin-bottom: 0.55rem; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+        .mg-item.mg-st-fait, .mg-item.mg-st-obtenu { border-left-color: #25d366; }
+        .mg-item.mg-st-en_cours { border-left-color: var(--gold); }
+        .mg-item.mg-st-a_trouver, .mg-item.mg-st-a_faire { border-left-color: #bf2121; }
+        .mg-item.mg-late { border-color: rgba(191,33,33,0.6); }
+        .mg-add { padding: 0.9rem 1rem; border: 1px dashed rgba(212,175,55,0.55); border-radius: 14px; background: rgba(212,175,55,0.05); }
+        /* Gestion de la commission : groupes modernes avec bordure */
+        .com-members-group, .com-reu-group { border: 1px solid rgba(212,175,55,0.38); border-radius: 16px; background: rgba(255,255,255,0.03); overflow: hidden; margin: 0.8rem 0 !important; padding: 0 !important; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+        .com-members-group > summary, .com-reu-group > summary { padding: 0.8rem 1rem !important; margin: 0 !important; font-size: 0.92rem !important; font-weight: 800 !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--white); transition: background .15s; }
+        .com-members-group > summary:hover, .com-reu-group > summary:hover { background: rgba(212,175,55,0.08); }
+        .com-members-group[open] > summary, .com-reu-group[open] > summary { background: rgba(212,175,55,0.1); border-bottom: 1px solid rgba(212,175,55,0.3); color: var(--gold); }
+        .com-members-group > :not(summary), .com-reu-group > :not(summary) { margin-left: 1rem !important; margin-right: 1rem !important; }
+        .com-members-group > :not(summary):first-of-type, .com-reu-group > summary + * { margin-top: 0.8rem !important; }
+        .com-members-group > :last-child, .com-reu-group > :last-child { margin-bottom: 1rem !important; }
+        /* groupes imbriqués (ex. réunions passées dans le groupe Réunions) : cadre plus discret */
+        .com-reu-group .com-reu-group { border-color: var(--glass-border); background: rgba(255,255,255,0.02); box-shadow: none; }
     </style>
 </head>
 <body>
@@ -1005,7 +1070,7 @@ $membersJs = array_map(function ($m) {
                         </div>
                         <?php endif; ?>
 
-                        <details class="com-members-group">
+                        <details data-section="membres" class="com-members-group">
                             <summary class="com-sub" style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.4rem;">👥 Membres de la commission <span style="color:var(--text-muted); font-weight:600;">(<?php echo count($membersOfC); ?>)</span> <span class="com-mem-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
                             <div class="km-list com-members-list" id="com-members-<?php echo (int) $c['id']; ?>" style="margin-top:0.5rem;">
                                 <?php if (empty($membersOfC)): ?>
@@ -1016,7 +1081,7 @@ $membersJs = array_map(function ($m) {
                             </div>
                         </details>
 
-                        <details class="com-reu-group" style="margin:0.6rem 0;">
+                        <details data-section="gestion" class="com-reu-group" style="margin:0.6rem 0;">
                         <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">⚙️ Gestion de la commission <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
                         <div class="km-actions" style="margin-top:0.6rem;">
                             <button type="button" class="btn btn-primary btn-sm" onclick="openComModal('members', <?php echo (int) $c['id']; ?>, <?php echo htmlspecialchars(json_encode($c['nom']), ENT_QUOTES); ?>)">👥 Gérer les membres</button>
@@ -1037,7 +1102,7 @@ $membersJs = array_map(function ($m) {
                         ?>
                         <?php if ($peutSous || !empty($sousDeC)): ?>
                         <div style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
-                            <details class="com-reu-group">
+                            <details data-section="sous" class="com-reu-group">
                             <summary class="com-sub" style="margin-top:0; cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.4rem;">🧩 Sous-commissions <span style="color:var(--text-muted); font-weight:600;">(<?php echo count($sousDeC); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
                             <div style="margin-top:0.6rem;">
                             <?php if (empty($sousDeC)): ?>
@@ -1214,7 +1279,7 @@ $membersJs = array_map(function ($m) {
                                 </details>
                             <?php endforeach; ?>
                             <?php if ($peutSous): ?>
-                            <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin-top:0.8rem; padding:1rem 1.1rem; border:1px solid rgba(212,175,55,0.45); border-radius:14px; background:rgba(255,255,255,0.03);">
+                            <form method="POST" data-section="sous-ajout" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin-top:0.8rem; padding:1rem 1.1rem; border:1px solid rgba(212,175,55,0.45); border-radius:14px; background:rgba(255,255,255,0.03);">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="create_sous_commission">
                                 <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
@@ -1278,12 +1343,15 @@ $membersJs = array_map(function ($m) {
                                         })();
                                     </script>
                                     <?php endif; ?>
-                                    <?php $idsDeLaCom = array_map(function ($m) { return (int) $m['id']; }, $membersOfC); ?>
+                                    <?php $idsDeLaCom = array_map(function ($m) { return (int) $m['id']; }, $membersOfC);
+                                          // membres de la commission déjà dans une sous-commission : non proposés
+                                          $dejaSous = [];
+                                          foreach ($sousDeC as $oSc) { foreach ($oSc['membres'] as $oMid) { $dejaSous[(int) $oMid] = true; } } ?>
                                     <label class="form-label">👥 Ajouter des membres (facultatif) — n'importe quel membre</label>
                                     <div class="mpick">
                                         <input type="text" class="mpick-search" placeholder="🔍 Filtrer par nom ou prénom…" autocomplete="off">
                                         <div class="mpick-list">
-                                            <?php foreach ($allMembers as $am): $amId = (int) $am['id']; $dansCom = in_array($amId, $idsDeLaCom, true); $nomAm = trim($am['prenom'] . ' ' . $am['nom']); ?>
+                                            <?php foreach ($allMembers as $am): $amId = (int) $am['id']; $dansCom = in_array($amId, $idsDeLaCom, true); if ($dansCom && isset($dejaSous[$amId])) { continue; } $nomAm = trim($am['prenom'] . ' ' . $am['nom']); ?>
                                                 <label class="mpick-item" data-nom="<?php echo htmlspecialchars($nomAm, ENT_QUOTES); ?>">
                                                     <input type="checkbox" name="membre_ids[]" value="<?php echo $amId; ?>">
                                                     <span class="mpick-nom"><?php echo htmlspecialchars($nomAm); ?></span>
@@ -1413,7 +1481,7 @@ $membersJs = array_map(function ($m) {
                                 </div>
                             </details>
                             <?php endif; ?>
-                            <details style="border:1px solid var(--glass-border); border-radius:12px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
+                            <details data-section="creer-reunion" style="border:1px solid var(--glass-border); border-radius:12px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Créer une réunion</summary>
                                 <form method="POST" class="reunion-create-form" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
@@ -1452,7 +1520,7 @@ $membersJs = array_map(function ($m) {
                             </details>
                             <?php echo $htmlCloturees ?? ''; ?>
                             <?php if (com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions)): ?>
-                            <details class="com-reu-group" style="margin:0.5rem 0;">
+                            <details data-section="parametres" class="com-reu-group" style="margin:0.5rem 0;">
                             <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">⚙️ Paramètres <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
                             <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.6rem 0 0;">
                                 <?php echo csrf_field(); ?>
@@ -1463,6 +1531,15 @@ $membersJs = array_map(function ($m) {
                                     <input type="url" name="lien_zoom" class="form-input" value="<?php echo htmlspecialchars($comZoom[(int) $c['id']] ?? ''); ?>" placeholder="https://us06web.zoom.us/...">
                                 </div>
                                 <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">💾 Enregistrer</button>
+                            </form>
+                            <form method="POST" class="mg-add" style="margin:0.8rem 0 0;">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="set_commission_dispo">
+                                <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                <label style="display:flex; align-items:center; gap:0.8rem; cursor:pointer; color:var(--white);">
+                                    <input type="checkbox" class="checkbox-switch" name="dispo_active" value="1"<?php echo ($comDispo[(int) $c['id']] ?? true) ? ' checked' : ''; ?> onchange="this.form.submit()">
+                                    <span><strong>🗓️ Disponibilités des membres</strong><br><span style="color:var(--text-muted); font-size:0.8rem;">Les membres de la commission indiquent leur disponibilité pour le prochain Dahira (menu « Mes disponibilités »).</span></span>
+                                </label>
                             </form>
                             </details>
                             <?php endif; ?>
@@ -1475,7 +1552,7 @@ $membersJs = array_map(function ($m) {
                             $mgNbFait = count(array_filter($mgTaches, function ($t) { return $t['statut'] === 'fait'; }));
                         ?>
                         <div style="border-top:1px solid var(--glass-border); padding-top:1rem; margin-top:1rem;">
-                            <details class="com-reu-group">
+                            <details data-section="magal" class="com-reu-group">
                                 <summary class="com-sub" style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.4rem; margin-top:0;">🕌 Wadial Magal <?php echo (int) $mgAnneeCourante; ?> <span style="color:var(--text-muted); font-weight:600;">(<?php echo $mgNbFait; ?>/<?php echo count($mgTaches); ?> tâche(s) faite(s))</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
                                 <?php if (!isset($mgInvolved[(int) $c['id']])): ?>
                                     <p style="color:var(--text-muted); font-size:0.82rem; margin:0.6rem 0 0;">ℹ️ Votre commission n'est pas encore inscrite au Wadial Magal : en ajoutant un besoin ou une tâche, elle y sera inscrite automatiquement.</p>
@@ -1486,12 +1563,12 @@ $membersJs = array_map(function ($m) {
                                     $mgStatutsB = magal_statuts_besoin();
                                     $mgNbObtenus = count(array_filter($mgBesoins, function ($b) { return $b['statut'] === 'obtenu'; }));
                                 ?>
-                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0.7rem 0 0.4rem;">🧰 Liste de besoins de la commission <span style="font-weight:600;">(<?php echo $mgNbObtenus; ?>/<?php echo count($mgBesoins); ?> obtenu(s))</span></div>
+                                <details class="mg-grp"><summary>🧰 Liste de besoins de la commission <span class="mg-n">(<?php echo $mgNbObtenus; ?>/<?php echo count($mgBesoins); ?> obtenu(s))</span></summary><div class="mg-body">
                                 <?php if (empty($mgBesoins)): ?>
                                     <p class="km-empty">Aucun besoin défini pour le moment.</p>
                                 <?php endif; ?>
                                 <?php foreach ($mgBesoins as $mgb): ?>
-                                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 0.75rem; margin-bottom:0.4rem;">
+                                    <div class="mg-item mg-st-<?php echo htmlspecialchars((string) $mgb['statut']); ?>">
                                         <div style="flex:1; min-width:160px;">
                                             <strong<?php echo $mgb['statut'] === 'obtenu' ? ' style="text-decoration:line-through; opacity:0.6;"' : ''; ?>><?php echo htmlspecialchars($mgb['libelle']); ?></strong>
                                             <?php if (!empty($mgb['quantite'])): ?><div style="color:var(--text-muted); font-size:0.78rem;">Quantité : <?php echo htmlspecialchars($mgb['quantite']); ?></div><?php endif; ?>
@@ -1517,7 +1594,7 @@ $membersJs = array_map(function ($m) {
                                     </div>
                                 <?php endforeach; ?>
                                 <?php if ($mgPeutAjouter): ?>
-                                <form method="POST" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.4rem 0 0;">
+                                <form method="POST" class="mg-add" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin:0.4rem 0 0;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="magal_add_besoin">
                                     <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
@@ -1526,14 +1603,15 @@ $membersJs = array_map(function ($m) {
                                     <button type="submit" class="btn btn-primary btn-sm">➕ Ajouter</button>
                                 </form>
                                 <?php endif; ?>
-                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:0.7rem 0 0.4rem;">✅ Tâches de la commission</div>
+                                </div></details>
+                                <details class="mg-grp"><summary>✅ Tâches de la commission <span class="mg-n">(<?php echo count($mgTaches); ?>)</span></summary><div class="mg-body">
                                 <?php if (empty($mgTaches)): ?>
                                     <p class="km-empty">Aucune tâche pour le moment.</p>
                                 <?php endif; ?>
                                 <?php foreach ($mgTaches as $mgt):
                                     $mgRetard = $mgt['statut'] !== 'fait' && !empty($mgt['echeance']) && $mgt['echeance'] < date('Y-m-d');
                                 ?>
-                                    <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 0.75rem; margin-bottom:0.4rem;">
+                                    <div class="mg-item mg-st-<?php echo htmlspecialchars((string) $mgt['statut']); ?><?php echo $mgRetard ? ' mg-late' : ''; ?>">
                                         <div style="flex:1; min-width:160px;">
                                             <strong<?php echo $mgt['statut'] === 'fait' ? ' style="text-decoration:line-through; opacity:0.6;"' : ''; ?>><?php echo htmlspecialchars($mgt['titre']); ?></strong>
                                             <div style="color:var(--text-muted); font-size:0.78rem;">
@@ -1557,7 +1635,7 @@ $membersJs = array_map(function ($m) {
                                 <?php endforeach; ?>
 
                                 <?php if ($mgPeutAjouter): ?>
-                                <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.5rem; align-items:end; margin:0.6rem 0 0;">
+                                <form method="POST" class="mg-add" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.5rem; align-items:end; margin:0.6rem 0 0;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="magal_add_tache">
                                     <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
@@ -1574,7 +1652,8 @@ $membersJs = array_map(function ($m) {
                                 </form>
                                 <?php endif; ?>
 
-                                <div style="color:var(--text-muted); font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin:1rem 0 0.4rem;">💶 Finance de la commission</div>
+                                </div></details>
+                                <details class="mg-grp"><summary>💶 Finance de la commission</summary><div class="mg-body">
                                 <?php $mgSolde = $mgFin['rec'] - $mgFin['dep']; ?>
                                 <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.5rem;">
                                     <span class="badge" style="background:rgba(37,211,102,0.15); color:#7bd8a6; border:1px solid rgba(37,211,102,0.4);">📥 Recettes : <?php echo number_format($mgFin['rec'], 2, ',', ' '); ?> €</span>
@@ -1584,7 +1663,7 @@ $membersJs = array_map(function ($m) {
                                 <?php if (empty($mgFin['lignes'])): ?>
                                     <p class="km-empty">Aucune opération financière enregistrée pour cette commission.</p>
                                 <?php else: foreach ($mgFin['lignes'] as $mgl): $mgRec = $mgl['type'] === 'recette'; ?>
-                                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.4rem 0.75rem; margin-bottom:0.35rem;">
+                                    <div class="mg-item <?php echo $mgRec ? 'mg-st-fait' : 'mg-st-a_trouver'; ?>" style="justify-content:space-between;">
                                         <div>
                                             <strong><?php echo $mgRec ? '📥' : '📤'; ?> <?php echo htmlspecialchars($mgl['libelle']); ?></strong>
                                             <div style="color:var(--text-muted); font-size:0.78rem;"><?php echo !empty($mgl['date_op']) ? date('d/m/Y', strtotime($mgl['date_op'])) : date('d/m/Y', strtotime($mgl['created_at'])); ?><?php echo !empty($mgl['note']) ? ' · ' . htmlspecialchars($mgl['note']) : ''; ?></div>
@@ -1592,6 +1671,7 @@ $membersJs = array_map(function ($m) {
                                         <span style="font-weight:700; color:<?php echo $mgRec ? '#7bd8a6' : '#fca5a5'; ?>;"><?php echo $mgRec ? '+' : '−'; ?><?php echo number_format((float) $mgl['montant'], 2, ',', ' '); ?> €</span>
                                     </div>
                                 <?php endforeach; endif; ?>
+                                </div></details>
                                 <p style="margin:0.6rem 0 0;"><a href="magal.php?annee=<?php echo (int) $mgAnneeCourante; ?>&tab=taches" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">🕌 Ouvrir le Wadial Magal</a></p>
                             </details>
                         </div>
@@ -1693,7 +1773,9 @@ $membersJs = array_map(function ($m) {
             var se = document.getElementById('tl-selected');
             av.innerHTML = ''; se.innerHTML = '';
             var na = 0, ns = 0;
-            TL_ALL.forEach(function (m) {
+            // Responsables : uniquement parmi les membres de la commission
+            var deLaCom = (COM_MEMBERS[tlCid] || []).map(Number);
+            (tlMode === 'managers' ? TL_ALL.filter(function (m) { return deLaCom.indexOf(m.id) > -1; }) : TL_ALL).forEach(function (m) {
                 if (tlSelected.has(m.id)) {
                     se.insertAdjacentHTML('beforeend', '<div class="tl-item"><span>' + tlAvatar(m) + '</span><span class="tl-name">' + tlEsc(m.name) + '</span><button type="button" class="tl-rem-btn" onclick="tlRemove(' + m.id + ')" title="Retirer">&times;</button></div>');
                     ns++;
@@ -1703,7 +1785,7 @@ $membersJs = array_map(function ($m) {
                     na++;
                 }
             });
-            if (!na) av.innerHTML = '<div class="tl-empty">Aucun membre disponible.</div>';
+            if (!na) av.innerHTML = '<div class="tl-empty">' + (tlMode === 'managers' ? 'Aucun autre membre de la commission : ajoutez d\'abord des membres.' : 'Aucun membre disponible.') + '</div>';
             if (!ns) se.innerHTML = '<div class="tl-empty">Aucun membre sélectionné.</div>';
             document.getElementById('tl-sel-count').textContent = ns;
             document.getElementById('tl-avail-count').textContent = na + ' disponible(s)';
@@ -1713,27 +1795,17 @@ $membersJs = array_map(function ($m) {
             if (!map[tlCid]) { map[tlCid] = []; }
             if (map[tlCid].map(Number).indexOf(id) === -1) { map[tlCid].push(id); }
             tlSelected.add(id); tlRender(); updateCard(tlCid, tlMode);
-            // Un responsable est aussi membre de la commission : refléter l'ajout côté membres.
             var mirroredMembers = false;
-            if (tlMode === 'managers') {
-                if (!COM_MEMBERS[tlCid]) { COM_MEMBERS[tlCid] = []; }
-                if (COM_MEMBERS[tlCid].map(Number).indexOf(id) === -1) { COM_MEMBERS[tlCid].push(id); mirroredMembers = true; }
-                updateCard(tlCid, 'members');
-            }
             comPersist(tlMode, tlCid, id, true).catch(function (e) {
                 var arr = map[tlCid]; var i = arr.map(Number).indexOf(id); if (i > -1) { arr.splice(i, 1); }
                 tlSelected.delete(id); tlRender(); updateCard(tlCid, tlMode);
-                if (mirroredMembers) {
-                    var mi = COM_MEMBERS[tlCid].map(Number).indexOf(id);
-                    if (mi > -1) { COM_MEMBERS[tlCid].splice(mi, 1); }
-                    updateCard(tlCid, 'members');
-                }
                 modernAlert("Échec de l'ajout : " + e.message, 'Erreur');
             });
         }
         function tlRemove(id){
             var map = getMap(tlMode);
             var arr = map[tlCid] || []; var i = arr.map(Number).indexOf(id); if (i > -1) { arr.splice(i, 1); }
+            if (tlMode === 'members') { var mg = COM_MANAGERS[tlCid] || []; var gi = mg.map(Number).indexOf(id); if (gi > -1) { mg.splice(gi, 1); updateCard(tlCid, 'managers'); } } // un responsable retiré de la commission n'en est plus responsable
             tlSelected.delete(id); tlRender(); updateCard(tlCid, tlMode);
             comPersist(tlMode, tlCid, id, false).catch(function (e) {
                 if (!map[tlCid]) { map[tlCid] = []; }
@@ -1831,8 +1903,11 @@ $membersJs = array_map(function ($m) {
             $smData = [];
             foreach ($comSous as $smCid => $smSubs) {
                 foreach ($smSubs as $smId => $smSub) {
+                    $autresSm = [];
+                    foreach ($smSubs as $oId => $oSub) { if ((int) $oId !== (int) $smId) { foreach ($oSub['membres'] as $oMid) { $autresSm[(int) $oMid] = true; } } }
                     $smData[$smId] = ['cid' => (int) $smCid, 'nom' => $smSub['nom'], 'accepte' => (int) ($smSub['accepte'] ?? 0),
-                        'members' => array_values(array_map('intval', array_merge($smSub['membres'], $smSub['supports'] ?? [])))];
+                        'members' => array_values(array_map('intval', array_merge($smSub['membres'], $smSub['supports'] ?? []))),
+                        'autres' => array_keys($autresSm)];
                 }
             }
             echo json_encode((object) $smData, JSON_UNESCAPED_UNICODE);
@@ -1843,7 +1918,9 @@ $membersJs = array_map(function ($m) {
             var cid = smSub().cid;
             return (COM_MEMBERS[cid] || []).map(Number).indexOf(id) !== -1 || (COM_MANAGERS[cid] || []).map(Number).indexOf(id) !== -1;
         }
-        function smEligible(id) { return smDansCommission(id) || !!smSub().accepte; }
+        // Un membre de la commission déjà dans une AUTRE sous-commission n'est plus proposé
+        function smDansAutre(id) { return smDansCommission(id) && (smSub().autres || []).map(Number).indexOf(id) !== -1; }
+        function smEligible(id) { if (smDansAutre(id)) { return false; } return smDansCommission(id) || !!smSub().accepte; }
         function smTag(id) { return smDansCommission(id) ? '' : '<span style="font-size:0.68rem; font-weight:700; color:#8ec5ff; border:1px solid rgba(45,140,255,0.4); border-radius:50px; padding:0.1rem 0.45rem; margin-left:0.3rem;">🤝 support</span>'; }
         function smRender() {
             var term = tlNorm(document.getElementById('sm-search').value);
@@ -2067,6 +2144,24 @@ $membersJs = array_map(function ($m) {
         })();
     </script>
     <?php include __DIR__ . '/modern_popup.php'; ?>
+<script>
+// Lien direct depuis « Mes commissions » : ouvre la section demandée de la commission (?ouvrir=creer-reunion#com-card-ID)
+(function () {
+    var q = new URLSearchParams(window.location.search), section = q.get('ouvrir'), h = window.location.hash;
+    if (!section || h.indexOf('#com-card-') !== 0) { return; }
+    var card = document.getElementById(h.slice(1));
+    if (!card) { return; }
+    var cible = card.querySelector('[data-section="' + section.replace(/[^a-z-]/g, '') + '"]');
+    var el = cible || card;
+    var n = el;
+    while (n && n !== document.body) { if (n.tagName === 'DETAILS') { n.open = true; } n = n.parentElement; }
+    setTimeout(function () {
+        el.scrollIntoView({ block: 'center' });
+        var champ = cible && cible.querySelector('input[type="text"]');
+        if (champ && section === 'sous-ajout') { champ.focus({ preventScroll: true }); }
+    }, 150);
+})();
+</script>
 <script src="modern-date.js" defer></script>
 </body>
 </html>

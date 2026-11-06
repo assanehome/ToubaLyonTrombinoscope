@@ -322,11 +322,27 @@ try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS commission_disponibilites (
         planning_id INT NOT NULL,
         membre_id INT NOT NULL,
+        commission_id INT NOT NULL DEFAULT 0,
         statut VARCHAR(10) NOT NULL DEFAULT 'dispo',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (planning_id, membre_id),
+        PRIMARY KEY (planning_id, membre_id, commission_id),
         INDEX idx_membre (membre_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Migration : la disponibilité se définit désormais PAR COMMISSION. Les anciennes réponses
+    // (valables pour toutes les commissions du membre) sont recopiées pour chacune de ses commissions.
+    try { $pdo->query("SELECT commission_id FROM commission_disponibilites LIMIT 1"); } catch (Exception $e) {
+        try {
+            $pdo->exec("ALTER TABLE commission_disponibilites ADD COLUMN commission_id INT NOT NULL DEFAULT 0");
+            $pdo->exec("ALTER TABLE commission_disponibilites DROP PRIMARY KEY, ADD PRIMARY KEY (planning_id, membre_id, commission_id)");
+            $pdo->exec("INSERT IGNORE INTO commission_disponibilites (planning_id, membre_id, statut, commission_id)
+                        SELECT d.planning_id, d.membre_id, d.statut, x.commission_id
+                        FROM commission_disponibilites d
+                        JOIN (SELECT membre_id, commission_id FROM commission_membres
+                              UNION SELECT membre_id, commission_id FROM commission_gestionnaires) x ON x.membre_id = d.membre_id
+                        WHERE d.commission_id = 0");
+            $pdo->exec("DELETE FROM commission_disponibilites WHERE commission_id = 0");
+        } catch (Exception $e2) { error_log('Touba Lyon migration disponibilités : ' . $e2->getMessage()); }
+    }
 
     // Sous-commissions : créées par les responsables d'une commission, qui y affectent
     // des membres de leur commission (tables séparées pour ne pas interférer avec les commissions).
@@ -354,6 +370,16 @@ try {
     try { $pdo->query("SELECT accepte_supports FROM sous_commissions LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE sous_commissions ADD COLUMN accepte_supports TINYINT(1) NOT NULL DEFAULT 0"); }
     // Les sous-commissions qui ont déjà des membres supports gardent cette possibilité
     try { $pdo->exec("UPDATE sous_commissions SET accepte_supports = 1 WHERE accepte_supports = 0 AND id IN (SELECT DISTINCT sous_commission_id FROM sous_commission_membres WHERE support = 1)"); } catch (Exception $e) { /* sans importance */ }
+
+    // Un responsable de commission est toujours membre de sa commission (cohérence des données existantes)
+    try { $pdo->exec("INSERT IGNORE INTO commission_membres (commission_id, membre_id) SELECT commission_id, membre_id FROM commission_gestionnaires"); } catch (Exception $e) { /* ignoré */ }
+
+    // Option par commission : définition des disponibilités des membres (activée par défaut)
+    try {
+        $pdo->query("SELECT dispo_active FROM commissions LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE commissions ADD COLUMN dispo_active TINYINT(1) NOT NULL DEFAULT 1");
+    }
 
     // Lien Zoom par défaut d'une commission (pré-rempli pour ses réunions à distance)
     try {
@@ -754,6 +780,24 @@ try {
         INDEX idx_email (email, created_at),
         INDEX idx_ip (ip, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Validation de l'e-mail par code après l'inscription : nouveau statut « email_a_verifier » (invisible des administrateurs)
+    try {
+        $colStatus = $pdo->query("SHOW COLUMNS FROM membres LIKE 'status'")->fetch();
+        if ($colStatus && stripos((string) $colStatus['Type'], 'enum(') === 0 && stripos((string) $colStatus['Type'], 'email_a_verifier') === false) {
+            $pdo->exec("ALTER TABLE membres MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'email_a_verifier') DEFAULT 'pending'");
+        }
+    } catch (Exception $e) { /* repli : l'inscription fonctionne sans validation par code */ }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS email_verifications (
+        membre_id INT NOT NULL PRIMARY KEY,
+        code_hash VARCHAR(64) NOT NULL DEFAULT '',
+        salt VARCHAR(32) NOT NULL DEFAULT '',
+        expires_at DATETIME NOT NULL,
+        tries TINYINT NOT NULL DEFAULT 0,
+        sent_at DATETIME NULL DEFAULT NULL,
+        origine VARCHAR(20) NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     // Sondages des commissions : créés par les responsables, ouverts à tous les membres.
     // resultats_visibilite : 'tous' (tous les membres) ou 'bureau' (responsables de commission).
