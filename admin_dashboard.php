@@ -166,7 +166,7 @@ $fltAnnees = array_keys($fltAnnees); rsort($fltAnnees);
 
 /** Rendu d'un select de filtre. */
 function filter_select($id, $label, $options) {
-    $h = '<select id="' . $id . '" class="adh-select">';
+    $h = '<select id="' . $id . '" class="adh-select" autocomplete="off">';
     $h .= '<option value="">' . htmlspecialchars($label) . ' : tous</option>';
     foreach ($options as $o) { $h .= '<option value="' . htmlspecialchars($o, ENT_QUOTES) . '">' . htmlspecialchars($o) . '</option>'; }
     $h .= '</select>';
@@ -340,7 +340,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
         <!-- Filtres combinés (groupe replié par défaut) -->
         <button type="button" id="adh-toggle" class="adh-toggle">🔎 Filtres <span class="chev">▾</span></button>
         <div class="adh-filters-adv is-hidden" id="adh-panel">
-            <input type="text" id="adh-search" placeholder="🔍 Nom, prénom ou email…">
+            <input type="text" id="adh-search" autocomplete="off" placeholder="🔍 Nom, prénom ou email…">
             <?php echo filter_select('f-commission', 'Commission', $fltCommissions); ?>
             <?php echo filter_select('f-secteur', 'Secteur', $fltSecteurs); ?>
             <?php echo filter_select('f-type', 'Type', $fltTypes); ?>
@@ -1142,6 +1142,18 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                 if (allChip) allChip.classList.add('active');
                 window.applyDashFilters();
             });
+            // Les filtres ne sont pas conservés : remis à zéro à chaque affichage de la page (y compris retour arrière)
+            function reinitialiserFiltres() {
+                if (search) search.value = '';
+                for (const key in selects) { if (selects[key]) selects[key].value = ''; }
+                civFilter = 'all';
+                chips.forEach(x => x.classList.remove('active'));
+                const allChip = document.querySelector('.dash-chip[data-civ="all"]');
+                if (allChip) allChip.classList.add('active');
+                window.applyDashFilters();
+            }
+            window.addEventListener('pageshow', reinitialiserFiltres);
+            reinitialiserFiltres();
             window.applyDashFilters();
         })();
     </script>

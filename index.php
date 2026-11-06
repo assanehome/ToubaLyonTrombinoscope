@@ -824,7 +824,7 @@ try {
                 ?>
                 <div class="renc-card<?php echo $dEtat === 'encours' ? ' renc-card-live' : ''; ?>" style="order:<?php echo (int) $dOrd; ?>;">
                     <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
-                        <span style="font-weight:800; color:#fff;">🕌 Dahira — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></span>
+                        <span style="font-weight:800; color:#fff;"><?php echo dahira_type_emoji($prochainDahira['type_evenement'] ?? 'dahira') . ' ' . htmlspecialchars(dahira_type_libelle($prochainDahira['type_evenement'] ?? 'dahira')); ?> — <?php echo ucfirst(dahira_jour_fr($dDate)) . ' ' . date('d/m/Y', strtotime($dDate)); ?></span>
                         <?php if ($dEtat === 'encours'): ?><span class="renc-badge renc-badge-live">🔴 En cours</span><?php endif; ?>
                     </div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem; white-space:pre-line;">🕐 <?php echo htmlspecialchars($dahiraHeure); ?> à <?php echo htmlspecialchars($dahiraFin); ?><br>📍 <?php echo htmlspecialchars($dahiraLieu); ?></div>

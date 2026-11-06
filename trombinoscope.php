@@ -91,7 +91,7 @@ try {
             <!-- Search bar -->
             <div class="search-container">
                 <svg class="search-icon" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                <input type="text" id="search-input" class="search-input" placeholder="Rechercher un membre par nom ou prénom...">
+                <input type="text" id="search-input" autocomplete="off" class="search-input" placeholder="Rechercher un membre par nom ou prénom...">
             </div>
 
             <div class="filter-container">
@@ -201,6 +201,15 @@ try {
             });
         });
 
+        // Le filtre n'est pas conservé : à chaque affichage de la page, retour à « Tous » sans recherche
+        function reinitialiserFiltre() {
+            if (searchInput) { searchInput.value = ''; }
+            activeFilter = 'all';
+            filterBtns.forEach(b => b.classList.toggle('active', b.getAttribute('data-filter') === 'all'));
+            filterMembers();
+        }
+        window.addEventListener('pageshow', reinitialiserFiltre);
+        reinitialiserFiltre();
     </script>
 </body>
 </html>

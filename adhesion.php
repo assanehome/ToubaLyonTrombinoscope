@@ -4,6 +4,9 @@
  * Reproduit le formulaire Google "Dahira Touba Lyon - Formulaire d'inscription".
  */
 require_once __DIR__ . '/db_setup.php';
+require_once __DIR__ . '/inscription_suivi_helper.php'; // encart de connexion après inscription
+require_once __DIR__ . '/email_unique_helper.php'; // une adresse = un seul compte
+require_once __DIR__ . '/rgpd_helper.php'; // consentement RGPD
 require_once __DIR__ . '/admin_redirect.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/send_mail.php';
@@ -11,6 +14,7 @@ require_once __DIR__ . '/dahira_emails.php';
 
 $error = '';
 $success = '';
+$emailInscrit = '';
 
 // Valeurs ré-affichées en cas d'erreur
 $f = [
@@ -33,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $f[$k] = trim($_POST[$k] ?? '');
         }
         $charte = isset($_POST['charte_acceptee']);
+        $rgpd = !empty($_POST['rgpd_accepte']);
         $photo  = $_FILES['photo'] ?? null;
         $password = $_POST['password'] ?? '';
 
@@ -67,6 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Veuillez saisir une année d'intégration valide (ex: 2022).";
         } elseif (!$charte) {
             $error = "Vous devez accepter la charte du Dahira pour vous inscrire.";
+        } elseif (!$rgpd) {
+            $error = "Vous devez accepter le traitement de vos données personnelles et de votre photo (RGPD).";
         } elseif (!$photo || $photo['error'] === UPLOAD_ERR_NO_FILE) {
             $error = "La photo de profil est obligatoire.";
         } else {
@@ -76,7 +83,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare("SELECT id, status FROM membres WHERE LOWER(email) = LOWER(?) LIMIT 1");
                 $stmt->execute([$f['email']]);
                 $existing = $stmt->fetch();
-                if ($existing) {
+                if (!$existing && email_autre_compte($pdo, $f['email']) !== null) {
+                    $error = email_autre_compte_message();
+                } elseif ($existing) {
                     if ($existing['status'] === 'approved') {
                         $error = "Cette adresse email correspond déjà à un membre validé. Connectez-vous, ou utilisez « Mot de passe oublié ».";
                     } elseif ($existing['status'] === 'pending') {
@@ -126,15 +135,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         (nom, prenom, civilite, email, photo_path, password, status,
                          type_adhesion, genre, test_kourel, adresse, code_postal, commune,
                          telephone, statut, secteur_activite, profession, commentaires,
-                         annee_integration, charte_acceptee)
-                        VALUES (?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                         annee_integration, charte_acceptee, rgpd_accepte, rgpd_date, rgpd_version)
+                        VALUES (?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,?,?,?,1,NOW(),?)";
                     $stmt = $pdo->prepare($sql);
                     $stmt->execute([
                         $f['nom'], $f['prenom'], $civilite, $f['email'], $newFilename, $hashedPassword,
                         $f['type_adhesion'], $f['genre'], ($f['test_kourel'] ?: null),
                         ($f['adresse'] ?: null), $f['code_postal'], $f['commune'],
                         $f['telephone'], $f['statut'], $f['secteur_activite'], $f['profession'],
-                        ($f['commentaires'] ?: null), $f['annee_integration'], 1,
+                        ($f['commentaires'] ?: null), $f['annee_integration'], 1, RGPD_VERSION,
                     ]);
 
                     // Notification e-mail au secrétariat (best effort)
@@ -170,7 +179,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Confirmation d'inscription à l'adhérent (avec la charte)
                     @send_inscription_email($f['email'], $f['prenom'] . ' ' . $f['nom']);
 
-                    $success = "Votre inscription a bien été enregistrée. Jërëjëf ! Le secrétariat vous contactera prochainement. (Pensez à prévoir 10€ pour votre carte de membre.)";
+                    $success = "Votre inscription a bien été enregistrée. Jërëjëf ! Le secrétariat vous contactera prochainement.";
+                    $emailInscrit = $f['email'];
                     foreach ($f as $k => $_) {
                         $f[$k] = '';
                     }
@@ -310,7 +320,8 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
                 </p>
             </div>
 
-            <form action="adhesion.php" method="POST" enctype="multipart/form-data" id="adhesion-form" novalidate>
+            <?php if (!empty($success)) { echo inscription_login_card_html($emailInscrit, $success); } ?>
+            <form action="adhesion.php" method="POST" enctype="multipart/form-data" id="adhesion-form" novalidate<?php echo !empty($success) ? ' style="display:none"' : ''; ?>>
                 <?php echo csrf_field(); ?>
 
                 <!-- ── Charte (lecteur paginé) ── -->
@@ -495,15 +506,17 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
                 </div>
 
                 <p style="color:var(--text-muted); font-size:0.85rem; margin: 1rem 0;">
-                    En envoyant ce formulaire, vous recevrez bientôt votre carte de membre actif du Dahira (prévoir 10 € pour la carte). Secrétariat Général, Touba Lyon.
+                    En envoyant ce formulaire, vous recevrez bientôt votre carte de membre actif du Dahira. Secrétariat Général, Touba Lyon.
                 </p>
+
+                <?php echo rgpd_consent_html(); ?>
 
                 <button type="submit" class="btn btn-primary" style="width:100%; margin-top:0.5rem; font-size:1rem; padding:1rem;">Envoyer mon inscription</button>
             </form>
         </div>
     </main>
 
-    <?php if (!empty($success) || !empty($error)): ?>
+    <?php if (!empty($error) && empty($success)): ?>
     <div id="notification-modal" class="modal-overlay active" style="display: flex;">
         <div class="modal-card glass-card">
             <div class="modal-header">
@@ -625,6 +638,8 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
                 if (fieldEl('password').value.length < 6) fail('Mot de passe (6 caractères minimum)', null, fieldEl('password'));
                 // Confirmation du mot de passe
                 if (fieldEl('password_confirm').value !== fieldEl('password').value) fail('Confirmation du mot de passe (identique)', null, fieldEl('password_confirm'));
+                // Consentement RGPD
+                if (!fieldEl('rgpd_accepte').checked) fail('Acceptation du traitement des données (RGPD)', null, fieldEl('rgpd_accepte'));
                 // Statut (select moderne)
                 const statut = fieldEl('statut');
                 if (!statut.value) {
@@ -773,5 +788,8 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
             pc.addEventListener('input', verifier);
         })();
     </script>
+<script src="modern-file.js" defer></script>
+<script>window.TROBA_EMAIL_ERREUR = <?php echo json_encode((!empty($error) && empty($success) && stripos((string) $error, 'adresse email') !== false) ? $error : '', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;</script>
+<script src="email-check.js" defer></script>
 </body>
 </html>

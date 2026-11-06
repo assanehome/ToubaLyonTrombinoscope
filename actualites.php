@@ -621,7 +621,7 @@ foreach ($membresListe as $mm) { $membresIndex[(int) $mm['id']] = trim(($mm['pre
             document.getElementById('ac-titre').value = '';
             contenu.value = '';
             var frm = document.getElementById('ac-form');
-            if (frm) { var fi = frm.querySelectorAll('input[type="file"]'); fi.forEach(function (x) { x.value = ''; }); }
+            if (frm) { var fi = frm.querySelectorAll('input[type="file"]'); fi.forEach(function (x) { x.value = ''; x.dispatchEvent(new Event('change', { bubbles: true })); }); }
             selectedMentions = [];
             syncMentions();
         }
@@ -641,5 +641,6 @@ foreach ($membresListe as $mm) { $membresIndex[(int) $mm['id']] = trim(($mm['pre
         }
     })();
     </script>
+<script src="modern-file.js" defer></script>
 </body>
 </html>

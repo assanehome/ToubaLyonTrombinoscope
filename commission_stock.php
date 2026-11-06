@@ -810,5 +810,6 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
             if (window.stkFilter) window.stkMajIndics();
         })();
     </script>
+<script src="modern-file.js" defer></script>
 </body>
 </html>

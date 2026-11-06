@@ -225,14 +225,14 @@ function dahira_html_to_whatsapp(string $html): string
     return trim((string) $t);
 }
 
-function dahira_message_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = '', string $lien = '', string $signature = ''): string
+function dahira_message_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = '', string $lien = '', string $signature = '', string $type = 'dahira'): string
 {
     if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
     // Le programme peut être saisi en HTML : converti en texte formaté WhatsApp
     $programme = dahira_html_to_whatsapp($programme);
 
     $msg = "As-salaamu haleykum,\n\n"
-        . "Un Dahira aura lieu ce " . dahira_date_longue($date) . " :\n";
+        . dahira_type_un($type) . " " . dahira_type_libelle($type) . " aura lieu ce " . dahira_date_longue($date) . " :\n";
 
     if (trim($lieu) !== '') {
         $msg .= "\n📍 Lieu :\n" . trim($lieu) . "\n";
@@ -254,7 +254,7 @@ function dahira_message_annonce(string $date, string $lieu, string $debut, strin
 /**
  * Corps HTML d'un e-mail annonçant un Dahira.
  */
-function dahira_email_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = '', string $signature = ''): string
+function dahira_email_annonce(string $date, string $lieu, string $debut, string $fin, string $programme = '', string $signature = '', string $type = 'dahira'): string
 {
     if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
     $date_fr = date('d/m/Y', strtotime($date));
@@ -262,7 +262,7 @@ function dahira_email_annonce(string $date, string $lieu, string $debut, string 
 
     $inner = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">'
         . '<h2 style="color:#1b4332;">As-salaamu haleykum 🙏</h2>'
-        . '<p style="color:#333;">Un <strong>Dahira</strong> aura lieu ce Dimanche '
+        . '<p style="color:#333;">' . dahira_type_un($type) . ' <strong>' . htmlspecialchars(dahira_type_libelle($type)) . '</strong> aura lieu ce '
         . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> :</p>'
         . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 16px;color:#1b4332;">'
         . '📍 ' . nl2br(htmlspecialchars(trim($lieu))) . '<br>🕐 De <strong>' . htmlspecialchars($debut) . '</strong> à <strong>' . htmlspecialchars($fin) . '</strong><br>📋 Commission Secrétariat Général</p>';
@@ -283,12 +283,12 @@ function dahira_email_annonce(string $date, string $lieu, string $debut, string 
 /**
  * Message WhatsApp d'ANNULATION d'un Dahira.
  */
-function dahira_message_annulation(string $date, string $signature = ''): string
+function dahira_message_annulation(string $date, string $signature = '', string $type = 'dahira'): string
 {
     if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
-    return "‼️‼️ ANNULATION DAHIRA\n\n"
+    return "‼️‼️ ANNULATION " . mb_strtoupper(dahira_type_libelle($type)) . "\n\n"
         . "As-salaamu haleykum,\n\n"
-        . "Le Dahira prévu ce " . dahira_date_longue($date) . " est annulé inshallaah.\n\n"
+        . dahira_type_le($type) . " prévu" . (dahira_type_feminin($type) ? "e" : "") . " ce " . dahira_date_longue($date) . " est annulé" . (dahira_type_feminin($type) ? "e" : "") . " inshallaah.\n\n"
         . "Ñungi leen di tuubal bu baax.\n\n"
         . trim($signature);
 }
@@ -296,16 +296,16 @@ function dahira_message_annulation(string $date, string $signature = ''): string
 /**
  * Corps HTML d'un e-mail annonçant l'annulation d'un Dahira.
  */
-function dahira_email_annulation(string $date, string $signature = ''): string
+function dahira_email_annulation(string $date, string $signature = '', string $type = 'dahira'): string
 {
     if (trim($signature) === '') { $signature = DAHIRA_SIGNATURE_DEFAUT; }
     $date_fr = date('d/m/Y', strtotime($date));
     $jour = dahira_jour_fr($date);
     return '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">'
-        . '<h2 style="color:#b91c1c;">‼️‼️ ANNULATION DAHIRA</h2>'
+        . '<h2 style="color:#b91c1c;">‼️‼️ ANNULATION ' . htmlspecialchars(mb_strtoupper(dahira_type_libelle($type))) . '</h2>'
         . '<p style="color:#333;">As-salaamu haleykum,</p>'
-        . '<p style="color:#333;">Le <strong>Dahira</strong> prévu ce '
-        . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> est <strong>annulé</strong> inshallaah.</p>'
+        . '<p style="color:#333;">' . (dahira_type_feminin($type) ? 'L\'' : 'Le ') . '<strong>' . htmlspecialchars(dahira_type_libelle($type)) . '</strong> prévu' . (dahira_type_feminin($type) ? 'e' : '') . ' ce '
+        . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> est <strong>annulé' . (dahira_type_feminin($type) ? 'e' : '') . '</strong> inshallaah.</p>'
         . '<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;color:#991b1b;">Ñungi leen di tuubal bu baax.</p>'
         . '<p style="color:#333;margin-top:16px;">' . nl2br(htmlspecialchars(trim($signature))) . '</p>'
         . '<p style="color:#888;font-size:12px;">— Dahira Touba Lyon (Mubawwa-A-Sidqin)</p>'
@@ -344,6 +344,76 @@ function dahira_destinataires(PDO $pdo, int $commission_id): array
     } catch (Exception $e) {
         return [];
     }
+}
+
+// ---------------------------------------------------------------------------
+// Types d'événement (Dahira, AG, Gamou, Magal, Ngan, Déplacement)
+// ---------------------------------------------------------------------------
+
+/** Types d'événement du planning : clé => [libellé, emoji]. */
+function dahira_types_evenement(): array
+{
+    return [
+        'dahira'     => ['Dahira', '🕌'],
+        'ag'         => ['Assemblée générale', '🏛️'],
+        'gamou'      => ['Gamou', '🌙'],
+        'magal'      => ['Magal', '🕋'],
+        'ngan'       => ['Ngan', '🍲'],
+        'deplacement' => ['Déplacement', '🚌'],
+    ];
+}
+
+/** Clé de type valide (« dahira » par défaut). */
+function dahira_type_valide(?string $type): string
+{
+    $type = strtolower(trim((string) $type));
+    return isset(dahira_types_evenement()[$type]) ? $type : 'dahira';
+}
+
+/** Libellé du type (ex. « Gamou »). */
+function dahira_type_libelle(?string $type): string
+{
+    return dahira_types_evenement()[dahira_type_valide($type)][0];
+}
+
+/** Type féminin en français (accords : une, prévue, annulée) ? */
+function dahira_type_feminin(?string $type): bool
+{
+    return dahira_type_valide($type) === 'ag';
+}
+
+/** Article indéfini : « un » ou « une ». */
+function dahira_type_un(?string $type): string
+{
+    return dahira_type_feminin($type) ? 'Une' : 'Un';
+}
+
+/** Article défini + type : « Le Gamou » / « L'Assemblée générale ». */
+function dahira_type_le(?string $type): string
+{
+    return dahira_type_feminin($type) ? "L'" . dahira_type_libelle($type) : 'Le ' . dahira_type_libelle($type);
+}
+
+/** Emoji du type. */
+function dahira_type_emoji(?string $type): string
+{
+    return dahira_types_evenement()[dahira_type_valide($type)][1];
+}
+
+/** Type par défaut choisi dans la configuration du Dahira. */
+function dahira_type_defaut(PDO $pdo): string
+{
+    return dahira_type_valide(dahira_param($pdo, 'dahira_type_defaut', 'dahira'));
+}
+
+/** Options <option> d'une liste de types, $selectionne étant la clé choisie. */
+function dahira_type_options_html(string $selectionne): string
+{
+    $h = '';
+    foreach (dahira_types_evenement() as $k => $t) {
+        $h .= '<option value="' . $k . '"' . ($k === $selectionne ? ' selected' : '') . '>' . $t[1] . ' ' . htmlspecialchars($t[0]) . '</option>';
+    }
+    return $h;
 }
 
 // ---------------------------------------------------------------------------
@@ -425,3 +495,48 @@ function dahira_presence_trombi_html(array $membres): string
     return $h;
 }
 
+/**
+ * Enregistre l'image jointe à un Dahira (champ de formulaire $champ).
+ * Retourne ['name' => nom du fichier ou null, 'error' => message ou null].
+ * Formats : JPG, PNG, WebP, GIF — 6 Mo au maximum, contenu vérifié comme image.
+ */
+function dahira_upload_image(string $champ = 'image'): array
+{
+    $f = $_FILES[$champ] ?? null;
+    if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return ['name' => null, 'error' => null];
+    }
+    if ($f['error'] !== UPLOAD_ERR_OK) {
+        return ['name' => null, 'error' => "L'image n'a pas pu être envoyée (fichier trop volumineux ?)."];
+    }
+    if (!is_uploaded_file($f['tmp_name'])) {
+        return ['name' => null, 'error' => null];
+    }
+    if ((int) $f['size'] > 6 * 1024 * 1024) {
+        return ['name' => null, 'error' => "L'image est trop lourde (6 Mo maximum)."];
+    }
+    $ext = strtolower(pathinfo((string) $f['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true)) {
+        return ['name' => null, 'error' => "Format d'image non autorisé : utilisez JPG, PNG, WebP ou GIF."];
+    }
+    if (@getimagesize($f['tmp_name']) === false) {
+        return ['name' => null, 'error' => "Le fichier n'est pas une image valide."];
+    }
+    $dir = __DIR__ . '/uploads';
+    if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+    try { $rand = bin2hex(random_bytes(3)); } catch (Exception $e) { $rand = (string) mt_rand(100000, 999999); }
+    $nom = 'dahira_img_' . date('Ymd_His') . '_' . $rand . '.' . $ext;
+    if (!move_uploaded_file($f['tmp_name'], $dir . '/' . $nom)) {
+        return ['name' => null, 'error' => "Impossible d'enregistrer l'image."];
+    }
+    return ['name' => $nom, 'error' => null];
+}
+
+/** Supprime le fichier image d'un Dahira (nom enregistré en base). */
+function dahira_supprimer_image(?string $nom): void
+{
+    $nom = basename((string) $nom);
+    if ($nom !== '' && strpos($nom, 'dahira_img_') === 0) {
+        @unlink(__DIR__ . '/uploads/' . $nom);
+    }
+}

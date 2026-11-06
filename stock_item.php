@@ -258,5 +258,6 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
     </script>
 
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
+<script src="modern-file.js" defer></script>
 </body>
 </html>

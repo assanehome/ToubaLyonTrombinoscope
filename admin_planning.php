@@ -51,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Réglages généraux
         if ($action === 'save_params') {
+            dahira_set_param($pdo, 'dahira_type_defaut', dahira_type_valide($_POST['type_defaut'] ?? 'dahira'));
             dahira_set_param($pdo, 'dahira_lieu', trim($_POST['lieu'] ?? ''));
             dahira_set_param($pdo, 'dahira_debut', trim($_POST['debut'] ?? ''));
             dahira_set_param($pdo, 'dahira_fin', trim($_POST['fin'] ?? ''));
@@ -97,9 +98,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $added = 0;
                 try {
-                    $st = $pdo->prepare("INSERT IGNORE INTO dahira_plannings (date_dahira, commission_id) VALUES (?, ?)");
+                    $st = $pdo->prepare("INSERT IGNORE INTO dahira_plannings (date_dahira, commission_id, type_evenement) VALUES (?, ?, ?)");
                     foreach ($dimanches as $d) {
-                        $st->execute([$d, $commissionId > 0 ? $commissionId : null]);
+                        $st->execute([$d, $commissionId > 0 ? $commissionId : null, dahira_type_defaut($pdo)]);
                         if ($st->rowCount() > 0) { $added++; }
                     }
                     $success = count($dimanches) . " dimanche(s) planifié(s) (" . $added . " nouveau(x), " . (count($dimanches) - $added) . " déjà présent(s)).";
@@ -117,10 +118,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Veuillez indiquer une date valide.";
             } else {
                 try {
-                    $st = $pdo->prepare("INSERT IGNORE INTO dahira_plannings (date_dahira, commission_id, option_dahira) VALUES (?, ?, 1)");
-                    $st->execute([$dateExc, $commissionId > 0 ? $commissionId : null]);
+                    $st = $pdo->prepare("INSERT IGNORE INTO dahira_plannings (date_dahira, commission_id, option_dahira, type_evenement) VALUES (?, ?, 1, ?)");
+                    $st->execute([$dateExc, $commissionId > 0 ? $commissionId : null, dahira_type_valide($_POST['type_evenement'] ?? dahira_type_defaut($pdo))]);
                     if ($st->rowCount() > 0) {
-                        $success = "Dahira d'exception ajouté le " . date('d/m/Y', strtotime($dateExc)) . ".";
+                        // Image jointe au Dahira
+                        $imgEx = dahira_upload_image('image');
+                        if ($imgEx['name'] !== null) {
+                            $pdo->prepare("UPDATE dahira_plannings SET image_path = ? WHERE date_dahira = ?")->execute([$imgEx['name'], $dateExc]);
+                        }
+                        $success = "Événement ajouté (" . dahira_type_libelle($_POST['type_evenement'] ?? dahira_type_defaut($pdo)) . ") le " . date('d/m/Y', strtotime($dateExc)) . "." . (!empty($imgEx['error']) ? " L'image n'a pas été enregistrée : " . $imgEx['error'] : '');
                     } else {
                         $error = "Un Dahira est déjà planifié à cette date.";
                     }
@@ -139,11 +145,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $description = trim($_POST['description'] ?? '');
             $hDebut = trim($_POST['heure_debut'] ?? '');
             $hFin = trim($_POST['heure_fin'] ?? '');
+            $typeEv = dahira_type_valide($_POST['type_evenement'] ?? 'dahira');
             if ($id > 0) {
                 try {
-                    $pdo->prepare("UPDATE dahira_plannings SET titre = ?, description = ?, programme = ?, heure_debut = ?, heure_fin = ?, updated_at = NOW() WHERE id = ?")
-                        ->execute([$titre !== '' ? $titre : null, $description !== '' ? $description : null, $programme !== '' ? $programme : null, $hDebut !== '' ? $hDebut : null, $hFin !== '' ? $hFin : null, $id]);
-                    $success = "Programme et horaires enregistrés.";
+                    // Image jointe : remplacement ou retrait
+                    $imgNew = dahira_upload_image('image');
+                    if ($imgNew['error'] !== null) { $error = $imgNew['error']; }
+                    else {
+                        $old = $pdo->prepare("SELECT image_path FROM dahira_plannings WHERE id = ?");
+                        $old->execute([$id]);
+                        $oldImg = (string) $old->fetchColumn();
+                        if ($imgNew['name'] !== null) {
+                            $pdo->prepare("UPDATE dahira_plannings SET image_path = ? WHERE id = ?")->execute([$imgNew['name'], $id]);
+                            dahira_supprimer_image($oldImg);
+                        } elseif (!empty($_POST['retirer_image']) && $oldImg !== '') {
+                            $pdo->prepare("UPDATE dahira_plannings SET image_path = NULL WHERE id = ?")->execute([$id]);
+                            dahira_supprimer_image($oldImg);
+                        }
+                    }
+                    $pdo->prepare("UPDATE dahira_plannings SET titre = ?, description = ?, programme = ?, heure_debut = ?, heure_fin = ?, type_evenement = ?, updated_at = NOW() WHERE id = ?")
+                        ->execute([$titre !== '' ? $titre : null, $description !== '' ? $description : null, $programme !== '' ? $programme : null, $hDebut !== '' ? $hDebut : null, $hFin !== '' ? $hFin : null, $typeEv, $id]);
+                    if ($error === '') { $success = "Programme et horaires enregistrés."; }
                 } catch (Exception $e) {
                     $error = "Une erreur technique est survenue.";
                 }
@@ -201,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
                 try {
-                    $st = $pdo->prepare("SELECT date_dahira, publie, programme, option_dahira FROM dahira_plannings WHERE id = ?");
+                    $st = $pdo->prepare("SELECT date_dahira, publie, programme, option_dahira, type_evenement FROM dahira_plannings WHERE id = ?");
                     $st->execute([$id]);
                     $rowP = $st->fetch();
                     if (!$rowP) {
@@ -215,9 +237,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // Notifier tous les membres validés
                             require_once __DIR__ . '/notification_helper.php';
                             $dateLongue = dahira_date_longue($rowP['date_dahira']);
-                            $body = '🕌 Dahira du ' . $dateLongue . ' — Validez votre présence !';
-                            troba_notify_all_membres($pdo, 'dahira_publie', '🕌 Dahira publié', $body, 'dahira_detail.php?id=' . $id);
-                            $success = "Dahira publié : " . count($pdo->query("SELECT id FROM membres WHERE status = 'approved'")->fetchAll()) . " membre(s) notifié(s).";
+                            $tLib = dahira_type_libelle($rowP['type_evenement'] ?? 'dahira');
+                            $tEmo = dahira_type_emoji($rowP['type_evenement'] ?? 'dahira');
+                            $body = $tEmo . ' ' . $tLib . ' du ' . $dateLongue . ' — Validez votre présence !';
+                            troba_notify_all_membres($pdo, 'dahira_publie', $tEmo . ' ' . $tLib . ' publié', $body, 'dahira_detail.php?id=' . $id);
+                            $success = $tLib . " publié : " . count($pdo->query("SELECT id FROM membres WHERE status = 'approved'")->fetchAll()) . " membre(s) notifié(s).";
                         } else {
                             $success = "Dahira dépublié.";
                         }
@@ -286,6 +310,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (trim((string)($row['heure_debut'] ?? '')) !== '') { $debut = trim((string)$row['heure_debut']); }
                     if (trim((string)($row['heure_fin'] ?? '')) !== '') { $fin = trim((string)$row['heure_fin']); }
                     $signatureMail = dahira_param($pdo, 'dahira_signature', DAHIRA_SIGNATURE_DEFAUT);
+                    $typeEv = dahira_type_valide($row['type_evenement'] ?? 'dahira');
+                    $tLibMail = dahira_type_libelle($typeEv);
                     $date = $row['date_dahira'];
                     $programme = (string) ($row['programme'] ?? '');
                     $destinataires = dahira_destinataires($pdo, $commissionId);
@@ -293,11 +319,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = "Aucun membre à prévenir (aucun membre validé rattaché à la commission).";
                     } else {
                         if ($estAnnulation) {
-                            $sujet = '‼️ Annulation Dahira — ' . dahira_date_longue($date);
-                            $corps = dahira_email_annulation($date, $signatureMail);
+                            $sujet = '‼️ Annulation ' . $tLibMail . ' — ' . dahira_date_longue($date);
+                            $corps = dahira_email_annulation($date, $signatureMail, $typeEv);
                         } else {
-                            $sujet = '📅 Dahira — ' . dahira_date_longue($date);
-                            $corps = dahira_email_annonce($date, $lieu, $debut, $fin, $programme, $signatureMail);
+                            $sujet = '📅 ' . $tLibMail . ' — ' . dahira_date_longue($date);
+                            $corps = dahira_email_annonce($date, $lieu, $debut, $fin, $programme, $signatureMail, $typeEv);
                         }
                         $sent = 0;
                         foreach ($destinataires as $m) {
@@ -327,6 +353,7 @@ $fin = dahira_param($pdo, 'dahira_fin', '20h30');
 $groupeWa = dahira_param($pdo, 'wa_group_link', '');
 $programmeDefaut = dahira_param($pdo, 'dahira_programme_defaut', '');
 $signature = dahira_param($pdo, 'dahira_signature', DAHIRA_SIGNATURE_DEFAUT);
+$typeDefaut = dahira_type_defaut($pdo);
 
 $plannings = [];
 try {
@@ -578,14 +605,14 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                         $lienDahira = dahira_base_url() . '/dahira_detail.php?id=' . (int)$prochain['id'];
                         $prochainActif = ((int)($prochain['a_dahira'] ?? 1)) === 1;
                         $waMsg = $prochainActif
-                            ? dahira_message_annonce($pdate, $lieu, $debutEff, $finEff, (string)($prochain['programme'] ?? ''), $lienDahira, $signature)
-                            : dahira_message_annulation($pdate, $signature);
-                        $waAnnul = dahira_message_annulation($pdate, $signature);
+                            ? dahira_message_annonce($pdate, $lieu, $debutEff, $finEff, (string)($prochain['programme'] ?? ''), $lienDahira, $signature, (string)($prochain['type_evenement'] ?? 'dahira'))
+                            : dahira_message_annulation($pdate, $signature, (string)($prochain['type_evenement'] ?? 'dahira'));
+                        $waAnnul = dahira_message_annulation($pdate, $signature, (string)($prochain['type_evenement'] ?? 'dahira'));
                         $waLink = dahira_wa_link(null, $waMsg);
                     ?>
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1.5rem; flex-wrap:wrap;">
                             <div>
-                                <h3 style="color:var(--white); font-size:1.1rem; margin-bottom:0.4rem;">📣 Prochain Dahira
+                                <h3 style="color:var(--white); font-size:1.1rem; margin-bottom:0.4rem;">📣 Prochain<?php echo dahira_type_feminin($prochain['type_evenement'] ?? 'dahira') ? 'e' : ''; ?> <?php echo htmlspecialchars(dahira_type_libelle($prochain['type_evenement'] ?? 'dahira')); ?>
                                     <?php if (!$prochainActif): ?>
                                         <span class="pl-badge pl-badge-annul" style="font-size:0.75rem; padding:0.25rem 0.6rem; vertical-align:middle; background:rgba(191,33,33,0.15); color:#fca5a5; border:1px solid rgba(191,33,33,0.4);">‼️ Annulé</span>
                                     <?php endif; ?>
@@ -650,11 +677,15 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                             </div>
                         </div>
                         <!-- Zone de saisie du programme du prochain Dahira -->
-                        <form action="admin_planning.php" method="POST" style="margin-top:1.1rem; padding-top:1rem; border-top:1px solid rgba(255,255,255,0.07);" onsubmit="document.getElementById('dh-prog-input').value = document.getElementById('dh-prog-editor').innerHTML;">
+                        <form action="admin_planning.php" method="POST" enctype="multipart/form-data" style="margin-top:1.1rem; padding-top:1rem; border-top:1px solid rgba(255,255,255,0.07);" onsubmit="document.getElementById('dh-prog-input').value = document.getElementById('dh-prog-editor').innerHTML;">
                             <?php echo csrf_field(); ?>
                             <input type="hidden" name="action" value="save_programme">
                             <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
                             <input type="hidden" name="programme" id="dh-prog-input">
+                            <div class="form-group" style="margin-bottom:0.8rem;">
+                                <label class="form-label">🏷️ Type d'événement</label>
+                                <select name="type_evenement" class="form-input" style="width:100%;"><?php echo dahira_type_options_html(dahira_type_valide($prochain['type_evenement'] ?? 'dahira')); ?></select>
+                            </div>
                             <div class="form-group" style="margin-bottom:0.8rem;">
                                 <label class="form-label">📌 Titre (facultatif)</label>
                                 <input type="text" name="titre" class="form-input" value="<?php echo htmlspecialchars((string)($prochain['titre'] ?? '')); ?>" placeholder="Ex : Magal, Gamou, Dahira spécial…" maxlength="200" style="width:100%;">
@@ -662,6 +693,16 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                             <div class="form-group" style="margin-bottom:0.8rem;">
                                 <label class="form-label">📝 Description (facultatif)</label>
                                 <textarea name="description" class="form-input" rows="3" placeholder="Quelques mots de présentation…" style="width:100%;"><?php echo htmlspecialchars((string)($prochain['description'] ?? '')); ?></textarea>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0.8rem;">
+                                <label class="form-label">🖼️ Image (facultatif) — affichée dans la page du Dahira</label>
+                                <?php if (!empty($prochain['image_path'])): ?>
+                                    <div style="margin-bottom:0.5rem;">
+                                        <img src="uploads/<?php echo htmlspecialchars((string)$prochain['image_path']); ?>" alt="" style="max-height:130px; max-width:100%; border-radius:12px; border:1px solid rgba(255,255,255,0.15);">
+                                        <label style="display:flex; align-items:center; gap:0.5rem; margin-top:0.4rem; cursor:pointer; font-size:0.85rem; color:var(--white);"><input type="checkbox" name="retirer_image" value="1"> Retirer cette image</label>
+                                    </div>
+                                <?php endif; ?>
+                                <input type="file" name="image" accept="image/png, image/jpeg, image/webp, image/gif" class="form-input" style="width:100%;">
                             </div>
                             <div style="display:flex; gap:0.8rem; flex-wrap:wrap; margin-bottom:0.8rem;">
                                 <div class="form-group" style="flex:1 1 150px; margin:0;">
@@ -730,6 +771,11 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                         <?php echo csrf_field(); ?>
                         <input type="hidden" name="action" value="save_params">
                         <div class="pl-params">
+                            <div class="form-group" style="grid-column:1 / -1;">
+                                <label class="form-label">🏷️ Type d'événement par défaut</label>
+                                <select name="type_defaut" class="form-input"><?php echo dahira_type_options_html($typeDefaut); ?></select>
+                                <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Dahira, AG, Gamou, Magal, Ngan ou Déplacement. Ce type est proposé à la création d'un événement et repris dans les messages et notifications.</p>
+                            </div>
                             <div class="form-group" style="grid-column:1 / -1;"><label class="form-label">Lieu du Dahira</label><textarea name="lieu" class="form-input" rows="3" placeholder="1 rue du 35 régiment d'aviation,&#10;69500 Bron"><?php echo htmlspecialchars($lieu); ?></textarea><p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Vous pouvez saisir le lieu sur plusieurs lignes.</p></div>
                             <div class="form-group"><label class="form-label">Heure de début</label><input type="text" name="debut" class="form-input" value="<?php echo htmlspecialchars($debut); ?>" placeholder="17h00"></div>
                             <div class="form-group"><label class="form-label">Heure de fin</label><input type="text" name="fin" class="form-input" value="<?php echo htmlspecialchars($fin); ?>" placeholder="20h30"></div>
@@ -752,12 +798,14 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                 <!-- Ajouter un Dahira d'exception (date libre) — juste après les paramètres -->
                 <details class="glass-card" style="margin-bottom:1.5rem;">
                     <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✨ Ajouter un Dahira d'exception <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
-                    <form action="admin_planning.php" method="POST" style="margin-top:1rem;">
+                    <form action="admin_planning.php" method="POST" enctype="multipart/form-data" style="margin-top:1rem;">
                         <?php echo csrf_field(); ?>
                         <input type="hidden" name="action" value="add_exception">
                         <p style="color:var(--text-muted); font-size:0.85rem; margin:0 0 0.8rem;">Planifiez un Dahira à une date précise (hors dimanches habituels) : Magal, Gamou, événement exceptionnel…</p>
                         <div class="pl-params">
+                            <div class="form-group"><label class="form-label">🏷️ Type d'événement</label><select name="type_evenement" class="form-input"><?php echo dahira_type_options_html($typeDefaut); ?></select></div>
                             <div class="form-group"><label class="form-label">🗓️ Date du Dahira</label><input type="date" name="date_exception" class="form-input" value="<?php echo date('Y-m-d'); ?>" required></div>
+                            <div class="form-group"><label class="form-label">🖼️ Image (facultatif)</label><input type="file" name="image" accept="image/png, image/jpeg, image/webp, image/gif" class="form-input"></div>
                         </div>
                         <div style="margin-top:0.9rem;"><button type="submit" class="btn btn-primary btn-sm">➕ Ajouter ce Dahira</button></div>
                     </form>
@@ -808,7 +856,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                             <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
                                 <span>
                                 <?php if ($aDahira): ?>
-                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">🕌 Dahira</span>
+                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;"><?php echo dahira_type_emoji($p['type_evenement'] ?? 'dahira') . ' ' . htmlspecialchars(dahira_type_libelle($p['type_evenement'] ?? 'dahira')); ?></span>
                                 <?php else: ?>
                                     <span class="pl-badge pl-badge-annul" style="font-size:0.75rem; padding:0.25rem 0.6rem;">‼️ Annulé</span>
                                 <?php endif; ?>
@@ -882,7 +930,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                             <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
                                 <span>
                                 <?php if ($aDahira): ?>
-                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">🕌 Dahira</span>
+                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;"><?php echo dahira_type_emoji($p['type_evenement'] ?? 'dahira') . ' ' . htmlspecialchars(dahira_type_libelle($p['type_evenement'] ?? 'dahira')); ?></span>
                                 <?php else: ?>
                                     <span class="pl-badge pl-badge-annul" style="font-size:0.75rem; padding:0.25rem 0.6rem;">‼️ Annulé</span>
                                 <?php endif; ?>
@@ -1021,5 +1069,6 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
             });
         })();
     </script>
+<script src="modern-file.js" defer></script>
 </body>
 </html>

@@ -116,7 +116,6 @@ function send_inscription_email($toEmail, $toName) {
         . '<p style="margin:0 0 14px;">Nous avons bien reçu votre demande d\'inscription au <strong>Dahira MUBAWWA-A-ASIDQIN, Touba Lyon</strong>. '
         . 'Votre demande est <strong>en attente de validation</strong> par un administrateur. '
         . 'Vous recevrez un e-mail dès qu\'elle sera validée.</p>'
-        . dahira_email_notice('💳 Pensez à prévoir <strong>10 €</strong> pour votre carte de membre.', '#d4af37', '#fdf9ec')
         . '<p style="margin:22px 0 10px;font-weight:bold;color:#1b4332;">Pour rappel, voici la charte que vous avez acceptée :</p>'
         . dahira_charte_html_block()
         . '<p style="margin-top:18px;">Jërëjëf !</p>';

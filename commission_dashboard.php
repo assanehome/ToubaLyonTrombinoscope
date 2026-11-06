@@ -957,7 +957,7 @@ $membersJs = array_map(function ($m) {
                 <?php if ($__isAdmin): ?>
                     <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
                 <?php else: ?>
-                    <a href="trombinoscope.php" class="btn btn-secondary btn-sm">← Trombinoscope</a>
+                    <span style="display:flex; gap:0.5rem; flex-wrap:wrap;"><a href="sondage_gestion.php" class="btn btn-primary btn-sm">📊 Sondages</a><a href="trombinoscope.php" class="btn btn-secondary btn-sm">← Trombinoscope</a></span>
                 <?php endif; ?>
             </div>
 

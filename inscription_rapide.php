@@ -7,10 +7,14 @@
  * La photo de profil est présentée en haut du formulaire.
  */
 require_once __DIR__ . '/db_setup.php';
+require_once __DIR__ . '/inscription_suivi_helper.php'; // encart de connexion après inscription
+require_once __DIR__ . '/email_unique_helper.php'; // une adresse = un seul compte
+require_once __DIR__ . '/rgpd_helper.php'; // consentement RGPD
 require_once __DIR__ . '/admin_redirect.php';
 
 $error = '';
 $success = '';
+$emailInscrit = '';
 
 $civilite = 'Goor Yalla';
 $nom = '';
@@ -34,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $telephone = trim($_POST['telephone'] ?? '');
     $statut = trim($_POST['statut'] ?? '');
     $annee_integration = trim($_POST['annee_integration'] ?? '');
+    $rgpd = !empty($_POST['rgpd_accepte']);
     $photo = $_FILES['photo'] ?? null;
 
     if (empty($nom) || empty($prenom) || empty($email) || empty($password)) {
@@ -50,8 +55,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Veuillez préciser votre statut.";
     } elseif ($annee_integration === '' || !preg_match('/^[0-9]{4}$/', $annee_integration)) {
         $error = "Veuillez saisir une année d'intégration valide (ex: 2022).";
+    } elseif (!$rgpd) {
+        $error = "Vous devez accepter le traitement de vos données personnelles et de votre photo (RGPD).";
     } elseif (!$photo || $photo['error'] === UPLOAD_ERR_NO_FILE) {
         $error = "La photo de profil est obligatoire.";
+    } elseif (!email_est_verifie($email)) {
+        $error = "Validez d'abord votre adresse e-mail avec le code reçu, avant de confirmer l'inscription.";
     } else {
         try {
             // L'email est-il déjà utilisé ?
@@ -59,7 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$email]);
             $existing = $stmt->fetch();
 
-            if ($existing) {
+            if (!$existing && email_autre_compte($pdo, $email) !== null) {
+                $error = email_autre_compte_message();
+            } elseif ($existing) {
                 if ($existing['status'] === 'approved') {
                     $error = "Cette adresse email est déjà inscrite dans le Dahira - Mubawwa-A-Sidqin.";
                 } elseif ($existing['status'] === 'pending') {
@@ -109,10 +120,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($photoOk && $error === '') {
                     $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
                     $genre = ($civilite === 'Sokhna') ? 'Femme' : 'Homme';
-                    $stmt = $pdo->prepare("INSERT INTO membres (nom, prenom, civilite, genre, email, photo_path, password, status, type_adhesion, charte_acceptee, telephone, statut, annee_integration) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'Membre actif', 1, ?, ?, ?)");
-                    $stmt->execute([$nom, $prenom, $civilite, $genre, $email, $newFilename, $hashedPassword, ($telephone ?: null), ($statut ?: null), ($annee_integration ?: null)]);
+                    $stmt = $pdo->prepare("INSERT INTO membres (nom, prenom, civilite, genre, email, photo_path, password, status, type_adhesion, charte_acceptee, telephone, statut, annee_integration, rgpd_accepte, rgpd_date, rgpd_version) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'Membre actif', 1, ?, ?, ?, 1, NOW(), ?)");
+                    $stmt->execute([$nom, $prenom, $civilite, $genre, $email, $newFilename, $hashedPassword, ($telephone ?: null), ($statut ?: null), ($annee_integration ?: null), RGPD_VERSION]);
 
                     $success = "Votre inscription a été soumise avec succès ! Un administrateur va la valider prochainement.";
+                    $emailInscrit = $email; email_verifie_effacer();
                     $nom = $prenom = $email = $telephone = $statut = $annee_integration = '';
                 }
             }
@@ -141,7 +153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <h1 class="form-title">Inscription rapide</h1>
             <p style="text-align:center; color:var(--text-muted); margin-top:-0.5rem; margin-bottom:1.5rem;">Renseignez l'essentiel — vous pourrez compléter votre profil plus tard.</p>
 
-            <form action="inscription_rapide.php" method="POST" enctype="multipart/form-data">
+            <?php if (!empty($success)) { echo inscription_login_card_html($emailInscrit, $success); } ?>
+            <form action="inscription_rapide.php" method="POST" enctype="multipart/form-data"<?php echo !empty($success) ? ' style="display:none"' : ''; ?>>
                 <div class="form-group">
                     <label class="form-label">Photo de profil <span style="color:var(--danger)">*</span></label>
                     <div class="file-upload-wrapper">
@@ -215,13 +228,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </select>
                 </div>
 
+                <?php echo rgpd_consent_html(); ?>
+
                 <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Envoyer mon inscription</button>
             </form>
         </div>
     </main>
 
     <!-- Modern Notification Modal -->
-    <?php if (!empty($success) || !empty($error)): ?>
+    <?php if (!empty($error) && empty($success)): ?>
     <script>
         (function () {
             var msg = <?php echo json_encode(!empty($success) ? $success : $error, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
@@ -315,5 +330,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         })();
     </script>
+<script src="modern-file.js" defer></script>
+<script>window.TROBA_EMAIL_ERREUR = <?php echo json_encode((!empty($error) && empty($success) && stripos((string) $error, 'adresse email') !== false) ? $error : '', JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;</script>
+<script src="email-check.js" defer></script>
+<script src="email-verify.js" defer></script>
 </body>
 </html>

@@ -3,6 +3,7 @@
  * Touba Lyon 2026 - Member Profile Page
  */
 require_once __DIR__ . '/db_setup.php';
+require_once __DIR__ . '/email_unique_helper.php'; // une adresse = un seul compte
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/send_mail.php';
 require_once __DIR__ . '/contact.php';
@@ -169,8 +170,8 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
             $stmt->execute([$email, $playerId]);
             $existing = $stmt->fetch();
 
-            if ($existing) {
-                $error = "Cette adresse email est déjà utilisée par un autre membre.";
+            if ($existing || email_autre_compte($pdo, $email) !== null) {
+                $error = "Cette adresse email est déjà utilisée par un autre compte. Chaque adresse ne peut servir qu'à un seul compte.";
             } else {
                 $newFilename = null;
                 $photoUploaded = false;
@@ -822,5 +823,6 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
     <script src="modern-select.js"></script>
     <?php endif; ?>
     <?php include __DIR__ . '/modern_popup.php'; ?>
+<script src="modern-file.js" defer></script>
 </body>
 </html>

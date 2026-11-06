@@ -101,7 +101,7 @@ if ($membreId > 0) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🕌 Détail Dahira — Touba Lyon</title>
+    <title><?php echo dahira_type_emoji($dahira['type_evenement'] ?? 'dahira') . ' Détail ' . htmlspecialchars(dahira_type_libelle($dahira['type_evenement'] ?? 'dahira')); ?> — Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
     <style>
         .dh-wrap { max-width: 860px; margin: 0 auto; }
@@ -162,7 +162,7 @@ if ($membreId > 0) {
 
             <div class="admin-content">
                 <?php if ($__dhAdmin): ?><a href="admin_planning.php" class="dh-back btn btn-secondary btn-sm">← Retour</a><?php endif; ?>
-                <h1 class="admin-page-title">🕌 Détail Dahira</h1>
+                <h1 class="admin-page-title"><?php echo dahira_type_emoji($dahira['type_evenement'] ?? 'dahira') . ' Détail ' . htmlspecialchars(dahira_type_libelle($dahira['type_evenement'] ?? 'dahira')); ?></h1>
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
                 <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
@@ -173,12 +173,18 @@ if ($membreId > 0) {
                         <?php if (trim((string)($dahira['titre'] ?? '')) !== ''): ?>
                             <div style="font-size:1.15rem; font-weight:800; color:var(--white); margin-bottom:0.3rem;">📌 <?php echo htmlspecialchars((string)$dahira['titre']); ?></div>
                         <?php endif; ?>
+                        <div style="margin-bottom:0.4rem;"><span style="display:inline-block; font-size:0.78rem; font-weight:700; padding:0.2rem 0.65rem; border-radius:999px; background:rgba(212,175,55,0.15); border:1px solid rgba(212,175,55,0.45); color:var(--gold);"><?php echo dahira_type_emoji($dahira['type_evenement'] ?? 'dahira') . ' ' . htmlspecialchars(dahira_type_libelle($dahira['type_evenement'] ?? 'dahira')); ?></span></div>
                         <div class="dh-date">
                             <?php echo ucfirst(dahira_jour_fr($date)) . ' ' . date('d/m/Y', strtotime($date)); ?>
                             <small>🕐 de <?php echo htmlspecialchars($debut); ?> à <?php echo htmlspecialchars($fin); ?></small>
                         </div>
                         <?php if (trim((string)($dahira['description'] ?? '')) !== ''): ?>
                             <div style="color:var(--white); font-size:0.9rem; line-height:1.55; margin-top:0.6rem; white-space:pre-line;"><?php echo nl2br(htmlspecialchars((string)$dahira['description'])); ?></div>
+                        <?php endif; ?>
+                        <?php if (!empty($dahira['image_path'])): ?>
+                            <a href="uploads/<?php echo htmlspecialchars((string)$dahira['image_path']); ?>" target="_blank" rel="noopener" style="display:block; margin-top:0.9rem;">
+                                <img src="uploads/<?php echo htmlspecialchars((string)$dahira['image_path']); ?>" alt="Image du Dahira" style="display:block; width:100%; max-height:420px; object-fit:contain; border-radius:14px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.25);">
+                            </a>
                         <?php endif; ?>
                         <div class="dh-badges">
                             <?php $etat = dahira_event_etat($date, $debut, $fin); ?>

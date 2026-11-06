@@ -1095,7 +1095,7 @@ if ($commissionId > 0) {
                                         <?php echo csrf_field(); ?>
                                         <input type="hidden" name="action" value="save_audio">
                                         <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
-                                        <input type="file" name="audio_guddi" accept="audio/*,.mp3,.m4a,.ogg,.opus,.wav" style="font-size:0.68rem; color:var(--text-muted); max-width:100%;">
+                                        <input type="file" data-mfile="off" name="audio_guddi" accept="audio/*,.mp3,.m4a,.ogg,.opus,.wav" style="font-size:0.68rem; color:var(--text-muted); max-width:100%;">
                                         <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.68rem; padding:0.15rem 0.5rem;">🎧 Joindre</button>
                                     </form>
                                 <?php endif; ?>
@@ -1292,5 +1292,6 @@ if ($commissionId > 0) {
             modal.addEventListener('click', function (e) { if (e.target === modal) { closeModal(modal); } });
         })();
     </script>
+<script src="modern-file.js" defer></script>
 </body>
 </html>

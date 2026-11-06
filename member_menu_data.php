@@ -20,6 +20,7 @@ function troba_member_menu_items(?PDO $pdo = null): array
         'profile.php'            => '👤 Mon profil',
         'cotisation.php'         => '💶 Ma cotisation',
         'mes_commissions.php'    => '📋 Mes commissions',
+        'sondages.php'           => '📊 Sondages',
         'notifications_page.php' => '🔔 Notifications',
         'kikanla.php'            => '🎮 Jouer à Ki Kan La',
     ];
@@ -64,6 +65,7 @@ function troba_member_gestion_items(?PDO $pdo = null): array
     }
     if ($isCom) {
         $items['commission_dashboard.php'] = '🛠️ Gérer mes commissions';
+        $items['sondage_gestion.php'] = '📊 Gérer les sondages';
         if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
             $pid = (int) $_SESSION['player_id'];
             $stockOn = false;

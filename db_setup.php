@@ -205,6 +205,11 @@ try {
         );
     }
 
+    // Consentement RGPD (traitement des données et de la photo) : preuve horodatée
+    try { $pdo->query("SELECT rgpd_accepte FROM membres LIMIT 1"); } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE membres ADD COLUMN rgpd_accepte TINYINT(1) NOT NULL DEFAULT 0, ADD COLUMN rgpd_date DATETIME NULL DEFAULT NULL, ADD COLUMN rgpd_version VARCHAR(20) NULL DEFAULT NULL");
+    }
+
     // Migration: rôle intégrateur porté par un membre (remplace les comptes intégrateurs séparés)
     try {
         $pdo->query("SELECT is_integrateur FROM membres LIMIT 1");
@@ -569,6 +574,10 @@ try {
     try { $pdo->query("SELECT heure_fin FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN heure_fin VARCHAR(20) NULL DEFAULT NULL"); }
     // Migration : titre du Dahira (facultatif — ex. « Magal de… », « Gamou »)
     try { $pdo->query("SELECT titre FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN titre VARCHAR(200) NULL DEFAULT NULL"); }
+    // Migration : image jointe à un Dahira (affichée dans la page détail)
+    try { $pdo->query("SELECT image_path FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN image_path VARCHAR(255) NULL DEFAULT NULL"); }
+    // Migration : type d'événement (dahira, ag, gamou, magal, ngan, deplacement) — les lignes existantes restent des Dahira
+    try { $pdo->query("SELECT type_evenement FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN type_evenement VARCHAR(20) NOT NULL DEFAULT 'dahira'"); }
     // Migration : description du Dahira (facultatif)
     try { $pdo->query("SELECT description FROM dahira_plannings LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE dahira_plannings ADD COLUMN description TEXT NULL DEFAULT NULL"); }
     // Migration : option « Dahira » d'un dimanche planifié. Par défaut un dimanche planifié n'est
@@ -734,6 +743,50 @@ try {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (option_id, membre_id),
         INDEX idx_membre (membre_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Envois de codes de validation d'adresse e-mail (limitation des abus)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS email_verif_envois (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(190) NOT NULL,
+        ip VARCHAR(45) NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_email (email, created_at),
+        INDEX idx_ip (ip, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Sondages des commissions : créés par les responsables, ouverts à tous les membres.
+    // resultats_visibilite : 'tous' (tous les membres) ou 'bureau' (responsables de commission).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS sondages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        commission_id INT NOT NULL,
+        auteur_id INT NOT NULL DEFAULT 0,
+        question VARCHAR(255) NOT NULL,
+        description TEXT NULL DEFAULT NULL,
+        choix_multiple TINYINT(1) NOT NULL DEFAULT 0,
+        anonyme TINYINT(1) NOT NULL DEFAULT 0,
+        resultats_visibilite VARCHAR(10) NOT NULL DEFAULT 'tous',
+        statut VARCHAR(10) NOT NULL DEFAULT 'brouillon',
+        date_fin DATE NULL DEFAULT NULL,
+        published_at DATETIME NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_statut (statut),
+        INDEX idx_commission (commission_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS sondage_options (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        sondage_id INT NOT NULL,
+        libelle VARCHAR(200) NOT NULL,
+        position INT NOT NULL DEFAULT 0,
+        INDEX idx_sondage (sondage_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS sondage_votes (
+        sondage_id INT NOT NULL,
+        option_id INT NOT NULL,
+        membre_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (option_id, membre_id),
+        INDEX idx_sondage_membre (sondage_id, membre_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     // Répétitions de Kurel (créées par les responsables de Kurel, ponctuelles ou périodiques)
