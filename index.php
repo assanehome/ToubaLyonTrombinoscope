@@ -39,6 +39,28 @@ if (isset($_SESSION['player_id'])) {
     }
 }
 
+// Confirmation, par le demandeur, de l'exécution d'une demande de logistique : elle disparaît ensuite de son accueil
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'logi_confirmer') {
+    if (csrf_validate() && isset($_SESSION['player_id'])) {
+        try {
+            $lid = (int) ($_POST['demande_id'] ?? 0);
+            $upL = $pdo->prepare("UPDATE logistique_demandes SET confirme_le = NOW() WHERE id = ? AND demandeur_id = ? AND statut IN ('executee','terminee') AND confirme_le IS NULL");
+            $upL->execute([$lid, (int) $_SESSION['player_id']]);
+            if ($upL->rowCount() > 0) {
+                $qL = $pdo->prepare("SELECT traite_par, description FROM logistique_demandes WHERE id = ?");
+                $qL->execute([$lid]);
+                $rL = $qL->fetch();
+                if ($rL && (int) ($rL['traite_par'] ?? 0) > 0 && (int) $rL['traite_par'] !== (int) $_SESSION['player_id']) {
+                    require_once __DIR__ . '/notification_helper.php';
+                    troba_notify_membre($pdo, (int) $rL['traite_par'], 'commission', '👍 Exécution confirmée', 'Le demandeur a confirmé l\'exécution : ' . mb_substr((string) $rL['description'], 0, 80), 'logistique_demandes.php');
+                }
+            }
+        } catch (Exception $e) { /* best-effort */ }
+    }
+    header('Location: index.php');
+    exit;
+}
+
 // Changement de statut d'une tâche depuis l'accueil (par l'assigné, indépendamment
 // de la publication de la réunion). Journalise un commentaire et notifie le créateur.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'maj_tache_statut') {
@@ -171,6 +193,30 @@ try {
     $prochainGuddi = null;
 }
 
+// Demandes de logistique : à traiter (responsables de la commission Logistique) et suivi (demandeur)
+$logiATraiter = []; $logiNbATraiter = 0; $logiMesDemandes = [];
+if (isset($_SESSION['player_id'])) {
+    try {
+        require_once __DIR__ . '/stock_logistique_helper.php';
+        $logiPid = (int) $_SESSION['player_id'];
+        if (logistique_est_responsable($pdo, $logiPid)) {
+            $logiNbATraiter = (int) $pdo->query("SELECT COUNT(*) FROM logistique_demandes WHERE statut IN ('nouvelle','prise_en_compte')")->fetchColumn();
+            $logiATraiter = $pdo->query("SELECT d.*, c.nom AS commission_nom, TRIM(CONCAT(m.prenom, ' ', m.nom)) AS dem_nom
+                                         FROM logistique_demandes d JOIN commissions c ON c.id = d.commission_id LEFT JOIN membres m ON m.id = d.demandeur_id
+                                         WHERE d.statut IN ('nouvelle','prise_en_compte')
+                                         ORDER BY FIELD(d.statut,'nouvelle','prise_en_compte'), d.id DESC LIMIT 6")->fetchAll();
+        }
+        // Mes demandes : en cours, exécutées à confirmer (elles disparaissent après confirmation) et refusées depuis moins de 7 jours
+        $stL = $pdo->prepare("SELECT d.*, c.nom AS commission_nom FROM logistique_demandes d JOIN commissions c ON c.id = d.commission_id
+                              WHERE d.demandeur_id = ? AND (d.statut IN ('nouvelle','prise_en_compte') OR (d.statut IN ('executee','terminee') AND d.confirme_le IS NULL) OR (d.statut = 'refusee' AND d.updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)))
+                              ORDER BY FIELD(d.statut,'nouvelle','prise_en_compte'), d.id DESC LIMIT 6");
+        $stL->execute([$logiPid]);
+        $logiMesDemandes = $stL->fetchAll();
+    } catch (Exception $e) {
+        $logiATraiter = []; $logiMesDemandes = []; $logiNbATraiter = 0;
+    }
+}
+
 // Sondages en cours (publiés, non clôturés) — affichés sur l'accueil membre
 $sondagesEnCours = [];
 if (isset($_SESSION['player_id'])) {
@@ -301,12 +347,7 @@ if (isset($_SESSION['player_id'])) {
     }
 }
 
-// Points de gestion (rôles / responsabilités) pour le « Mode gestion » de l'accueil
-require_once __DIR__ . '/member_menu_data.php';
-$gestionItems = [];
-if (isset($_SESSION['player_id'])) {
-    try { $gestionItems = troba_member_gestion_items($pdo); } catch (Throwable $e) { $gestionItems = []; }
-}
+require_once __DIR__ . '/member_menu_data.php'; // menu membre (points de gestion selon les droits)
 
 // Notifications « début » des réunions / répétitions (cloche + Web Push, sans e-mail)
 try {
@@ -577,25 +618,6 @@ try {
             </details>
         <?php endif; ?>
 
-        <?php // Mode gestion : pour un membre ayant des rôles / responsabilités (hors administrateur complet) ?>
-        <?php if (empty($me['is_admin']) && !empty($gestionItems)): ?>
-            <details class="glass-card adm-switch" style="margin-top: 2rem; padding: 0.75rem 1.15rem; border-color: rgba(212, 175, 55, 0.45);">
-                <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:var(--gold); font-weight:700; font-size:0.9rem;">
-                    🛠️ Mode gestion
-                    <span class="adm-switch-chevron" style="margin-left:auto; color:var(--text-muted); transition:transform 0.2s;">▸</span>
-                </summary>
-                <div style="margin-top: 0.8rem;">
-                    <div style="font-size: 0.86rem; color: #fff; line-height: 1.5; margin-bottom: 0.75rem;">
-                        🛠️ Vous avez des responsabilités au sein du Dahira : gérez vos commissions depuis votre espace membre (aussi dans « Mes commissions »), sans passer en mode administration.
-                    </div>
-                    <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
-                        <?php foreach ($gestionItems as $gHref => $gLabel): ?>
-                            <a href="<?php echo htmlspecialchars($gHref); ?>" class="btn btn-sm" style="background: rgba(212, 175, 55, 0.16); border: 1px solid rgba(212, 175, 55, 0.5); color: var(--gold);"><?php echo htmlspecialchars($gLabel); ?></a>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            </details>
-        <?php endif; ?>
 
         <!-- User Welcome Banner -->
         <?php if (isset($_SESSION['player_id'])): ?>
@@ -858,7 +880,8 @@ try {
                 <?php if (!empty($prochainDahira)): ?>
                 <?php
                     $dDate = $prochainDahira['date_dahira'];
-                    $dPassed = dahira_presence_ouverte($dDate, $dahiraHeure);
+                    $dPassed = dahira_presence_etat($dDate, $dahiraHeure, $dahiraFin !== '' ? $dahiraFin : null) === 'ouverte';
+                    $dDebutAtteint = dahira_presence_ouverte($dDate, $dahiraHeure);
                     $dEtat = dahira_event_etat($dDate, $dahiraHeure, $dahiraFin !== '' ? $dahiraFin : null);
                 ?>
                 <div class="renc-card<?php echo $dEtat === 'encours' ? ' renc-card-live' : ''; ?>" style="order:<?php echo (int) $dOrd; ?>;">
@@ -869,13 +892,13 @@ try {
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.35rem; white-space:pre-line;">🕐 <?php echo htmlspecialchars($dahiraHeure); ?> à <?php echo htmlspecialchars($dahiraFin); ?><br>📍 <?php echo htmlspecialchars($dahiraLieu); ?></div>
                     <div style="margin-top:0.6rem;"><a href="dahira_detail.php?id=<?php echo (int)$prochainDahira['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent); width:100%; text-align:center;">👁️ Voir le détail</a></div>
                     <?php if (isset($_SESSION['player_id'])): ?>
-                        <?php if ($dPassed && $dahiraPresenceFaite): ?>
+                        <?php if ($dDebutAtteint && $dahiraPresenceFaite): ?>
                             <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Diadieuf</div>
                             <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">↩️ Annuler ma présence</button>
                         <?php elseif ($dPassed): ?>
                             <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('dahira', <?php echo (int)$prochainDahira['id']; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
-                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Validation possible à partir de <?php echo htmlspecialchars($dahiraHeure); ?> le <?php echo date('d/m/Y', strtotime($dDate)); ?>.</div>
+                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;"><?php echo htmlspecialchars(dahira_presence_message($dDate, $dahiraHeure, $dahiraFin !== '' ? $dahiraFin : null)); ?></div>
                         <?php endif; ?>
                     <?php else: ?>
                         <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
@@ -893,7 +916,8 @@ try {
                     $gHeureFin = trim((string)($prochainGuddi['heure_fin'] ?? '')) !== '' ? trim((string)$prochainGuddi['heure_fin']) : dahira_param($pdo, 'guddi_heure_fin', '');
                     $gActif = ((int)($prochainGuddi['actif'] ?? 1)) === 1;
                     $gEtat = dahira_event_etat($gDate, $gHeure, $gHeureFin !== '' ? $gHeureFin : null);
-                    $gPassed = dahira_presence_ouverte($gDate, $gHeure);
+                    $gPassed = dahira_presence_etat($gDate, $gHeure, $gHeureFin !== '' ? $gHeureFin : null) === 'ouverte';
+                    $gDebutAtteint = dahira_presence_ouverte($gDate, $gHeure);
                 ?>
                 <div class="renc-card<?php echo !$gActif ? ' renc-card-annule' : ($gEtat === 'encours' ? ' renc-card-live' : ''); ?>" style="order:<?php echo (int) $gOrd; ?>;">
                     <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
@@ -910,13 +934,13 @@ try {
                     <?php if (!$gActif): ?>
                         <div style="margin-top:0.8rem; color:#fca5a5; font-weight:700;">‼️ Ce Guddi Àjjuma est annulé.</div>
                     <?php elseif (isset($_SESSION['player_id'])): ?>
-                        <?php if ($gPassed && $guddiPresenceFaite): ?>
+                        <?php if ($gDebutAtteint && $guddiPresenceFaite): ?>
                             <div style="margin-top:0.8rem; color:#7bd8a6; font-weight:700;">✅ Présence confirmée — Diadieuf</div>
                             <button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.6rem; width:100%; text-align:center;" onclick="annulerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">↩️ Annuler ma présence</button>
                         <?php elseif ($gPassed): ?>
                             <button type="button" class="btn btn-primary btn-sm" style="margin-top:0.8rem; width:100%;" onclick="validerPresence('guddi', <?php echo (int)$prochainGuddi['id']; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
-                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔔 Validation possible à partir de <?php echo htmlspecialchars($gHeure); ?> le <?php echo date('d/m/Y', strtotime($gDate)); ?>.</div>
+                            <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;"><?php echo htmlspecialchars(dahira_presence_message($gDate, $gHeure, $gHeureFin !== '' ? $gHeureFin : null)); ?></div>
                         <?php endif; ?>
                     <?php else: ?>
                         <div style="margin-top:0.8rem; color:var(--text-muted); font-size:0.82rem;">🔐 <a href="login.php" style="color:var(--accent);">Connectez-vous</a> pour valider votre présence.</div>
@@ -924,6 +948,58 @@ try {
                 </div>
                 <?php endif; ?>
 
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <?php
+        // Carte d'une demande de logistique (accueil)
+        $logiCarte = function (array $d, bool $avecDemandeur, bool $confirmable = false) {
+            $types = logistique_types(); $vehs = logistique_vehicules(); $departs = logistique_departs(); $sts = logistique_statuts();
+            $origine = ($d['depart'] ?? '') === 'autre' ? (string) ($d['depart_autre'] ?? '') : (string) ($departs[$d['depart'] ?? ''] ?? ($d['depart'] ?? ''));
+            $desc = (string) ($d['description'] ?? '');
+            $desc = mb_strlen($desc) > 110 ? mb_substr($desc, 0, 110) . '…' : $desc;
+            $e = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES); };
+            $h = '<div class="renc-card">';
+            $h .= '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; flex-wrap:wrap;"><span style="font-weight:800; color:#fff;">' . $e(($types[$d['type']] ?? $d['type']) . ' · ' . ($vehs[$d['vehicule']] ?? $d['vehicule'])) . '</span><span class="badge">' . $e($sts[$d['statut']] ?? $d['statut']) . '</span></div>';
+            $h .= '<div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.35rem; line-height:1.5;">📋 ' . $e($d['commission_nom'] ?? '');
+            if ($avecDemandeur && trim((string) ($d['dem_nom'] ?? '')) !== '') { $h .= ' · 👤 ' . $e($d['dem_nom']); }
+            $h .= '<br>' . $e($desc) . '<br>📍 ' . $e($origine) . ' → ' . $e($d['destination'] ?? '');
+            if (!empty($d['date_besoin'])) { $h .= ' · 🗓️ ' . $e($d['date_besoin']); }
+            if (!empty($d['execute_le'])) { $h .= '<br>✅ Exécutée le ' . $e(date('d/m/Y à H:i', strtotime((string) $d['execute_le']))); }
+            if (trim((string) ($d['reponse'] ?? '')) !== '') { $h .= '<br>💬 ' . $e($d['reponse']); }
+            $h .= '</div>';
+            if ($confirmable) {
+                $h .= '<form method="POST" action="index.php" style="margin:0.7rem 0 0;" data-confirm="Confirmer que cette demande a bien été exécutée ? Elle n\'apparaîtra plus sur votre accueil.">'
+                    . csrf_field() . '<input type="hidden" name="action" value="logi_confirmer"><input type="hidden" name="demande_id" value="' . (int) $d['id'] . '">'
+                    . '<button type="submit" class="btn btn-primary btn-sm" style="width:100%; text-align:center;">✅ Confirmer l\'exécution</button></form>';
+            }
+            $h .= '</div>';
+            return $h;
+        };
+        ?>
+        <!-- Demandes de logistique à traiter (responsables Logistique) -->
+        <?php if (!empty($logiATraiter)): ?>
+        <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.9rem;">
+                <div style="color: #fff; font-weight: 800; font-size: 1.05rem;">🚚 Demandes de logistique à traiter <span class="badge badge-approved"><?php echo (int) $logiNbATraiter; ?></span></div>
+                <a href="logistique_demandes.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Traiter les demandes →</a>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+                <?php foreach ($logiATraiter as $ld) { echo $logiCarte($ld, true); } ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Mes demandes de logistique (demandeur) -->
+        <?php if (!empty($logiMesDemandes)): ?>
+        <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.9rem;">
+                <div style="color: #fff; font-weight: 800; font-size: 1.05rem;">🚚 Mes demandes de logistique</div>
+                <a href="logistique_demande.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Voir / nouvelle demande →</a>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+                <?php foreach ($logiMesDemandes as $ld) { echo $logiCarte($ld, false, in_array($ld['statut'], ['executee', 'terminee'], true)); } ?>
             </div>
         </div>
         <?php endif; ?>

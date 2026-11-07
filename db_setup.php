@@ -781,6 +781,137 @@ try {
         INDEX idx_ip (ip, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+    // Stock : état des articles, sorties d'équipement (événement / prêt) et inventaires
+    try { $pdo->query("SELECT etat FROM commission_stock LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE commission_stock ADD COLUMN etat VARCHAR(20) NOT NULL DEFAULT 'bon'"); }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS stock_sorties (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        commission_id INT NOT NULL,
+        type VARCHAR(10) NOT NULL DEFAULT 'evenement',
+        description TEXT NULL,
+        responsable_id INT NOT NULL DEFAULT 0,
+        emprunteur_type VARCHAR(10) NULL DEFAULT NULL,
+        emprunteur_membre_id INT NULL DEFAULT NULL,
+        emprunteur_nom VARCHAR(150) NULL DEFAULT NULL,
+        emprunteur_email VARCHAR(190) NULL DEFAULT NULL,
+        date_sortie DATE NOT NULL,
+        date_retour_prevue DATE NULL DEFAULT NULL,
+        statut VARCHAR(12) NOT NULL DEFAULT 'en_cours',
+        created_by INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        retour_at DATETIME NULL DEFAULT NULL,
+        INDEX idx_commission (commission_id, statut)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS stock_sortie_lignes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        sortie_id INT NOT NULL,
+        stock_id INT NOT NULL,
+        quantite INT NOT NULL DEFAULT 1,
+        quantite_retournee INT NOT NULL DEFAULT 0,
+        etat_retour VARCHAR(20) NULL DEFAULT NULL,
+        INDEX idx_sortie (sortie_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS stock_inventaires (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        commission_id INT NOT NULL,
+        note TEXT NULL,
+        created_by INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_commission (commission_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS stock_inventaire_lignes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        inventaire_id INT NOT NULL,
+        stock_id INT NOT NULL,
+        nom VARCHAR(150) NOT NULL,
+        qte_theorique INT NOT NULL DEFAULT 0,
+        qte_comptee INT NOT NULL DEFAULT 0,
+        ecart INT NOT NULL DEFAULT 0,
+        etat VARCHAR(20) NOT NULL DEFAULT 'bon',
+        commentaire VARCHAR(255) NULL DEFAULT NULL,
+        INDEX idx_inventaire (inventaire_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Demandes de logistique des responsables de commission, adressées à la commission « Logistique »
+    try { $pdo->prepare("INSERT IGNORE INTO commissions (nom) VALUES ('Logistique')")->execute(); } catch (Exception $e) {}
+    $pdo->exec("CREATE TABLE IF NOT EXISTS logistique_demandes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        commission_id INT NOT NULL,
+        demandeur_id INT NOT NULL,
+        type VARCHAR(10) NOT NULL DEFAULT 'materiel',
+        vehicule VARCHAR(10) NOT NULL DEFAULT 'voiture',
+        description TEXT NOT NULL,
+        depart VARCHAR(20) NOT NULL DEFAULT 'KST',
+        depart_autre VARCHAR(255) NULL DEFAULT NULL,
+        destination VARCHAR(255) NOT NULL,
+        date_besoin VARCHAR(40) NULL DEFAULT NULL,
+        statut VARCHAR(20) NOT NULL DEFAULT 'nouvelle',
+        reponse TEXT NULL,
+        traite_par INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_statut (statut)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Date à laquelle la commission Logistique a validé l'exécution de la demande
+    try { $pdo->query("SELECT execute_le FROM logistique_demandes LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE logistique_demandes ADD COLUMN execute_le DATETIME NULL DEFAULT NULL"); }
+    // Confirmation de l'exécution par le demandeur (la demande disparaît alors de son accueil)
+    try { $pdo->query("SELECT confirme_le FROM logistique_demandes LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE logistique_demandes ADD COLUMN confirme_le DATETIME NULL DEFAULT NULL"); }
+
+    // Responsables des fonctions « Guddi Àjjuma » et « Lecture Coran » : seuls eux (et l'administrateur) y ont accès
+    $pdo->exec("CREATE TABLE IF NOT EXISTS fonction_responsables (
+        fonction VARCHAR(20) NOT NULL,
+        membre_id INT NOT NULL,
+        ajoute_par INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (fonction, membre_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Initialisation unique : les responsables actuels de la commission « Culte » deviennent responsables des deux fonctions
+    foreach (['guddi', 'coran'] as $frFonction) {
+        try {
+            $frInit = $pdo->prepare("SELECT 1 FROM app_settings WHERE cle = ?");
+            $frInit->execute(['fr_init_' . $frFonction]);
+            if ($frInit->fetchColumn() === false) {
+                $frIns = $pdo->prepare("INSERT IGNORE INTO fonction_responsables (fonction, membre_id)
+                                        SELECT ?, cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id
+                                        WHERE LOWER(c.nom) LIKE '%culte%'");
+                $frIns->execute([$frFonction]);
+                $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES (?, '1')")->execute(['fr_init_' . $frFonction]);
+            }
+        } catch (Exception $e) { /* ignoré */ }
+    }
+
+    // Responsables du Wadial Magal : seuls eux (et l'administrateur) ont accès à la fonction
+    $pdo->exec("CREATE TABLE IF NOT EXISTS magal_responsables (
+        membre_id INT NOT NULL PRIMARY KEY,
+        ajoute_par INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // Initialisation unique : les organisateurs actuels (responsables des commissions Secrétariat, Finance/Trésorerie, Magal) deviennent responsables
+    try {
+        $dejaInit = $pdo->query("SELECT 1 FROM app_settings WHERE cle = 'magal_resp_init'")->fetchColumn();
+        if ($dejaInit === false) {
+            $pdo->exec("INSERT IGNORE INTO magal_responsables (membre_id)
+                        SELECT DISTINCT cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id
+                        WHERE LOWER(c.nom) LIKE '%secrétar%' OR LOWER(c.nom) LIKE '%secretar%' OR LOWER(c.nom) LIKE '%finance%'
+                           OR LOWER(c.nom) LIKE '%trésor%' OR LOWER(c.nom) LIKE '%tresor%' OR LOWER(c.nom) LIKE '%magal%'");
+            $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('magal_resp_init', '1')");
+        }
+    } catch (Exception $e) { /* ignoré */ }
+    // Gestion des responsables du Wadial Magal alignée sur « Lecture Coran » : reprise unique des responsables existants dans fonction_responsables
+    try {
+        $frMagal = $pdo->query("SELECT 1 FROM app_settings WHERE cle = 'fr_init_magal'")->fetchColumn();
+        if ($frMagal === false) {
+            $pdo->exec("INSERT IGNORE INTO fonction_responsables (fonction, membre_id) SELECT 'magal', membre_id FROM magal_responsables");
+            $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('fr_init_magal', '1')");
+        }
+    } catch (Exception $e) { /* ignoré */ }
+    // Membres autorisés par les responsables de commission à créer des besoins et des tâches du Wadial Magal pour leur commission
+    $pdo->exec("CREATE TABLE IF NOT EXISTS magal_contributeurs (
+        commission_id INT NOT NULL,
+        membre_id INT NOT NULL,
+        ajoute_par INT NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (commission_id, membre_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
     // Validation de l'e-mail par code après l'inscription : nouveau statut « email_a_verifier » (invisible des administrateurs)
     try {
         $colStatus = $pdo->query("SHOW COLUMNS FROM membres LIKE 'status'")->fetch();
@@ -1039,6 +1170,7 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_annee_com (annee, commission_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    try { $pdo->query("SELECT echeance FROM magal_besoins LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE magal_besoins ADD COLUMN echeance DATE NULL DEFAULT NULL"); }
     $pdo->exec("CREATE TABLE IF NOT EXISTS magal_taches (
         id INT AUTO_INCREMENT PRIMARY KEY,
         annee SMALLINT NOT NULL,

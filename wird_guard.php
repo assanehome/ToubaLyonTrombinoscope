@@ -9,6 +9,7 @@
  * $__kamilKeys (clés des Kamils gérés) et $__wirdMemberId.
  */
 require_once __DIR__ . '/db_setup.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables désignés de la Lecture Coran
 if (session_status() === PHP_SESSION_NONE) {
     require_once __DIR__ . '/session_config.php'; session_start();
 }
@@ -32,11 +33,7 @@ $__kamilKeys = [];
 $__wirdMemberId = !empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : 0;
 if (!$__isAdmin && $__wirdMemberId > 0) {
     try {
-        $__isCulteManager = ((int) $pdo->query(
-            "SELECT COUNT(*) FROM commission_gestionnaires cg
-             JOIN commissions c ON c.id = cg.commission_id
-             WHERE cg.membre_id = " . $__wirdMemberId . " AND LOWER(c.nom) LIKE '%culte%'"
-        )->fetchColumn() > 0);
+        $__isCulteManager = fr_est_responsable($pdo, 'coran', $__wirdMemberId); // responsable désigné de la Lecture Coran (accès complet)
     } catch (Exception $e) {
         $__isCulteManager = false;
     }

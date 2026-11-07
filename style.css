@@ -1807,6 +1807,37 @@ footer {
     transition: opacity 0.15s ease;
 }
 .msel-option.selected .msel-check { opacity: 1; }
+/* Panneau ouvert (il est déplacé dans <body> à l'ouverture pour ne jamais être coupé) */
+.msel-panel.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+/* Recherche dans la liste */
+.msel-search {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #0c241a;
+    padding: 0.2rem 0.1rem 0.45rem;
+}
+.msel-search input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--white);
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+}
+.msel-search input:focus { border-color: var(--accent); }
+.msel-empty { padding: 0.8rem; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
+.msel-option.disabled { opacity: 0.4; cursor: not-allowed; }
+.msel-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+@media (max-width: 600px) { .msel-search input { font-size: 16px; } }
 
 /* Scrollbar discrète pour le panneau */
 .msel-panel::-webkit-scrollbar { width: 8px; }
@@ -2424,3 +2455,28 @@ details.mc-com .mc-chips, .mc-chips { gap: 0.25rem !important; }
 details.mc-com .mc-grp, .com-reu-group .com-reu-group, .mg-grp { margin-top: 0.4rem !important; margin-bottom: 0.4rem !important; }
 .mg-body { padding: 0.6rem 0.8rem 0.8rem !important; }
 .dp-futurs-corps { padding: 0.6rem 0.8rem 0.8rem !important; }
+
+/* ==========================================================================
+   En-tête de groupe uniforme dans toute l'application : titre doré, flèche ▸ à droite
+   (même rendu que « Paramètres » de la gestion de commission)
+   ========================================================================== */
+main details:not(.no-group, .sd-votants, .kav-message, .mfile, .mg-grp, .mc-com, .adm-grp, .dp-futurs, .sd-grp, .com-reu-group, .com-members-group) > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    list-style: none;
+    color: var(--gold) !important;
+}
+main details:not(.no-group, .sd-votants, .kav-message, .mfile, .mg-grp, .mc-com, .adm-grp, .dp-futurs, .sd-grp, .com-reu-group, .com-members-group) > summary::-webkit-details-marker { display: none; }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile, .mg-grp, .mc-com, .adm-grp, .dp-futurs, .sd-grp, .com-reu-group, .com-members-group) > summary::after {
+    content: '▸';
+    margin-left: auto;
+    color: var(--gold);
+    transition: transform 0.2s;
+}
+main details:not(.no-group, .sd-votants, .kav-message, .mfile, .mg-grp, .mc-com, .adm-grp, .dp-futurs, .sd-grp, .com-reu-group, .com-members-group)[open] > summary::after { transform: rotate(90deg); }
+/* anciennes flèches propres à chaque page : remplacées par celle-ci */
+main details > summary [class*="chevron"] { display: none !important; }
+
+/* Intitulé de section dans les menus (ex. « Gestion ») */
+.admin-menu-sep { margin: 0.7rem 0 0.2rem; padding: 0.5rem 0.9rem 0.2rem; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--gold); border-top: 1px solid var(--glass-border); }

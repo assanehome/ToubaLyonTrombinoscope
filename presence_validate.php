@@ -41,8 +41,8 @@ try {
         elseif ($type === 'reunion') { $table = 'commission_reunions'; $dateCol = 'date_reunion'; }
         elseif ($type === 'repetition') { $table = 'kourel_repetitions'; $dateCol = 'date_reunion'; }
         else { $table = 'guddi_plannings'; $dateCol = 'date_guddi'; }
-        // Pour les réunions / répétitions, l'heure de début est propre à chacune (colonne heure)
-        $selectCols = ($type === 'reunion' || $type === 'repetition') ? "$dateCol, publie, heure" : "$dateCol, publie";
+        // Horaires RÉELS de l'événement : heure de début (et de fin) propres à chaque séance
+        $selectCols = $type === 'dahira' ? "$dateCol, publie, heure_debut, heure_fin" : ($type === 'reunion' ? "$dateCol, publie, heure, heure_fin" : ($type === 'repetition' ? "$dateCol, publie, heure" : "$dateCol, publie, heure, heure_fin"));
         $st = $pdo->prepare("SELECT $selectCols FROM $table WHERE id = ?");
         $st->execute([$planningId]);
         $row = $st->fetch();
@@ -50,12 +50,27 @@ try {
             echo json_encode(['ok' => false, 'msg' => 'Cette séance n\'est pas publiée.']);
             exit;
         }
-        // La validation n'est ouverte qu'à partir de l'heure de début de la séance
-        if ($type === 'dahira') { $heureDebut = dahira_param($pdo, 'dahira_debut', '17h00'); }
-        elseif ($type === 'reunion' || $type === 'repetition') { $heureDebut = (string) ($row['heure'] ?? '20h00'); }
-        else { $heureDebut = dahira_param($pdo, 'guddi_heure', '20h00'); }
-        if (!dahira_presence_ouverte((string) $row[$dateCol], $heureDebut)) {
-            echo json_encode(['ok' => false, 'msg' => 'La validation ne sera possible qu\'à partir de l\'heure de début (' . htmlspecialchars($heureDebut) . ').']);
+        // Date et heures réelles de l'événement (à défaut : horaires par défaut du Dahira / du Guddi)
+        $heureFin = '';
+        if ($type === 'dahira') {
+            $heureDebut = trim((string) ($row['heure_debut'] ?? '')) !== '' ? trim((string) $row['heure_debut']) : dahira_param($pdo, 'dahira_debut', '17h00');
+            $heureFin = trim((string) ($row['heure_fin'] ?? '')) !== '' ? trim((string) $row['heure_fin']) : dahira_param($pdo, 'dahira_fin', '20h30');
+        } elseif ($type === 'reunion') {
+            $heureDebut = trim((string) ($row['heure'] ?? '')) !== '' ? trim((string) $row['heure']) : '20h00';
+            $heureFin = trim((string) ($row['heure_fin'] ?? ''));
+        } elseif ($type === 'repetition') {
+            $heureDebut = trim((string) ($row['heure'] ?? '')) !== '' ? trim((string) $row['heure']) : '20h00';
+        } else {
+            $heureDebut = trim((string) ($row['heure'] ?? '')) !== '' ? trim((string) $row['heure']) : dahira_param($pdo, 'guddi_heure', '20h00');
+            $heureFin = trim((string) ($row['heure_fin'] ?? '')) !== '' ? trim((string) $row['heure_fin']) : dahira_param($pdo, 'guddi_heure_fin', '');
+        }
+        $etatP = dahira_presence_etat((string) $row[$dateCol], $heureDebut, $heureFin !== '' ? $heureFin : null);
+        if ($etatP === 'avenir') {
+            echo json_encode(['ok' => false, 'msg' => 'La validation ne sera possible qu\'à partir de l\'heure de début (' . $heureDebut . ' le ' . date('d/m/Y', strtotime((string) $row[$dateCol])) . ').']);
+            exit;
+        }
+        if ($etatP === 'terminee') {
+            echo json_encode(['ok' => false, 'msg' => 'La validation de présence est clôturée : l\'événement est terminé.']);
             exit;
         }
         $pdo->prepare("INSERT IGNORE INTO presence_validations (planning_type, planning_id, membre_id) VALUES (?, ?, ?)")

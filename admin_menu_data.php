@@ -50,6 +50,7 @@ function troba_admin_menu_items(?PDO $pdo = null): array
     $items['admin_guddi.php']  = '💎 Guddi Àjjuma';
     $items['wird_admin.php']   = '📖 Lecture Coran';
     $items['magal.php']        = '🕌 Wadial Magal';
+    $items['logistique_demandes.php'] = '🚚 Logistique';
     $items['admin_cotisations.php'] = '💶 Cotisations';
     $items['admin_admins.php'] = '👥 Gérer les admins';
     $items['admin_parametres.php'] = '⚙️ Paramètres';

@@ -588,6 +588,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $success = "Tâche ajoutée au Wadial Magal " . $mgAnnee . ".";
                 }
+            } elseif ($action === 'magal_set_contrib' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
+                // Le responsable définit les membres de sa commission autorisés à créer des besoins et des tâches du Wadial Magal
+                $mgRid = (int) ($_POST['membre_id'] ?? 0);
+                $mgOn = (($_POST['enable'] ?? '') === '1');
+                $mgOkM = $pdo->prepare("SELECT 1 FROM commission_membres WHERE commission_id = ? AND membre_id = ?");
+                $mgOkM->execute([$cid, $mgRid]);
+                if ($mgRid <= 0 || $mgOkM->fetchColumn() === false) {
+                    $error = "Ce membre ne fait pas partie de la commission.";
+                } elseif ($mgOn) {
+                    // La commission est inscrite au Wadial Magal si elle ne l'est pas encore (sinon le membre ne pourrait rien y créer)
+                    $pdo->prepare("INSERT IGNORE INTO magal_commissions (annee, commission_id) VALUES (?, ?)")->execute([magal_annee_defaut(), $cid]);
+                    $mgIns = $pdo->prepare("INSERT IGNORE INTO magal_contributeurs (commission_id, membre_id, ajoute_par) VALUES (?, ?, ?)");
+                    $mgIns->execute([$cid, $mgRid, !empty($_SESSION['player_id']) ? (int) $_SESSION['player_id'] : null]);
+                    if ($mgIns->rowCount() > 0 && (empty($_SESSION['player_id']) || $mgRid !== (int) $_SESSION['player_id'])) {
+                        $mgNomC = $pdo->prepare("SELECT nom FROM commissions WHERE id = ?");
+                        $mgNomC->execute([$cid]);
+                        troba_notify_membre($pdo, $mgRid, 'magal', '🕌 Wadial Magal : vous pouvez créer des besoins et tâches', 'Pour la commission « ' . (string) $mgNomC->fetchColumn() . ' » : la fonction Wadial Magal est dans votre menu.', 'magal.php?annee=' . magal_annee_defaut() . '&tab=besoins');
+                    }
+                    $success = "Membre autorisé à créer des besoins et des tâches du Wadial Magal.";
+                } else {
+                    $pdo->prepare("DELETE FROM magal_contributeurs WHERE commission_id = ? AND membre_id = ?")->execute([$cid, $mgRid]);
+                    $success = "Autorisation retirée.";
+                }
             } elseif ($action === 'magal_add_besoin' && $cid > 0 && com_can_manage($cid, $__isAdmin, $__managedCommissions)) {
                 // Liste de besoins du Wadial Magal pour cette commission (la commission doit être impliquée)
                 $mgAnneeB = magal_annee_defaut();
@@ -743,6 +766,7 @@ try {
     // Wadial Magal (année en cours) : commissions impliquées, leurs tâches et leur partie finance
     require_once __DIR__ . '/magal_helper.php';
     $mgAnneeCourante = magal_annee_defaut();
+    $mgAccesPage = $__isAdmin || magal_membre_a_acces($pdo, (int) ($_SESSION['player_id'] ?? 0)); // page Wadial Magal : responsables désignés seulement
     $mgInvolved = [];
     $mgTachesParCom = [];
     $mgFinParCom = [];
@@ -766,6 +790,10 @@ try {
             if ($mgf['type'] === 'recette') { $mgFinParCom[$k]['rec'] += (float) $mgf['montant']; } else { $mgFinParCom[$k]['dep'] += (float) $mgf['montant']; }
         }
     } catch (Exception $e) { $mgInvolved = []; $mgTachesParCom = []; $mgFinParCom = []; }
+    $mgContribParCom = [];
+    try {
+        foreach ($pdo->query("SELECT commission_id, membre_id FROM magal_contributeurs") as $mgcr) { $mgContribParCom[(int) $mgcr['commission_id']][] = (int) $mgcr['membre_id']; }
+    } catch (Exception $e) { $mgContribParCom = []; }
     $reunionLieuDefaut = dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
 
     // Rendu HTML d'une réunion (carte). $showTitle=false pour une période au sein d'une série.
@@ -1023,6 +1051,11 @@ $membersJs = array_map(function ($m) {
         .kourel-wrap > .admin-welcome-banner, .kourel-wrap > .form-card, .com-filters { margin-bottom: 0.5rem !important; }
         .kourel-card.com-filterable { margin-top: 0 !important; }
         body.embed .kourel-wrap { margin: 0 auto !important; }
+        /* Groupes (réunions, membres, paramètres…) : même en-tête partout — titre doré, flèche à droite */
+        .com-reu-group > summary, .com-members-group > summary { display: flex !important; align-items: center; gap: 0.4rem; color: var(--gold) !important; font-size: 0.9rem !important; list-style: none; }
+        .com-reu-group > summary::after, .com-members-group > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
+        .com-reu-group[open] > summary::after, .com-members-group[open] > summary::after { transform: rotate(90deg); }
+        .com-reu-chevron, .com-mem-chevron { display: none !important; }
         .com-members-group > :last-child, .com-reu-group > :last-child { margin-bottom: 1rem !important; }
         /* groupes imbriqués (ex. réunions passées dans le groupe Réunions) : cadre plus discret */
         .com-reu-group .com-reu-group { border-color: var(--glass-border); background: rgba(255,255,255,0.02); box-shadow: none; }
@@ -1510,8 +1543,8 @@ $membersJs = array_map(function ($m) {
                                 </div>
                             </details>
                             <?php endif; ?>
-                            <details data-section="creer-reunion" style="border:1px solid var(--glass-border); border-radius:10px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
-                                <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Créer une réunion</summary>
+                            <details data-section="creer-reunion" class="com-reu-group" style="margin:0.5rem 0;">
+                                <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">➕ Créer une réunion</summary>
                                 <form method="POST" class="reunion-create-form" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="create_reunion">
@@ -1701,7 +1734,29 @@ $membersJs = array_map(function ($m) {
                                     </div>
                                 <?php endforeach; endif; ?>
                                 </div></details>
+                                <?php if ($mgPeutAjouter): $mgAut = $mgContribParCom[(int) $c['id']] ?? []; ?>
+                                <details class="com-reu-group" style="margin-top:0.8rem;">
+                                    <summary class="com-sub" style="cursor:pointer; list-style:none; margin-top:0;">👥 Membres autorisés à créer des besoins et tâches <span style="color:var(--text-muted); font-weight:600; font-size:0.8rem;">(<?php echo count($mgAut); ?>)</span></summary>
+                                    <p style="color:var(--text-muted); font-size:0.82rem; margin:0.6rem 0;">Les membres cochés peuvent ajouter des besoins et des tâches du Wadial Magal pour votre commission. La fonction Wadial Magal apparaît alors dans leur menu.</p>
+                                    <?php if (empty($membersOfC)): ?>
+                                        <p style="color:var(--text-muted); font-size:0.85rem; margin:0;">Aucun membre dans la commission.</p>
+                                    <?php else: foreach ($membersOfC as $mm): ?>
+                                        <form method="POST" style="margin:0 0 0.4rem;">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="magal_set_contrib">
+                                            <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
+                                            <input type="hidden" name="membre_id" value="<?php echo (int) $mm['id']; ?>">
+                                            <label style="display:flex; align-items:center; gap:0.7rem; margin:0; cursor:pointer; color:var(--white);">
+                                                <input type="checkbox" class="checkbox-switch" name="enable" value="1"<?php echo in_array((int) $mm['id'], $mgAut, true) ? ' checked' : ''; ?> onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+                                                <span><?php echo htmlspecialchars(trim($mm['prenom'] . ' ' . $mm['nom'])); ?></span>
+                                            </label>
+                                        </form>
+                                    <?php endforeach; endif; ?>
+                                </details>
+                                <?php endif; ?>
+                                <?php if (!empty($mgAccesPage)): ?>
                                 <p style="margin:0.6rem 0 0;"><a href="magal.php?annee=<?php echo (int) $mgAnneeCourante; ?>&tab=taches" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">🕌 Ouvrir le Wadial Magal</a></p>
+                                <?php endif; ?>
                             </details>
                         </div>
                         <?php endif; ?>

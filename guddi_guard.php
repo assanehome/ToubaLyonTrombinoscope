@@ -10,6 +10,7 @@
  * À inclure EN TOUT PREMIER dans admin_guddi.php.
  */
 require_once __DIR__ . '/db_setup.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables désignés du Guddi Àjjuma
 
 if (session_status() === PHP_SESSION_NONE) {
     require_once __DIR__ . '/session_config.php'; session_start();
@@ -27,18 +28,12 @@ try {
     $__culteId = 0;
 }
 
-// Le membre est-il responsable de cette commission ?
-if (!$__guAdmin && !empty($_SESSION['player_id']) && $__culteId > 0) {
-    try {
-        $st = $pdo->prepare("SELECT COUNT(*) FROM commission_gestionnaires WHERE commission_id = ? AND membre_id = ?");
-        $st->execute([$__culteId, (int) $_SESSION['player_id']]);
-        $__guCulte = ((int) $st->fetchColumn()) > 0;
-    } catch (Exception $e) {
-        $__guCulte = false;
-    }
+// Le membre est-il responsable désigné du Guddi Àjjuma ? (seuls eux et l'administrateur y ont accès)
+if (!$__guAdmin && !empty($_SESSION['player_id'])) {
+    $__guCulte = fr_est_responsable($pdo, 'guddi', (int) $_SESSION['player_id']);
 }
 
 if (!$__guAdmin && !$__guCulte) {
     http_response_code(403);
-    die('Accès refusé. Cette page est réservée aux administrateurs et aux responsables de la commission Culte.');
+    die('Accès refusé. Cette page est réservée aux administrateurs et aux responsables du Guddi Àjjuma.');
 }

@@ -5,12 +5,15 @@
  */
 require_once __DIR__ . '/wird_guard.php';   // $__isAdmin, $__isCulteManager, $pdo
 require_once __DIR__ . '/csrf.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables de la Lecture Coran
 require_once __DIR__ . '/dahira_emails.php'; // dahira_base_url(), send_smtp_mail()
 require_once __DIR__ . '/notification_helper.php'; // cloche notifications
 require_once __DIR__ . '/wird_period_helper.php';  // libellé de période
 
 $error = '';
 $success = '';
+// Gestion des responsables de la Lecture Coran (appels AJAX de la fenêtre de sélection)
+fr_traiter_post($pdo, 'coran', !empty($__isCulteManager), $__wirdMemberId, !empty($__isAdmin), 'Lecture Coran');
 
 /** Date de fin d'une période selon sa périodicité (bornes incluses). */
 function wird_period_end(string $debut, string $per): string
@@ -472,6 +475,7 @@ if ($__isCulteManager) {
                 <span>📖 Lecture du Coran — <strong class="gold-text"><?php echo count($sessions); ?></strong> session(s)</span>
                 <a href="<?php echo $__isAdmin ? 'admin_dashboard.php' : 'index.php'; ?>" class="btn btn-secondary btn-sm">← Retour</a>
             </div>
+            <?php if (!empty($__isCulteManager)) { echo fr_bloc_html($pdo, 'coran', 'Lecture Coran', 'wird_admin.php'); } ?>
 
             <?php
                 $sessionsEnCours = [];

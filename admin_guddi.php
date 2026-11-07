@@ -15,9 +15,13 @@ require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/dahira_emails.php';
 require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_destinataires, wa_link, wa_button, dahira_param
 require_once __DIR__ . '/planning_guddi_helper.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables du Guddi Àjjuma
+require_once __DIR__ . '/notification_helper.php';
 
 $error = '';
 $success = '';
+// Gestion des responsables du Guddi Àjjuma (appels AJAX de la fenêtre de sélection)
+fr_traiter_post($pdo, 'guddi', true, (int) ($_SESSION['player_id'] ?? 0), !empty($__guAdmin), 'Guddi Àjjuma');
 
 // Commission « Culte »
 function guddi_commission_id(PDO $pdo): int
@@ -680,6 +684,7 @@ if ($commissionId > 0) {
 
             <div class="admin-content">
                 <h1 class="admin-page-title">💎 Planning Guddi Àjjuma</h1>
+                <?php echo fr_bloc_html($pdo, 'guddi', 'Guddi Àjjuma', 'admin_guddi.php'); ?>
                 <p class="admin-page-desc" style="color:var(--text-muted); margin-top:0.9rem; font-size:0.9rem;">
                     <?php echo $commissionId > 0 ? '' : '<span style="color:#ffd873;">(Aucune commission « Culte » trouvée : les annonces iront à tous les membres validés.)</span>'; ?>
                 </p>

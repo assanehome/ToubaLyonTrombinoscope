@@ -23,6 +23,7 @@ $__activeLabel = troba_member_menu_active_label($__memberMenu, $__cur);
     </button>
     <nav class="admin-menu-links" id="adminMenuLinks">
         <?php foreach ($__memberMenu as $__href => $__label): ?>
+            <?php if ($__href[0] === '#'): ?><div class="admin-menu-sep"><?php echo $__label; ?></div><?php continue; endif; ?>
             <a href="<?php echo $__href; ?>"<?php echo ($__cur === $__href) ? ' class="active"' : ''; ?>><?php echo $__label; ?></a>
         <?php endforeach; ?>
     </nav>

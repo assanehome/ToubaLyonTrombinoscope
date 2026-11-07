@@ -86,6 +86,13 @@ try {
     http_response_code(500);
     die("Une erreur technique est survenue. Veuillez réessayer plus tard.");
 }
+
+// Effectifs et responsables de chaque commission (pour l'affichage)
+$nbMembres = []; $responsables = [];
+try {
+    foreach ($pdo->query("SELECT commission_id, COUNT(*) AS n FROM commission_membres GROUP BY commission_id") as $r) { $nbMembres[(int) $r['commission_id']] = (int) $r['n']; }
+    foreach ($pdo->query("SELECT cg.commission_id, TRIM(CONCAT(m.prenom, ' ', m.nom)) AS nom FROM commission_gestionnaires cg JOIN membres m ON m.id = cg.membre_id ORDER BY m.prenom, m.nom") as $r) { $responsables[(int) $r['commission_id']][] = $r['nom']; }
+} catch (Exception $e) { /* affichage sans effectifs */ }
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -94,7 +101,18 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestion des commissions - Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
-    <style>.comm-wrap { max-width: 640px; margin: 2rem auto; }</style>
+    <style>
+        .comm-wrap { max-width: 860px; margin: 0 auto; }
+        .cm-item { display: block; border: 1px solid rgba(212,175,55,0.38); border-radius: 12px; background: rgba(255,255,255,0.03); padding: 0.9rem 1rem; margin-bottom: 0.6rem; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+        .cm-tete { display: flex; align-items: center; gap: 0.8rem; }
+        .cm-ic { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; background: rgba(212,175,55,0.14); border: 1px solid rgba(212,175,55,0.4); }
+        .cm-nom { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; color: var(--white); font-weight: 800; font-size: 1.02rem; line-height: 1.25; }
+        .cm-nom small { color: var(--text-muted); font-weight: 500; font-size: 0.78rem; margin-top: 0.15rem; }
+        .cm-pied { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; margin-top: 0.7rem; padding-top: 0.7rem; border-top: 1px solid rgba(255,255,255,0.08); }
+        .cm-stock { display: flex; align-items: center; gap: 0.7rem; margin: 0; cursor: pointer; color: var(--white); font-size: 0.9rem; }
+        .cm-stock small { display: block; color: var(--text-muted); font-size: 0.76rem; }
+        .cm-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.5rem; }
+    </style>
 </head>
 <body>
     <?php include __DIR__ . '/header.php'; ?>
@@ -108,18 +126,18 @@ try {
                 <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
             </div>
 
-            <div class="form-card" style="max-width:none; margin-bottom:1.5rem;">
-                <h2 class="gold-text" style="font-size:1.2rem; font-weight:700; margin-bottom:1rem;">Ajouter une commission</h2>
-                <form action="admin_commissions.php" method="POST" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end;">
+            <details class="glass-card" style="margin-bottom:1.2rem;">
+                <summary>➕ Ajouter une commission</summary>
+                <form action="admin_commissions.php" method="POST" style="display:flex; gap:0.75rem; flex-wrap:wrap; align-items:flex-end; margin-top:0.4rem;">
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="action" value="add">
                     <div class="form-group" style="flex:1; min-width:200px; margin-bottom:0;">
                         <label for="nom" class="form-label">Nom de la commission <span style="color:var(--danger)">*</span></label>
-                        <input type="text" id="nom" name="nom" class="form-input" placeholder="Ex: Sécurité" required>
+                        <input type="text" id="nom" name="nom" class="form-input" placeholder="Ex : Sécurité" required>
                     </div>
                     <button type="submit" class="btn btn-primary">Ajouter</button>
                 </form>
-            </div>
+            </details>
 
             <section class="dashboard-section">
                 <div class="section-header">
@@ -129,37 +147,39 @@ try {
                 <?php if (empty($commissions)): ?>
                     <div class="empty-state"><div class="empty-state-icon">📋</div><p>Aucune commission.</p></div>
                 <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="admin-table admin-table--compact">
-                            <thead><tr><th>Commission</th><th>Gestion de stock</th><th>Actions</th></tr></thead>
-                            <tbody>
-                                <?php foreach ($commissions as $c): ?>
-                                    <?php $stockOn = ((int)$c['stock_enabled'] === 1); ?>
-                                    <tr>
-                                        <td style="font-weight:600;"><?php echo htmlspecialchars($c['nom']); ?></td>
-                                        <td>
-                                            <form action="admin_commissions.php" method="POST" style="margin:0; display:inline-flex; align-items:center; gap:0.5rem;">
-                                                <?php echo csrf_field(); ?>
-                                                <input type="hidden" name="action" value="toggle_stock">
-                                                <input type="hidden" name="commission_id" value="<?php echo (int)$c['id']; ?>">
-                                                <input type="hidden" name="enable" value="<?php echo $stockOn ? 0 : 1; ?>">
-                                                <?php if ($stockOn): ?>
-                                                    <span class="badge badge-approved" style="white-space:nowrap;">📦 Activée</span>
-                                                    <button type="submit" class="btn btn-secondary btn-sm" style="color:var(--warning); border-color:var(--warning);">Désactiver</button>
-                                                <?php else: ?>
-                                                    <span style="color:var(--text-muted);">—</span>
-                                                    <button type="submit" class="btn btn-primary btn-sm">Activer</button>
-                                                <?php endif; ?>
-                                            </form>
-                                        </td>
-                                        <td>
-                                            <button type="button" class="btn btn-danger btn-sm" onclick="confirmDelete(<?php echo (int)$c['id']; ?>, '<?php echo addslashes(htmlspecialchars($c['nom'])); ?>')">Supprimer</button>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
+                    <?php foreach ($commissions as $c): ?>
+                        <?php
+                            $cid = (int) $c['id'];
+                            $stockOn = ((int) $c['stock_enabled'] === 1);
+                            $nbM = $nbMembres[$cid] ?? 0;
+                            $resp = $responsables[$cid] ?? [];
+                        ?>
+                        <div class="cm-item">
+                            <div class="cm-tete">
+                                <span class="cm-ic" aria-hidden="true">📋</span>
+                                <span class="cm-nom"><?php echo htmlspecialchars($c['nom']); ?>
+                                    <small><?php echo $nbM; ?> membre<?php echo $nbM > 1 ? 's' : ''; ?><?php echo !empty($resp) ? ' · 🎖️ ' . htmlspecialchars(implode(', ', $resp)) : ' · aucun responsable'; ?></small>
+                                </span>
+                            </div>
+                            <div class="cm-pied">
+                                <form action="admin_commissions.php" method="POST" class="cm-stock">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="toggle_stock">
+                                    <input type="hidden" name="commission_id" value="<?php echo $cid; ?>">
+                                    <label style="display:flex; align-items:center; gap:0.7rem; margin:0; cursor:pointer;">
+                                        <input type="checkbox" class="checkbox-switch" name="enable" value="1"<?php echo $stockOn ? ' checked' : ''; ?> onchange="this.form.submit()">
+                                        <span>📦 Gestion de stock<small><?php echo $stockOn ? 'Activée pour cette commission' : 'Désactivée'; ?></small></span>
+                                    </label>
+                                </form>
+                                <form action="admin_commissions.php" method="POST" style="margin:0;" data-confirm="Voulez-vous vraiment supprimer la commission <strong><?php echo htmlspecialchars($c['nom']); ?></strong> ? Cette action est définitive." data-confirm-danger="1">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="commission_id" value="<?php echo $cid; ?>">
+                                    <button type="submit" class="btn btn-danger btn-sm">🗑️ Supprimer</button>
+                                </form>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
                 <?php endif; ?>
             </section>
         </div>
@@ -179,43 +199,9 @@ try {
     </div>
     <?php endif; ?>
 
-    <!-- Confirmation de suppression (modale moderne) -->
-    <div id="confirm-modal" class="modal-overlay">
-        <div class="modal-card glass-card">
-            <div class="modal-header"><h3 style="color:var(--danger);">⚠️ Suppression définitive</h3></div>
-            <div class="modal-body"><p id="confirm-message">Voulez-vous supprimer cette commission ?</p></div>
-            <div class="modal-footer">
-                <button type="button" id="confirm-cancel" class="btn btn-secondary btn-sm">Annuler</button>
-                <button type="button" id="confirm-ok" class="btn btn-danger btn-sm">Supprimer</button>
-            </div>
-        </div>
-    </div>
-
-    <form id="delete-form" action="admin_commissions.php" method="POST" style="display:none;">
-        <?php echo csrf_field(); ?>
-        <input type="hidden" name="action" value="delete">
-        <input type="hidden" name="commission_id" id="delete-id" value="">
-    </form>
+    <?php include __DIR__ . '/modern_popup.php'; ?>
 
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
 
-    <script>
-        var confirmModal = document.getElementById('confirm-modal');
-        function confirmDelete(id, nom) {
-            document.getElementById('delete-id').value = id;
-            document.getElementById('confirm-message').innerHTML = 'Voulez-vous vraiment supprimer la commission <strong>' + nom + '</strong> ? Cette action est définitive.';
-            confirmModal.style.display = 'flex';
-            setTimeout(function () { confirmModal.classList.add('active'); }, 10);
-        }
-        function closeConfirm() {
-            confirmModal.classList.remove('active');
-            setTimeout(function () { confirmModal.style.display = 'none'; }, 300);
-        }
-        document.getElementById('confirm-cancel').addEventListener('click', closeConfirm);
-        document.getElementById('confirm-ok').addEventListener('click', function () {
-            document.getElementById('delete-form').submit();
-        });
-        confirmModal.addEventListener('click', function (e) { if (e.target === this) closeConfirm(); });
-    </script>
 </body>
 </html>

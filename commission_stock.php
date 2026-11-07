@@ -293,6 +293,13 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
                 <span>📦 Stock — <strong class="gold-text"><?php echo htmlspecialchars($commission['nom']); ?></strong> — <?php echo count($items); ?> article(s), <?php echo (int)$totalQty; ?> en stock</span>
                 <a href="commission_dashboard.php" class="btn btn-secondary btn-sm">← Espaces commissions</a>
             </div>
+            <?php if (!empty($stockEnabled)): ?>
+            <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1.2rem;">
+                <a href="stock_sorties.php?id=<?php echo (int) $cid; ?>" class="btn btn-secondary btn-sm">📤 Sorties d'équipement (événement / prêt)</a>
+                <a href="stock_inventaire.php?id=<?php echo (int) $cid; ?>" class="btn btn-secondary btn-sm">📋 Inventaire</a>
+                <a href="stock_import.php?id=<?php echo (int) $cid; ?>" class="btn btn-secondary btn-sm">📥 Importer un fichier</a>
+            </div>
+            <?php endif; ?>
 
             <?php if (!$stockEnabled): ?>
                 <div class="empty-state"><div class="empty-state-icon">📦</div><p>La gestion de stock n'est pas activée pour cette commission.</p></div>

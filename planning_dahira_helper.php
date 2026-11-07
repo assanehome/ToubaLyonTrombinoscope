@@ -80,6 +80,26 @@ function dahira_presence_ouverte(string $date, string $heureDebut): bool
     return time() >= $ts;
 }
 
+/**
+ * État de la validation de présence, d'après la date et les heures RÉELLES de l'événement :
+ * 'avenir' (pas encore commencé), 'ouverte' (de l'heure de début à l'heure de fin ; sans heure de fin,
+ * jusqu'à la fin du jour de l'événement), 'terminee' (événement terminé).
+ */
+function dahira_presence_etat(string $date, string $heureDebut, ?string $heureFin = null): string
+{
+    $e = dahira_event_etat($date, $heureDebut, $heureFin);
+    return $e === 'encours' ? 'ouverte' : ($e === 'termine' ? 'terminee' : 'avenir');
+}
+
+/** Message affiché quand la validation de présence n'est pas ouverte (pas encore, ou clôturée). */
+function dahira_presence_message(string $date, string $heureDebut, ?string $heureFin = null): string
+{
+    if (dahira_presence_etat($date, $heureDebut, $heureFin) === 'terminee') {
+        return '🔒 La validation de présence est clôturée : l\'événement est terminé.';
+    }
+    return '🔔 La validation sera possible à partir de ' . trim($heureDebut) . ' le ' . date('d/m/Y', strtotime($date)) . '.';
+}
+
 /** Prochains dimanches (un dimanche sur deux) entre deux dates. */
 function dahira_dimanches(string $from, string $to, bool $alterner = true): array
 {

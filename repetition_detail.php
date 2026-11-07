@@ -190,10 +190,10 @@ $retour = $__reAdmin ? 'kourel_dashboard.php' : 'index.php';
                         <?php if ($presenceFaite): ?>
                             <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Diadieuf</div>
                             <button type="button" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;" onclick="annulerPresence('repetition', <?php echo (int) $id; ?>, this)">↩️ Annuler ma présence</button>
-                        <?php elseif (dahira_presence_ouverte($date, $heure)): ?>
+                        <?php elseif (dahira_presence_etat($date, $heure) === 'ouverte'): ?>
                             <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('repetition', <?php echo (int) $id; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
-                            <div style="color:var(--text-muted); font-size:0.85rem;">🔔 La validation sera possible à partir de <?php echo htmlspecialchars($heure); ?> le <?php echo date('d/m/Y', strtotime($date)); ?>.</div>
+                            <div style="color:var(--text-muted); font-size:0.85rem;"><?php echo htmlspecialchars(dahira_presence_message($date, $heure)); ?></div>
                         <?php endif; ?>
                     </div>
                     <?php elseif ($membreId > 0 && !$publie): ?>

@@ -11,6 +11,7 @@ require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/notification_helper.php'; // troba_notify_membre()
 require_once __DIR__ . '/magal_helper.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables du Wadial Magal (comme Lecture Coran)
 
 if (session_status() === PHP_SESSION_NONE) {
     require_once __DIR__ . '/session_config.php'; session_start();
@@ -22,12 +23,14 @@ if (!$__mgAdmin && $mgMembre === 0) {
     header('Location: login.php');
     exit;
 }
-$mgOrganisateur = $__mgAdmin || magal_est_organisateur($pdo, $mgMembre);
+$mgOrganisateur = $__mgAdmin || magal_est_responsable($pdo, $mgMembre); // seuls les responsables désignés (et l'administrateur) ont accès
 $mgFinance = $__mgAdmin || magal_est_finance($pdo, $mgMembre);
-if (!$mgOrganisateur && !magal_membre_implique($pdo, $mgMembre)) {
+if (!$mgOrganisateur && !magal_membre_a_acces($pdo, $mgMembre)) {
     header('Location: index.php');
     exit;
 }
+// Gestion des responsables du Wadial Magal (appels AJAX de la fenêtre de sélection)
+fr_traiter_post($pdo, 'magal', $mgOrganisateur, $mgMembre, $__mgAdmin, 'Wadial Magal');
 
 // Commissions dont le membre est responsable (droit d'édition de leurs besoins / tâches)
 $mgGeres = [];
@@ -43,18 +46,34 @@ if ($mgMembre > 0) {
         $mgMembreDe = array_values(array_unique(array_merge($mgGeres, array_map('intval', $pdo->query("SELECT commission_id FROM commission_membres WHERE membre_id = " . $mgMembre)->fetchAll(PDO::FETCH_COLUMN)))));
     } catch (Exception $e) {}
 }
+// Commissions pour lesquelles le membre a été autorisé (par un responsable de commission) à créer des besoins / tâches
+$mgContrib = [];
+if ($mgMembre > 0) {
+    try { $mgContrib = array_map('intval', $pdo->query("SELECT commission_id FROM magal_contributeurs WHERE membre_id = " . $mgMembre)->fetchAll(PDO::FETCH_COLUMN)); } catch (Exception $e) { $mgContrib = []; }
+}
+$mgMembreDe = array_values(array_unique(array_merge($mgMembreDe, $mgContrib)));
 $mgPeutEditer = function (int $cid) use ($mgOrganisateur, $mgGeres) {
     return $mgOrganisateur || in_array($cid, $mgGeres, true);
+};
+// Créer des besoins / tâches : organisateurs, responsables de la commission et membres qu'ils ont autorisés
+$mgPeutCreer = function (int $cid) use ($mgPeutEditer, $mgContrib) {
+    return $mgPeutEditer($cid) || in_array($cid, $mgContrib, true);
 };
 
 // Édition (année) et onglet
 $anneeCourante = magal_annee_defaut(); // édition proposée par défaut (à partir de 2027)
 $annee = (int) ($_GET['annee'] ?? $_POST['annee'] ?? $anneeCourante);
-if ($annee < MAGAL_PREMIERE_ANNEE || $annee > $anneeCourante + 3) { $annee = $anneeCourante; }
-$onglets = ['commissions' => '📋 Commissions', 'besoins' => '🧰 Besoins', 'taches' => '✅ Tâches'];
+$anneeMax = $anneeCourante + 10; // liste des éditions : de 2027 à dix ans après l'année en cours
+if ($annee < MAGAL_PREMIERE_ANNEE || $annee > $anneeMax) { $annee = $anneeCourante; }
+// Accueil, ouvert par défaut : les besoins et tâches en cours, par statut
+$onglets = ['accueil' => '🏠 Accueil'];
+if ($mgOrganisateur) { $onglets['commissions'] = '📋 Commissions'; }
+$onglets['besoins'] = '🧰 Besoins';
+$onglets['taches'] = '✅ Tâches';
 if ($mgOrganisateur || $mgFinance) { $onglets['finance'] = '💶 Finance'; }
-$tab = (string) ($_GET['tab'] ?? $_POST['tab'] ?? 'commissions');
-if (!isset($onglets[$tab])) { $tab = 'commissions'; }
+$tabDefaut = (string) array_key_first($onglets);
+$tab = (string) ($_GET['tab'] ?? $_POST['tab'] ?? $tabDefaut);
+if (!isset($onglets[$tab])) { $tab = $tabDefaut; }
 
 $error = '';
 $success = $_SESSION['magal_flash'] ?? '';
@@ -111,22 +130,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("DELETE FROM magal_commissions WHERE annee = ? AND commission_id = ?")->execute([$annee, $cid]);
                     magal_redirect($annee, 'commissions', "Commission retirée du Wadial Magal " . $annee . ".");
                 }
+            } elseif ($action === 'magal_set_contrib') {
+                // Un responsable de la commission (ou un organisateur) autorise ou retire un membre : créer besoins et tâches de cette commission
+                $rid = (int) ($_POST['membre_id'] ?? 0);
+                $actif = (($_POST['enable'] ?? '') === '1');
+                if (!$impliquee || !$mgPeutEditer($cid)) { $error = "Action non autorisée."; }
+                else {
+                    $okM = $pdo->prepare("SELECT 1 FROM (SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?) x WHERE membre_id = ?");
+                    $okM->execute([$cid, $cid, $rid]);
+                    if ($rid <= 0 || $okM->fetchColumn() === false) { $error = "Ce membre ne fait pas partie de la commission."; }
+                    elseif ($actif) {
+                        $ins = $pdo->prepare("INSERT IGNORE INTO magal_contributeurs (commission_id, membre_id, ajoute_par) VALUES (?, ?, ?)");
+                        $ins->execute([$cid, $rid, $mgMembre > 0 ? $mgMembre : null]);
+                        if ($ins->rowCount() > 0 && $rid !== $mgMembre) {
+                            $nmC = $pdo->prepare("SELECT nom FROM commissions WHERE id = ?"); $nmC->execute([$cid]);
+                            troba_notify_membre($pdo, $rid, 'magal', '🕌 Wadial Magal : vous pouvez créer des besoins et tâches', 'Pour la commission « ' . (string) $nmC->fetchColumn() . ' » : la fonction Wadial Magal est dans votre menu.', 'magal.php?annee=' . $annee . '&tab=besoins');
+                        }
+                        magal_redirect($annee, 'besoins', "Membre autorisé à créer des besoins et des tâches.");
+                    } else {
+                        $pdo->prepare("DELETE FROM magal_contributeurs WHERE commission_id = ? AND membre_id = ?")->execute([$cid, $rid]);
+                        magal_redirect($annee, 'besoins', "Autorisation retirée.");
+                    }
+                }
             } elseif ($action === 'add_besoin') {
                 $lib = trim($_POST['libelle'] ?? '');
                 $qte = trim($_POST['quantite'] ?? '');
-                if (!$impliquee || !$mgPeutEditer($cid)) { $error = "Action non autorisée."; }
+                $ech = trim($_POST['echeance'] ?? '');
+                if (!$impliquee || !$mgPeutCreer($cid)) { $error = "Action non autorisée."; }
                 elseif ($lib === '') { $error = "Le besoin est obligatoire."; }
+                elseif ($ech !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $ech)) { $error = "Échéance invalide."; }
                 else {
-                    $pdo->prepare("INSERT INTO magal_besoins (annee, commission_id, libelle, quantite, created_by) VALUES (?,?,?,?,?)")
-                        ->execute([$annee, $cid, mb_substr($lib, 0, 255), ($qte !== '' ? mb_substr($qte, 0, 60) : null), $mgMembre ?: null]);
+                    $pdo->prepare("INSERT INTO magal_besoins (annee, commission_id, libelle, quantite, echeance, created_by) VALUES (?,?,?,?,?,?)")
+                        ->execute([$annee, $cid, mb_substr($lib, 0, 255), ($qte !== '' ? mb_substr($qte, 0, 60) : null), ($ech !== '' ? $ech : null), $mgMembre ?: null]);
                     magal_redirect($annee, 'besoins', "Besoin ajouté.");
                 }
-            } elseif ($action === 'set_besoin_statut' || $action === 'delete_besoin') {
+            } elseif ($action === 'set_besoin_statut' || $action === 'delete_besoin' || $action === 'set_besoin_echeance') {
                 $bid = (int) ($_POST['id'] ?? 0);
-                $br = $pdo->prepare("SELECT commission_id FROM magal_besoins WHERE id = ? AND annee = ?");
+                $br = $pdo->prepare("SELECT commission_id, created_by FROM magal_besoins WHERE id = ? AND annee = ?");
                 $br->execute([$bid, $annee]);
-                $bcid = (int) $br->fetchColumn();
-                if ($bcid <= 0 || !$mgPeutEditer($bcid)) { $error = "Action non autorisée."; }
+                $brow = $br->fetch();
+                $bcid = $brow ? (int) $brow['commission_id'] : 0;
+                $bmien = $brow && $mgMembre > 0 && (int) ($brow['created_by'] ?? 0) === $mgMembre; // demandeur direct
+                // Statut / échéance : organisateurs, responsable de la commission ou demandeur ; suppression : sans le demandeur
+                if ($bcid <= 0 || !($mgPeutEditer($bcid) || ($bmien && $action !== 'delete_besoin'))) { $error = "Action non autorisée."; }
+                elseif ($action === 'set_besoin_echeance') {
+                    $ech = trim((string) ($_POST['echeance'] ?? ''));
+                    if ($ech !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $ech)) { $error = "Échéance invalide."; }
+                    else {
+                        $pdo->prepare("UPDATE magal_besoins SET echeance = ? WHERE id = ?")->execute([$ech !== '' ? $ech : null, $bid]);
+                        magal_redirect($annee, 'besoins', $ech !== '' ? "Échéance du besoin enregistrée." : "Échéance du besoin retirée.");
+                    }
+                }
                 elseif ($action === 'delete_besoin') {
                     $pdo->prepare("DELETE FROM magal_besoins WHERE id = ?")->execute([$bid]);
                     magal_redirect($annee, 'besoins', "Besoin supprimé.");
@@ -143,7 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $desc = trim($_POST['description'] ?? '');
                 $ass = (int) ($_POST['assignee_id'] ?? 0);
                 $ech = trim($_POST['echeance'] ?? '');
-                if (!$impliquee || !$mgPeutEditer($cid)) { $error = "Action non autorisée."; }
+                if (!$impliquee || !$mgPeutCreer($cid)) { $error = "Action non autorisée."; }
                 elseif ($titre === '') { $error = "Le titre de la tâche est obligatoire."; }
                 else {
                     if ($ech !== '' && !DateTime::createFromFormat('Y-m-d', $ech)) { $ech = ''; }
@@ -162,11 +216,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             } elseif ($action === 'set_tache_statut' || $action === 'delete_tache') {
                 $tid = (int) ($_POST['id'] ?? 0);
-                $tr = $pdo->prepare("SELECT commission_id, assignee_id FROM magal_taches WHERE id = ? AND annee = ?");
+                $tr = $pdo->prepare("SELECT commission_id, assignee_id, created_by FROM magal_taches WHERE id = ? AND annee = ?");
                 $tr->execute([$tid, $annee]);
                 $trow = $tr->fetch();
                 $tcid = $trow ? (int) $trow['commission_id'] : 0;
                 $estAssigne = $trow && $mgMembre > 0 && (int) $trow['assignee_id'] === $mgMembre;
+                $estCreateur = $trow && $mgMembre > 0 && (int) ($trow['created_by'] ?? 0) === $mgMembre;
                 if ($tcid <= 0) { $error = "Tâche introuvable."; }
                 elseif ($action === 'delete_tache') {
                     if (!$mgPeutEditer($tcid)) { $error = "Action non autorisée."; }
@@ -177,7 +232,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     // Le responsable de la tâche peut aussi en changer le statut
                     $st = (string) ($_POST['statut'] ?? '');
-                    if (!$mgPeutEditer($tcid) && !$estAssigne) { $error = "Action non autorisée."; }
+                    if (!$mgPeutEditer($tcid) && !$estAssigne && !$estCreateur) { $error = "Action non autorisée."; }
                     elseif (!isset(magal_statuts_tache()[$st])) { $error = "Statut invalide."; }
                     else {
                         $pdo->prepare("UPDATE magal_taches SET statut = ?, updated_at = NOW() WHERE id = ?")->execute([$st, $tid]);
@@ -230,11 +285,16 @@ try {
 usort($impliquees, function ($a, $b) use ($nomCommission) { return strcasecmp($nomCommission[$a] ?? '', $nomCommission[$b] ?? ''); });
 // Un membre simple ne voit le détail (besoins / tâches) que de ses commissions
 $visibles = $mgOrganisateur ? $impliquees : array_values(array_filter($impliquees, function ($c) use ($mgMembreDe) { return in_array($c, $mgMembreDe, true); }));
+$contributeurs = []; $gestParCom = [];
+try {
+    foreach ($pdo->query("SELECT commission_id, membre_id FROM magal_contributeurs") as $r) { $contributeurs[(int) $r['commission_id']][] = (int) $r['membre_id']; }
+    foreach ($pdo->query("SELECT commission_id, membre_id FROM commission_gestionnaires") as $r) { $gestParCom[(int) $r['commission_id']][] = (int) $r['membre_id']; }
+} catch (Exception $e) {}
 
 $besoins = [];
 $taches = [];
 try {
-    $q = $pdo->prepare("SELECT * FROM magal_besoins WHERE annee = ? ORDER BY FIELD(statut,'a_trouver','en_cours','obtenu'), id ASC");
+    $q = $pdo->prepare("SELECT * FROM magal_besoins WHERE annee = ? ORDER BY FIELD(statut,'a_trouver','en_cours','obtenu'), (echeance IS NULL), echeance ASC, id ASC");
     $q->execute([$annee]);
     foreach ($q as $r) { $besoins[(int) $r['commission_id']][] = $r; }
     $q = $pdo->prepare("SELECT t.*, CONCAT(m.prenom, ' ', m.nom) AS assignee_nom FROM magal_taches t LEFT JOIN membres m ON m.id = t.assignee_id WHERE t.annee = ? ORDER BY FIELD(t.statut,'en_cours','a_faire','fait'), t.echeance IS NULL, t.echeance ASC, t.id ASC");
@@ -244,7 +304,7 @@ try {
 
 // Membres de chaque commission visible (pour attribuer les tâches)
 $membresCom = [];
-if ($tab === 'taches') {
+if ($tab === 'taches' || $tab === 'besoins') {
     foreach ($visibles as $cid) {
         try {
             $q = $pdo->prepare("SELECT DISTINCT m.id, m.prenom, m.nom FROM membres m WHERE m.status = 'approved' AND m.id IN (SELECT membre_id FROM commission_membres WHERE commission_id = ? UNION SELECT membre_id FROM commission_gestionnaires WHERE commission_id = ?) ORDER BY m.prenom, m.nom");
@@ -280,6 +340,43 @@ $h = function ($v) { return htmlspecialchars((string) $v, ENT_QUOTES); };
 $stBesoin = magal_statuts_besoin();
 $stTache = magal_statuts_tache();
 $aujourdhui = date('Y-m-d');
+
+// Indicateurs de l'édition (limités aux commissions visibles par le membre)
+$ind = ['com' => count($visibles), 'bT' => 0, 'bOk' => 0, 'bEnc' => 0, 'bAtt' => 0, 'bRet' => 0, 'tT' => 0, 'tOk' => 0, 'tEnc' => 0, 'tAtt' => 0, 'tRet' => 0, 'parCom' => []];
+foreach ($visibles as $icid) {
+    $c = ['nom' => (string) ($nomCommission[$icid] ?? ''), 'bT' => 0, 'bOk' => 0, 'tT' => 0, 'tOk' => 0, 'ret' => 0];
+    foreach (($besoins[$icid] ?? []) as $ib) {
+        $ind['bT']++; $c['bT']++;
+        if ($ib['statut'] === 'obtenu') { $ind['bOk']++; $c['bOk']++; }
+        else {
+            if ($ib['statut'] === 'en_cours') { $ind['bEnc']++; } else { $ind['bAtt']++; }
+            if (!empty($ib['echeance']) && $ib['echeance'] < $aujourdhui) { $ind['bRet']++; $c['ret']++; }
+        }
+    }
+    foreach (($taches[$icid] ?? []) as $it) {
+        $ind['tT']++; $c['tT']++;
+        if ($it['statut'] === 'fait') { $ind['tOk']++; $c['tOk']++; }
+        else {
+            if ($it['statut'] === 'en_cours') { $ind['tEnc']++; } else { $ind['tAtt']++; }
+            if (!empty($it['echeance']) && $it['echeance'] < $aujourdhui) { $ind['tRet']++; $c['ret']++; }
+        }
+    }
+    $ind['parCom'][] = $c;
+}
+$indTot = $ind['bT'] + $ind['tT'];
+$indPct = $indTot > 0 ? (int) round(100 * ($ind['bOk'] + $ind['tOk']) / $indTot) : 0;
+$indPctB = $ind['bT'] > 0 ? (int) round(100 * $ind['bOk'] / $ind['bT']) : 0;
+$indPctT = $ind['tT'] > 0 ? (int) round(100 * $ind['tOk'] / $ind['tT']) : 0;
+$indRet = $ind['bRet'] + $ind['tRet'];
+$indFin = null;
+if ($mgOrganisateur || $mgFinance) {
+    try {
+        $qF = $pdo->prepare("SELECT type, COALESCE(SUM(montant), 0) FROM magal_finance WHERE annee = ? GROUP BY type");
+        $qF->execute([$annee]);
+        $indFin = ['recette' => 0.0, 'depense' => 0.0];
+        foreach ($qF->fetchAll(PDO::FETCH_NUM) as $rF) { if (isset($indFin[$rF[0]])) { $indFin[$rF[0]] = (float) $rF[1]; } }
+    } catch (Exception $e) { $indFin = null; }
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -307,12 +404,50 @@ $aujourdhui = date('Y-m-d');
         .mg-stat { border-radius: 10px; padding: 0.8rem 1rem; text-align: center; }
         .mg-stat .v { font-size: 1.4rem; font-weight: 800; color: var(--white); }
         .mg-stat .l { color: var(--text-muted); font-size: 0.78rem; }
+        .mg-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
+        .mg-bar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #2d6a4f, #d4af37); }
+        .mg-ind-row { display: grid; grid-template-columns: minmax(120px, 1.2fr) 2fr; gap: 0.3rem 0.9rem; align-items: center; padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.07); }
+        .mg-ind-row .mg-ind-nom { color: var(--white); font-weight: 700; font-size: 0.9rem; }
+        .mg-ind-row .mg-ind-txt { grid-column: 1 / -1; color: var(--text-muted); font-size: 0.78rem; }
+        @media (max-width: 600px) { .mg-ind-row { grid-template-columns: 1fr; } }
         .mg-badge { font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 12px; white-space: nowrap; border: 1px solid; }
         .mg-b-ok { background: rgba(37,211,102,0.15); color: #7bd8a6; border-color: rgba(37,211,102,0.4); }
         .mg-b-att { background: rgba(255,193,7,0.15); color: #ffd873; border-color: rgba(255,193,7,0.4); }
         .mg-b-info { background: rgba(45,140,255,0.15); color: #8ec5ff; border-color: rgba(45,140,255,0.4); }
         .mg-b-red { background: rgba(191,33,33,0.15); color: #fca5a5; border-color: rgba(191,33,33,0.45); }
         @media (max-width: 600px) { .mg-form .form-group { min-width: 100%; } }
+        /* ── Sélecteur à deux listes ── */
+        #members-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
+        #members-modal.active { display: flex; }
+        #sub-members-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
+        #sub-members-modal.active { display: flex; }
+        .tl-card { width: 100%; max-width: 820px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.25); border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
+        .tl-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg,#1b4332,#2d6a4f); flex-shrink: 0; }
+        .tl-head h3 { margin: 0; color: #fff; font-size: 1.05rem; }
+        .tl-x { background: rgba(255,255,255,0.15); color: #fff; border: 0; width: 28px; height: 28px; border-radius: 50%; font-size: 1.1rem; line-height: 1; cursor: pointer; flex-shrink: 0; }
+        .tl-cols { display: flex; flex: 1; min-height: 0; }
+        .tl-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .tl-col + .tl-col { border-left: 1px solid var(--glass-border); }
+        .tl-col-head { padding: 0.75rem 1rem 0.5rem; flex-shrink: 0; }
+        .tl-col-head .tl-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gold); font-weight: 700; }
+        .tl-col-head input { width: 100%; margin-top: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 12px; color: #fff; font-size: 0.85rem; padding: 0.45rem 0.9rem; }
+        .tl-col-head input:focus { outline: none; border-color: var(--accent); }
+        .tl-list { flex: 1; overflow-y: auto; padding: 0.5rem 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.35rem; }
+        .tl-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(255,255,255,0.03); }
+        .tl-av { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .tl-av--ph { background: rgba(212,175,55,0.15); color: var(--gold); font-size: 0.72rem; font-weight: 700; border: 1px solid rgba(212,175,55,0.35); }
+        .tl-name { flex: 1; color: #fff; font-size: 0.88rem; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tl-item button { flex-shrink: 0; border: 0; border-radius: 8px; width: 30px; height: 30px; font-size: 1.1rem; line-height: 1; cursor: pointer; }
+        .tl-add-btn { background: rgba(212,175,55,0.2); color: var(--gold); }
+        .tl-add-btn:hover { background: rgba(212,175,55,0.35); }
+        .tl-rem-btn { background: rgba(255,80,80,0.18); color: #ff8a8a; }
+        .tl-rem-btn:hover { background: rgba(255,80,80,0.32); }
+        .tl-empty { color: var(--text-muted); font-size: 0.82rem; font-style: italic; padding: 0.75rem 0.5rem; text-align: center; }
+        .tl-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.85rem 1.25rem; border-top: 1px solid var(--glass-border); flex-wrap: wrap; flex-shrink: 0; }
+        .tl-count { font-size: 0.8rem; color: var(--text-muted); }
+        @media (max-width: 600px) { .tl-cols { flex-direction: column; } .tl-col + .tl-col { border-left: 0; border-top: 1px solid var(--glass-border); } .tl-list { max-height: 30vh; } }
+        .tl-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+        .tl-chip { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.25rem 0.75rem 0.25rem 0.3rem; border: 1px solid rgba(212,175,55,0.4); border-radius: 10px; background: rgba(255,255,255,0.05); color: var(--white); font-size: 0.88rem; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -327,21 +462,118 @@ $aujourdhui = date('Y-m-d');
                 <form method="GET" action="magal.php" style="margin:0; display:flex; align-items:center; gap:0.5rem;">
                     <input type="hidden" name="tab" value="<?php echo $h($tab); ?>">
                     <label for="mg-annee" style="color:var(--text-muted); font-size:0.85rem;">Édition</label>
-                    <select id="mg-annee" name="annee" class="mg-sel" onchange="this.form.submit()">
-                        <?php for ($y = MAGAL_PREMIERE_ANNEE; $y <= $anneeCourante + 2; $y++): ?>
+                    <select id="mg-annee" name="annee" class="mg-sel" style="width:8.5rem;" onchange="this.form.submit()">
+                        <?php for ($y = MAGAL_PREMIERE_ANNEE; $y <= $anneeMax; $y++): ?>
                             <option value="<?php echo $y; ?>"<?php echo $y === $annee ? ' selected' : ''; ?>><?php echo $y; ?></option>
                         <?php endfor; ?>
                     </select>
                 </form>
             </div>
 
+            <?php if ($mgOrganisateur) { echo fr_bloc_html($pdo, 'magal', 'Wadial Magal', 'magal.php'); } ?>
+            <?php // Indicateurs repliés par défaut : l'accueil montre d'abord le travail en cours ?>
+            <details class="glass-card" style="margin-bottom:1rem;">
+                <summary>📊 Indicateurs — Wadial Magal <?php echo (int) $annee; ?></summary>
+                <div class="mg-stats" style="margin-top:0.7rem;">
+                    <div class="glass-card mg-stat"><div class="v"><?php echo (int) $ind['com']; ?></div><div class="l">📋 Commission(s) impliquée(s)</div></div>
+                    <div class="glass-card mg-stat"><div class="v"><?php echo (int) $ind['bOk']; ?>/<?php echo (int) $ind['bT']; ?></div><div class="l">🧰 Besoins obtenus (<?php echo (int) $indPctB; ?> %)</div></div>
+                    <div class="glass-card mg-stat"><div class="v"><?php echo (int) $ind['tOk']; ?>/<?php echo (int) $ind['tT']; ?></div><div class="l">✅ Tâches faites (<?php echo (int) $indPctT; ?> %)</div></div>
+                    <div class="glass-card mg-stat"><div class="v" style="color:<?php echo $indRet > 0 ? '#fca5a5' : '#7bd8a6'; ?>;"><?php echo (int) $indRet; ?></div><div class="l">⏰ En retard (<?php echo (int) $ind['bRet']; ?> besoin(s), <?php echo (int) $ind['tRet']; ?> tâche(s))</div></div>
+                    <div class="glass-card mg-stat"><div class="v" style="color:#ffd873;"><?php echo (int) $ind['bEnc'] + (int) $ind['tEnc']; ?></div><div class="l">⏳ En cours</div></div>
+                    <div class="glass-card mg-stat"><div class="v"><?php echo (int) $ind['bAtt'] + (int) $ind['tAtt']; ?></div><div class="l">🕓 À trouver / à faire</div></div>
+                    <?php if ($indFin !== null): $indSolde = $indFin['recette'] - $indFin['depense']; ?>
+                    <div class="glass-card mg-stat"><div class="v" style="color:#7bd8a6;"><?php echo number_format($indFin['recette'], 2, ',', ' '); ?> €</div><div class="l">📥 Recettes</div></div>
+                    <div class="glass-card mg-stat"><div class="v" style="color:#fca5a5;"><?php echo number_format($indFin['depense'], 2, ',', ' '); ?> €</div><div class="l">📤 Dépenses</div></div>
+                    <div class="glass-card mg-stat"><div class="v" style="color:<?php echo $indSolde >= 0 ? '#ffd873' : '#fca5a5'; ?>;"><?php echo number_format($indSolde, 2, ',', ' '); ?> €</div><div class="l">⚖️ Solde</div></div>
+                    <?php endif; ?>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; margin:0.2rem 0 0.35rem; font-size:0.85rem; color:var(--text-muted);"><span>Avancement global (besoins obtenus + tâches faites)</span><strong style="color:var(--gold);"><?php echo (int) $indPct; ?> %</strong></div>
+                <div class="mg-bar"><span style="width:<?php echo (int) $indPct; ?>%;"></span></div>
+                <?php if (!empty($ind['parCom'])): ?>
+                <div style="margin-top:0.9rem;">
+                    <?php foreach ($ind['parCom'] as $ic): $it2 = $ic['bT'] + $ic['tT']; $ip = $it2 > 0 ? (int) round(100 * ($ic['bOk'] + $ic['tOk']) / $it2) : 0; ?>
+                    <div class="mg-ind-row">
+                        <div class="mg-ind-nom">📋 <?php echo $h($ic['nom']); ?></div>
+                        <div class="mg-bar"><span style="width:<?php echo (int) $ip; ?>%;"></span></div>
+                        <div class="mg-ind-txt">🧰 <?php echo (int) $ic['bOk']; ?>/<?php echo (int) $ic['bT']; ?> besoin(s) · ✅ <?php echo (int) $ic['tOk']; ?>/<?php echo (int) $ic['tT']; ?> tâche(s) · <?php echo (int) $ip; ?> %<?php if ($ic['ret'] > 0): ?> · <span style="color:#fca5a5; font-weight:700;">⏰ <?php echo (int) $ic['ret']; ?> en retard</span><?php endif; ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+            </details>
             <nav class="mg-tabs">
                 <?php foreach ($onglets as $k => $lbl): ?>
                     <a href="magal.php?annee=<?php echo (int) $annee; ?>&tab=<?php echo $h($k); ?>"<?php echo $k === $tab ? ' class="active"' : ''; ?>><?php echo $lbl; ?></a>
                 <?php endforeach; ?>
             </nav>
 
-            <?php if ($tab === 'commissions'): ?>
+            <?php if ($tab === 'accueil'):
+                // Le travail en cours des commissions visibles, rangé par statut ;
+                // ce qui est obtenu ou fait se retrouve dans les onglets Besoins / Tâches
+                $acc = [
+                    ['t', 'en_cours',  '⏳ Tâches en cours'],
+                    ['t', 'a_faire',   '🕓 Tâches à faire'],
+                    ['b', 'a_trouver', '🔎 Besoins à trouver'],
+                    ['b', 'en_cours',  '⏳ Besoins en cours'],
+                ];
+                $accLignes = [];
+                foreach ($visibles as $acid) {
+                    foreach (($taches[$acid] ?? []) as $at) { $accLignes['t'][$at['statut']][] = $at; }
+                    foreach (($besoins[$acid] ?? []) as $ab) { $accLignes['b'][$ab['statut']][] = $ab; }
+                }
+                $accCreables = array_values(array_filter($visibles, $mgPeutCreer));
+                $accVide = true;
+            ?>
+                <?php if (!empty($accCreables)): ?>
+                <div class="glass-card mg-card">
+                    <h3>➕ Ajouter un besoin ou une tâche</h3>
+                    <?php foreach ($accCreables as $acid): ?>
+                        <div class="mg-row">
+                            <div class="mg-main"><strong>📋 <?php echo $h($nomCommission[$acid] ?? ''); ?></strong></div>
+                            <a class="btn btn-secondary btn-sm" href="magal.php?annee=<?php echo (int) $annee; ?>&tab=besoins#ajout-besoin-<?php echo (int) $acid; ?>">🧰 ➕ Besoin</a>
+                            <a class="btn btn-primary btn-sm" href="magal.php?annee=<?php echo (int) $annee; ?>&tab=taches#ajout-tache-<?php echo (int) $acid; ?>">✅ ➕ Tâche</a>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if (empty($visibles)): ?>
+                    <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">Aucune commission impliquée pour le moment.</p></div>
+                <?php endif; ?>
+
+                <?php foreach ($acc as [$accType, $accStatut, $accTitre]):
+                    $accListe = $accLignes[$accType][$accStatut] ?? [];
+                    if (empty($accListe)) { continue; }
+                    $accVide = false;
+                ?>
+                    <details class="glass-card mg-card" open>
+                        <summary><?php echo $accTitre; ?> <span class="mg-count"><?php echo count($accListe); ?></span></summary>
+                        <div style="margin-top:0.7rem;">
+                        <?php foreach ($accListe as $al):
+                            $alRetard = !empty($al['echeance']) && $al['echeance'] < $aujourdhui;
+                            $alTab = $accType === 't' ? 'taches' : 'besoins';
+                        ?>
+                            <div class="mg-row">
+                                <div class="mg-main">
+                                    <strong><?php echo $h($accType === 't' ? $al['titre'] : $al['libelle']); ?></strong>
+                                    <div class="mg-sub">
+                                        📋 <?php echo $h($nomCommission[(int) $al['commission_id']] ?? ''); ?>
+                                        <?php if ($accType === 't'): ?> · 👤 <?php echo !empty(trim((string) $al['assignee_nom'])) ? $h($al['assignee_nom']) : 'Non attribuée'; ?><?php endif; ?>
+                                        <?php if ($accType === 'b' && !empty($al['quantite'])): ?> · Quantité : <?php echo $h($al['quantite']); ?><?php endif; ?>
+                                        <?php if (!empty($al['echeance'])): ?> · 📅 <span<?php echo $alRetard ? ' style="color:#fca5a5; font-weight:700;"' : ''; ?>><?php echo $h(date('d/m/Y', strtotime($al['echeance']))); ?><?php echo $alRetard ? ' (en retard)' : ''; ?></span><?php endif; ?>
+                                    </div>
+                                </div>
+                                <a class="btn btn-secondary btn-sm" href="magal.php?annee=<?php echo (int) $annee; ?>&tab=<?php echo $alTab; ?>">Gérer</a>
+                            </div>
+                        <?php endforeach; ?>
+                        </div>
+                    </details>
+                <?php endforeach; ?>
+                <?php if ($accVide && !empty($visibles)): ?>
+                    <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">✅ Aucune tâche ni aucun besoin en cours pour l'édition <?php echo (int) $annee; ?>.</p></div>
+                <?php endif; ?>
+
+            <?php elseif ($tab === 'commissions'): ?>
                 <div class="glass-card mg-card">
                     <h3>📋 Commissions impliquées <span class="mg-count"><?php echo count($impliquees); ?></span></h3>
                     <?php if (empty($impliquees)): ?>
@@ -394,14 +626,21 @@ $aujourdhui = date('Y-m-d');
                 <?php if (empty($visibles)): ?>
                     <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">Aucune commission impliquée pour le moment.</p></div>
                 <?php endif; ?>
-                <?php foreach ($visibles as $cid): $edit = $mgPeutEditer($cid); $liste = $besoins[$cid] ?? []; ?>
+                <?php foreach ($visibles as $cid): $edit = $mgPeutEditer($cid); $creer = $mgPeutCreer($cid); $liste = $besoins[$cid] ?? []; ?>
                     <div class="glass-card mg-card">
                         <h3>🧰 <?php echo $h($nomCommission[$cid] ?? ''); ?> <span class="mg-count"><?php echo count($liste); ?></span></h3>
                         <?php if (empty($liste)): ?><p style="color:var(--text-muted); margin:0 0 0.4rem;">Aucun besoin renseigné.</p><?php endif; ?>
-                        <?php foreach ($liste as $b): $bc = $b['statut'] === 'obtenu' ? 'mg-b-ok' : ($b['statut'] === 'en_cours' ? 'mg-b-info' : 'mg-b-att'); ?>
+                        <?php foreach ($liste as $b): $peutB = $edit || ($mgMembre > 0 && (int) ($b['created_by'] ?? 0) === $mgMembre); $bc = $b['statut'] === 'obtenu' ? 'mg-b-ok' : ($b['statut'] === 'en_cours' ? 'mg-b-info' : 'mg-b-att'); ?>
                             <div class="mg-row<?php echo $b['statut'] === 'obtenu' ? ' done' : ''; ?>">
-                                <div class="mg-main"><strong><?php echo $h($b['libelle']); ?></strong><?php if (!empty($b['quantite'])): ?><div class="mg-sub">Quantité : <?php echo $h($b['quantite']); ?></div><?php endif; ?></div>
-                                <?php if ($edit): ?>
+                                <div class="mg-main"><strong><?php echo $h($b['libelle']); ?></strong><?php if (!empty($b['quantite'])): ?><div class="mg-sub">Quantité : <?php echo $h($b['quantite']); ?></div><?php endif; ?><?php if (!empty($b['echeance'])): $retardB = $b['statut'] !== 'obtenu' && $b['echeance'] < $aujourdhui; ?><div class="mg-sub">📅 Échéance : <span<?php echo $retardB ? ' style="color:#fca5a5; font-weight:700;"' : ''; ?>><?php echo $h(date('d/m/Y', strtotime($b['echeance']))); ?></span><?php echo $retardB ? ' · en retard' : ''; ?></div><?php endif; ?></div>
+                                <?php if ($peutB): ?>
+                                <form method="POST" action="magal.php" style="margin:0;" title="Échéance">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="set_besoin_echeance">
+                                    <input type="hidden" name="annee" value="<?php echo (int) $annee; ?>">
+                                    <input type="hidden" name="id" value="<?php echo (int) $b['id']; ?>">
+                                    <input type="date" name="echeance" class="mg-sel" value="<?php echo $h($b['echeance'] ?? ''); ?>" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+                                </form>
                                 <form method="POST" action="magal.php" style="margin:0;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="set_besoin_statut">
@@ -411,6 +650,7 @@ $aujourdhui = date('Y-m-d');
                                         <?php foreach ($stBesoin as $k => $lbl): ?><option value="<?php echo $k; ?>"<?php echo $b['statut'] === $k ? ' selected' : ''; ?>><?php echo $h($lbl); ?></option><?php endforeach; ?>
                                     </select>
                                 </form>
+                                <?php if ($edit): ?>
                                 <form method="POST" action="magal.php" style="margin:0;" data-confirm="Supprimer ce besoin ?" data-confirm-danger="1">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="delete_besoin">
@@ -418,21 +658,42 @@ $aujourdhui = date('Y-m-d');
                                     <input type="hidden" name="id" value="<?php echo (int) $b['id']; ?>">
                                     <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;" title="Supprimer">🗑️</button>
                                 </form>
+                                <?php endif; ?>
                                 <?php else: ?>
                                     <span class="mg-badge <?php echo $bc; ?>"><?php echo $h($stBesoin[$b['statut']] ?? $b['statut']); ?></span>
                                 <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
-                        <?php if ($edit): ?>
-                        <form method="POST" action="magal.php" class="mg-form">
+                        <?php if ($creer): ?>
+                        <form method="POST" action="magal.php" class="mg-form" id="ajout-besoin-<?php echo (int) $cid; ?>">
                             <?php echo csrf_field(); ?>
                             <input type="hidden" name="action" value="add_besoin">
                             <input type="hidden" name="annee" value="<?php echo (int) $annee; ?>">
                             <input type="hidden" name="commission_id" value="<?php echo (int) $cid; ?>">
                             <div class="form-group" style="flex:2;"><label class="form-label">Besoin</label><input type="text" name="libelle" class="form-input" required maxlength="255" placeholder="Ex : 20 tables, sono, vaisselle…"></div>
                             <div class="form-group"><label class="form-label">Quantité (facultatif)</label><input type="text" name="quantite" class="form-input" maxlength="60" placeholder="Ex : 20"></div>
+                            <div class="form-group"><label class="form-label">Échéance (facultatif)</label><input type="date" name="echeance" class="form-input"></div>
                             <button type="submit" class="btn btn-primary btn-sm">➕ Ajouter</button>
                         </form>
+                        <?php endif; ?>
+                        <?php if ($edit): $mcAut = $contributeurs[$cid] ?? []; ?>
+                        <details class="glass-card" style="margin-top:0.8rem;">
+                            <summary>👥 Membres autorisés à créer des besoins et tâches (<?php echo count($mcAut); ?>)</summary>
+                            <p style="color:var(--text-muted); font-size:0.82rem; margin:0.5rem 0;">Les membres cochés peuvent ajouter des besoins et des tâches du Wadial Magal pour cette commission. La fonction Wadial Magal apparaît alors dans leur menu.</p>
+                            <?php foreach (($membresCom[$cid] ?? []) as $m): if (in_array((int) $m['id'], $gestParCom[$cid] ?? [], true)) { continue; } ?>
+                                <form method="POST" action="magal.php" style="margin:0 0 0.4rem;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="magal_set_contrib">
+                                    <input type="hidden" name="annee" value="<?php echo (int) $annee; ?>">
+                                    <input type="hidden" name="commission_id" value="<?php echo (int) $cid; ?>">
+                                    <input type="hidden" name="membre_id" value="<?php echo (int) $m['id']; ?>">
+                                    <label style="display:flex; align-items:center; gap:0.7rem; margin:0; cursor:pointer; color:var(--white);">
+                                        <input type="checkbox" class="checkbox-switch" name="enable" value="1"<?php echo in_array((int) $m['id'], $mcAut, true) ? ' checked' : ''; ?> onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+                                        <span><?php echo $h(trim($m['prenom'] . ' ' . $m['nom'])); ?></span>
+                                    </label>
+                                </form>
+                            <?php endforeach; ?>
+                        </details>
                         <?php endif; ?>
                     </div>
                 <?php endforeach; ?>
@@ -441,13 +702,14 @@ $aujourdhui = date('Y-m-d');
                 <?php if (empty($visibles)): ?>
                     <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">Aucune commission impliquée pour le moment.</p></div>
                 <?php endif; ?>
-                <?php foreach ($visibles as $cid): $edit = $mgPeutEditer($cid); $liste = $taches[$cid] ?? []; ?>
+                <?php foreach ($visibles as $cid): $edit = $mgPeutEditer($cid); $creer = $mgPeutCreer($cid); $liste = $taches[$cid] ?? []; ?>
                     <div class="glass-card mg-card">
                         <h3>✅ <?php echo $h($nomCommission[$cid] ?? ''); ?> <span class="mg-count"><?php echo count($liste); ?></span></h3>
                         <?php if (empty($liste)): ?><p style="color:var(--text-muted); margin:0 0 0.4rem;">Aucune tâche.</p><?php endif; ?>
                         <?php foreach ($liste as $t):
                             $retard = $t['statut'] !== 'fait' && !empty($t['echeance']) && $t['echeance'] < $aujourdhui;
                             $estAssigne = $mgMembre > 0 && (int) $t['assignee_id'] === $mgMembre;
+                            $estCreateur = $mgMembre > 0 && (int) ($t['created_by'] ?? 0) === $mgMembre;
                             $tc = $t['statut'] === 'fait' ? 'mg-b-ok' : ($t['statut'] === 'en_cours' ? 'mg-b-info' : 'mg-b-att');
                         ?>
                             <div class="mg-row<?php echo $t['statut'] === 'fait' ? ' done' : ''; ?>">
@@ -459,7 +721,7 @@ $aujourdhui = date('Y-m-d');
                                     </div>
                                     <?php if (!empty($t['description'])): ?><div class="mg-sub"><?php echo nl2br($h($t['description'])); ?></div><?php endif; ?>
                                 </div>
-                                <?php if ($edit || $estAssigne): ?>
+                                <?php if ($edit || $estAssigne || $estCreateur): ?>
                                 <form method="POST" action="magal.php" style="margin:0;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="set_tache_statut">
@@ -483,8 +745,8 @@ $aujourdhui = date('Y-m-d');
                                 <?php endif; ?>
                             </div>
                         <?php endforeach; ?>
-                        <?php if ($edit): ?>
-                        <form method="POST" action="magal.php" class="mg-form">
+                        <?php if ($creer): ?>
+                        <form method="POST" action="magal.php" class="mg-form" id="ajout-tache-<?php echo (int) $cid; ?>">
                             <?php echo csrf_field(); ?>
                             <input type="hidden" name="action" value="add_tache">
                             <input type="hidden" name="annee" value="<?php echo (int) $annee; ?>">
@@ -591,5 +853,18 @@ $aujourdhui = date('Y-m-d');
     <?php include __DIR__ . '/modern_popup.php'; ?>
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
 <script src="modern-date.js" defer></script>
+<script>
+// Arrivée depuis « ➕ Besoin / ➕ Tâche » de l'accueil : le formulaire de la
+// commission est mis en évidence et son premier champ prêt à la saisie
+(function () {
+    var cible = location.hash && document.getElementById(location.hash.slice(1));
+    if (!cible || !/^ajout-/.test(cible.id)) { return; }
+    cible.scrollIntoView({ block: 'center' });
+    cible.style.outline = '2px solid var(--gold)';
+    cible.style.borderRadius = '10px';
+    var champ = cible.querySelector('input[type="text"]');
+    if (champ) { setTimeout(function () { champ.focus(); }, 300); }
+})();
+</script>
 </body>
 </html>

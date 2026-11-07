@@ -219,6 +219,7 @@ $trobaCsrf = csrf_token();
                 <div class="hdr-nav-admin" id="hdrNavAdmin">
                     <div class="hdr-nav-admin-title">Espace membre</div>
                     <?php foreach ($hdrMemberItems as $hdrHref => $hdrLabel): ?>
+                        <?php if ($hdrHref[0] === '#'): ?><div class="admin-menu-sep"><?php echo $hdrLabel; ?></div><?php continue; endif; ?>
                         <a href="<?php echo htmlspecialchars($hdrHref); ?>"<?php echo $currentPage === $hdrHref ? ' class="active"' : ''; ?>><?php echo $hdrLabel; ?></a>
                     <?php endforeach; ?>
                 </div>
@@ -883,4 +884,6 @@ $trobaCsrf = csrf_token();
 <?php include __DIR__ . '/pull_refresh.php'; ?>
 
 <?php /* Actions sans rechargement : notification + page conservée (groupes ouverts, défilement…) — sur toutes les pages qui incluent l'en-tête */ ?>
-<script src="soft-submit.js" defer></script>
+<script src="soft-submit.js?v=<?php echo (int) @filemtime(__DIR__ . '/soft-submit.js'); ?>" defer></script>
+<?php /* Listes déroulantes modernes avec recherche — sur toutes les pages qui incluent l'en-tête */ ?>
+<script src="modern-select.js?v=<?php echo (int) @filemtime(__DIR__ . '/modern-select.js'); ?>" defer></script>

@@ -35,6 +35,14 @@ function troba_member_menu_items(?PDO $pdo = null): array
             }
         } catch (Throwable $e) {}
     }
+    // Points de gestion selon les droits (responsable de commission, Kurel, Culte, Secrétariat, Finance…)
+    try {
+        $gestion = troba_member_gestion_items($pdo);
+        if (!empty($gestion)) {
+            $menu['#gestion'] = '🛠️ Gestion'; // intitulé de section (non cliquable)
+            foreach ($gestion as $gHref => $gLabel) { $menu[$gHref] = $gLabel; }
+        }
+    } catch (Throwable $e) { /* menu sans gestion */ }
     return $menu;
 }
 
@@ -66,6 +74,7 @@ function troba_member_gestion_items(?PDO $pdo = null): array
     if ($isCom) {
         $items['commission_dashboard.php'] = '🛠️ Gérer mes commissions';
         $items['sondage_gestion.php'] = '📊 Gérer les sondages';
+        $items['logistique_demande.php'] = '🚚 Demande de logistique';
         if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
             $pid = (int) $_SESSION['player_id'];
             $stockOn = false;
@@ -73,11 +82,10 @@ function troba_member_gestion_items(?PDO $pdo = null): array
                 $stockOn = ((int) $pdo->query("SELECT COUNT(*) FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = $pid AND COALESCE(c.stock_enabled,0) = 1")->fetchColumn()) > 0;
             } catch (Throwable $e) { $stockOn = false; }
             try {
-                $culteN = (int) $pdo->query("SELECT COUNT(*) FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = $pid AND LOWER(c.nom) LIKE '%culte%'")->fetchColumn();
-                if ($culteN > 0) {
-                    $items['wird_admin.php'] = '📖 Lecture Coran';
-                    $items['admin_guddi.php'] = '💎 Guddi Àjjuma';
-                }
+                require_once __DIR__ . '/fonction_responsables_helper.php';
+                if (fr_est_responsable($pdo, 'coran', $pid)) { $items['wird_admin.php'] = '📖 Lecture Coran'; }
+                if (fr_est_responsable($pdo, 'guddi', $pid)) { $items['admin_guddi.php'] = '💎 Guddi Àjjuma'; }
+
             } catch (Throwable $e) {}
             try {
                 $secreN = (int) $pdo->query("SELECT COUNT(*) FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = $pid AND (LOWER(c.nom) LIKE '%secrétariat général%' OR LOWER(c.nom) LIKE '%secretariat general%')")->fetchColumn();
@@ -92,6 +100,13 @@ function troba_member_gestion_items(?PDO $pdo = null): array
             } catch (Throwable $e) {}
             if ($stockOn) { $items['stock_index.php'] = '📦 Stock'; }
         }
+    }
+    // Responsables de la commission Logistique : demandes reçues
+    if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
+        try {
+            require_once __DIR__ . '/stock_logistique_helper.php';
+            if (logistique_est_responsable($pdo, (int) $_SESSION['player_id'])) { $items['logistique_demandes.php'] = '📋 Demandes de logistique'; }
+        } catch (Throwable $e) {}
     }
     // Wadial Magal : organisateurs et membres des commissions impliquées
     if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {

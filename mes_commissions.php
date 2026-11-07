@@ -300,21 +300,10 @@ if (!empty($smgData)) {
                         $groupePrec = $groupeCourant;
                     }
                 ?>
-                <?php if ($estResp): ?>
                 <details class="mc-com" id="commission-<?php echo $cid; ?>" open>
                     <summary>
                         <span class="mc-com-nom">📋 <?php echo $h($c['nom']); ?> <span class="mg-n">(<?php echo $nbMembres; ?> membre(s))</span></span>
-                        <span class="mc-com-badges"><span class="badge badge-approved">🎖️ Responsable</span></span>
-                    </summary>
-                    <div class="mc-com-body">
-                        <iframe class="mc-frame-full" data-cid="<?php echo $cid; ?>" scrolling="no" title="Commission <?php echo $h($c['nom']); ?>" data-src="commission_dashboard.php?embed=1&commission=<?php echo $cid; ?>"></iframe>
-                    </div>
-                </details>
-                <?php else: ?>
-                <details class="mc-com" id="commission-<?php echo $cid; ?>" open>
-                    <summary>
-                        <span class="mc-com-nom">📋 <?php echo $h($c['nom']); ?> <span class="mg-n">(<?php echo $nbMembres; ?> membre(s))</span></span>
-                        <span class="mc-com-badges"><span class="badge">Membre</span></span>
+                        <span class="mc-com-badges"><?php if ($estResp): ?><span class="badge badge-approved">🎖️ Responsable</span><?php else: ?><span class="badge">Membre</span><?php endif; ?></span>
                     </summary>
                     <div class="mc-com-body">
                     <div class="mc-card mc-card-in">
@@ -425,17 +414,13 @@ if (!empty($smgData)) {
 
                     <div class="mc-actions">
                         <?php if ((int) ($c['dispo_active'] ?? 1) === 1): ?><a href="disponibilites.php#c<?php echo $cid; ?>" class="btn btn-secondary btn-sm">🗓️ Mes disponibilités</a><?php endif; ?>
-                        <?php if (isset($magalCommissions[$cid])): ?>
+                        <?php if (isset($magalCommissions[$cid]) && $accesMagal): ?>
                             <a href="magal.php?annee=<?php echo (int) $magalAnnee; ?>&tab=taches" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">🕌 Wadial Magal <?php echo (int) $magalAnnee; ?></a>
-                        <?php endif; ?>
-                        <?php if ($estResp): ?>
-                            <a href="commission_dashboard.php#com-card-<?php echo $cid; ?>" class="btn btn-secondary btn-sm">🛠️ Gérer la commission</a>
                         <?php endif; ?>
                     </div>
                 </div>
                     </div>
                 </details>
-                <?php endif; ?>
                 <?php endforeach; ?>
 
                 </div>

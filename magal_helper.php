@@ -71,10 +71,46 @@ function magal_membre_implique(PDO $pdo, int $membreId): bool
     }
 }
 
-/** Accès à la page Wadial Magal pour un membre (hors administrateur). */
+/** Le membre est-il désigné responsable du Wadial Magal ? */
+function magal_est_responsable(PDO $pdo, int $membreId): bool
+{
+    require_once __DIR__ . '/fonction_responsables_helper.php';
+    return fr_est_responsable($pdo, 'magal', $membreId);
+}
+
+/** Le membre a-t-il été autorisé (par un responsable de commission) à créer des besoins / tâches du Wadial Magal ? */
+function magal_est_contributeur(PDO $pdo, int $membreId): bool
+{
+    if ($membreId <= 0) { return false; }
+    try {
+        $st = $pdo->prepare("SELECT 1 FROM magal_contributeurs WHERE membre_id = ? LIMIT 1");
+        $st->execute([$membreId]);
+        return $st->fetchColumn() !== false;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+/** Le membre est-il responsable d'une commission impliquée dans un Wadial Magal ? */
+function magal_est_gestionnaire_implique(PDO $pdo, int $membreId): bool
+{
+    if ($membreId <= 0) { return false; }
+    try {
+        $st = $pdo->prepare("SELECT 1 FROM commission_gestionnaires cg JOIN magal_commissions mc ON mc.commission_id = cg.commission_id WHERE cg.membre_id = ? LIMIT 1");
+        $st->execute([$membreId]);
+        return $st->fetchColumn() !== false;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+/**
+ * Accès à la fonction Wadial Magal pour un membre (hors administrateur) : responsables désignés du Wadial Magal,
+ * responsables d'une commission impliquée (besoins / tâches de leur commission) et membres autorisés par eux.
+ */
 function magal_membre_a_acces(PDO $pdo, int $membreId): bool
 {
-    return magal_est_organisateur($pdo, $membreId) || magal_membre_implique($pdo, $membreId);
+    return magal_est_responsable($pdo, $membreId) || magal_est_gestionnaire_implique($pdo, $membreId) || magal_est_contributeur($pdo, $membreId);
 }
 
 /** Libellés des statuts. */

@@ -12,7 +12,7 @@
  * de membres) : jamais de contenu périmé servi depuis le cache. Sans réseau,
  * une page de repli explique la situation.
  */
-const VERSION = 'v19';
+const VERSION = 'v22';
 const CACHE = 'trombinoscope-statique-' + VERSION;
 const REPLI = 'hors-ligne.html';
 const STATIQUES = [

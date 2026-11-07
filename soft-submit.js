@@ -252,11 +252,23 @@
         setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
     }
 
+    // Action confirmée dans une fenêtre (popup) : la fenêtre se ferme, la page n'étant pas rechargée
+    function fermerFenetre(form) {
+        try {
+            var m = form && form.closest ? form.closest('.modal-overlay, [id$="-modal"], .modal, dialog') : null;
+            if (!m) { return; }
+            if (m.tagName === 'DIALOG' && m.close) { m.close(); return; }
+            m.classList.remove('active', 'open', 'show');
+            if (m.style && m.style.display && m.style.display !== 'none') { setTimeout(function () { m.style.display = 'none'; }, 280); }
+        } catch (e) { /* ignoré */ }
+    }
+
     function traiter(res, html, form) {
         if (res.status >= 500) { toast('error', "Erreur du serveur : l'action n'a peut-être pas abouti."); return; }
         if (fichier(res.url) !== fichier(location.href)) { window.location.href = res.url; return; } // autre page : navigation normale
         var doc = new DOMParser().parseFromString(html, 'text/html');
         var msg = extraireMessage(doc);
+        if (!msg || msg.type !== 'error') { fermerFenetre(form); }
         retirerMessages(doc);
         var c = choisirConteneur(doc);
         if (!c) { window.location.reload(); return; }
@@ -290,7 +302,7 @@
                 return res.blob().then(function (b) { telecharger(b, cd); toast('success', 'Fichier téléchargé'); });
             }
             if (ct.indexOf('json') >= 0) {
-                return res.json().then(function (d) { toast(d && d.ok === false ? 'error' : 'success', (d && (d.message || d.msg)) || 'Action effectuée'); });
+                return res.json().then(function (d) { if (!(d && d.ok === false)) { fermerFenetre(form); } toast(d && d.ok === false ? 'error' : 'success', (d && (d.message || d.msg)) || 'Action effectuée'); });
             }
             return res.text().then(function (t) { traiter(res, t, form); });
         }).catch(function () {
@@ -308,7 +320,7 @@
     });
 
     window.softSubmit = softSubmit;
-    window.__soft = { morphEnfants: morphEnfants, extraireMessage: extraireMessage, toast: toast };
+    window.__soft = { morphEnfants: morphEnfants, extraireMessage: extraireMessage, toast: toast, fermerFenetre: fermerFenetre };
 
     // form.submit() appelé par la page (liste qui s'envoie au changement, confirmation moderne…)
     HTMLFormElement.prototype.submit = function () { softSubmit(this); };
