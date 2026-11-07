@@ -12,7 +12,7 @@
     var box = document.createElement('div');
     box.id = 'email-msg';
     box.setAttribute('role', 'alert');
-    box.style.cssText = 'display:none; margin-top:0.5rem; padding:0.65rem 0.85rem; border-radius:10px; font-size:0.88rem; line-height:1.45; background:rgba(191,33,33,0.12); border:1px solid rgba(191,33,33,0.45); color:#fca5a5;';
+    box.style.cssText = 'display:none; margin-top:0.5rem; padding:0.65rem 0.85rem; border-radius:8px; font-size:0.88rem; line-height:1.45; background:rgba(191,33,33,0.12); border:1px solid rgba(191,33,33,0.45); color:#fca5a5;';
     input.parentNode.insertBefore(box, input.nextSibling);
 
     var dernier = { valeur: '', utilise: false };

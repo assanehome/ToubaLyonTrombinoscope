@@ -106,7 +106,7 @@ if ($membreId > 0) {
     <style>
         .dh-wrap { max-width: 860px; margin: 0 auto; }
         .dh-hero {
-            border-radius: 24px;
+            border-radius: 12px;
             padding: 1.6rem 1.6rem 1.4rem;
             background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%);
             border: 2px solid rgba(212,175,55,0.5);
@@ -116,7 +116,7 @@ if ($membreId > 0) {
         .dh-hero .dh-date small { display: block; font-size: 0.85rem; font-weight: 400; color: var(--text-muted); margin-top: 0.2rem; }
         .dh-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem; }
         .dh-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
-        .dh-item { border-radius: 14px; padding: 1rem 1.1rem; }
+        .dh-item { border-radius: 10px; padding: 1rem 1.1rem; }
         .dh-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .dh-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
         .dh-item .v a { color: var(--accent); }
@@ -164,8 +164,8 @@ if ($membreId > 0) {
                 <?php if ($__dhAdmin): ?><a href="admin_planning.php" class="dh-back btn btn-secondary btn-sm">← Retour</a><?php endif; ?>
                 <h1 class="admin-page-title"><?php echo dahira_type_emoji($dahira['type_evenement'] ?? 'dahira') . ' Détail ' . htmlspecialchars(dahira_type_libelle($dahira['type_evenement'] ?? 'dahira')); ?></h1>
 
-                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <div class="dh-wrap">
                     <!-- En-tête -->
@@ -183,7 +183,7 @@ if ($membreId > 0) {
                         <?php endif; ?>
                         <?php if (!empty($dahira['image_path'])): ?>
                             <a href="uploads/<?php echo htmlspecialchars((string)$dahira['image_path']); ?>" target="_blank" rel="noopener" style="display:block; margin-top:0.9rem;">
-                                <img src="uploads/<?php echo htmlspecialchars((string)$dahira['image_path']); ?>" alt="Image du Dahira" style="display:block; width:100%; max-height:420px; object-fit:contain; border-radius:14px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.25);">
+                                <img src="uploads/<?php echo htmlspecialchars((string)$dahira['image_path']); ?>" alt="Image du Dahira" style="display:block; width:100%; max-height:420px; object-fit:contain; border-radius:10px; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.25);">
                             </a>
                         <?php endif; ?>
                         <div class="dh-badges">

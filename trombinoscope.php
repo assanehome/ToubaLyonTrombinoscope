@@ -51,7 +51,7 @@ try {
             color: var(--white);
             border: 1px solid var(--glass-border);
             padding: 0.6rem 1.5rem;
-            border-radius: 50px;
+            border-radius: 12px;
             font-weight: 600;
             font-size: 0.95rem;
             cursor: pointer;

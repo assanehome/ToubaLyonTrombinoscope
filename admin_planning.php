@@ -452,10 +452,10 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
     <style>
         .pl-wrap { max-width: 980px; margin: 2rem auto; }
         .pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
-        .pl-card { border-radius: 16px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+        .pl-card { border-radius: 12px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
         .pl-date { font-size: 1.05rem; font-weight: 700; color: var(--white); }
         .pl-date small { color: var(--text-muted); font-weight: 400; font-size: 0.78rem; }
-        .pl-prog { white-space: pre-wrap; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.7rem; max-height: 220px; overflow-y: auto; }
+        .pl-prog { white-space: pre-wrap; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.7rem; max-height: 220px; overflow-y: auto; }
         .pl-prog:empty::before { content: 'Aucun programme saisi.'; color: rgba(255,255,255,0.35); }
         .pl-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
         .pl-badge { font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 6px; }
@@ -463,7 +463,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
         .pl-badge-no { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--glass-border); }
         .pl-badge-annul { background: rgba(191,33,33,0.15); color: #fca5a5; border: 1px solid rgba(191,33,33,0.4); }
         details.pl-details summary { cursor: pointer; color: var(--text-muted); font-size: 0.8rem; }
-        details.pl-details pre { white-space: pre-wrap; font-family: inherit; font-size: 0.83rem; color: var(--white); background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.9rem; margin-top: 0.5rem; }
+        details.pl-details pre { white-space: pre-wrap; font-family: inherit; font-size: 0.83rem; color: var(--white); background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.9rem; margin-top: 0.5rem; }
         .pl-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.8rem; }
         .pl-params .form-group { margin: 0; }
         /* Panneaux repliables de cette page : padding réduit, hauteur compacte */
@@ -471,7 +471,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
         details.glass-card > summary { padding: 0.25rem 0; line-height: 1.3; }
         /* Boutons de filtre par année (indicateurs) : pilules modernes */
         .pl-annee-btn {
-            border-radius: 50px;
+            border-radius: 12px;
             padding: 0.45rem 1rem;
             font-size: 0.85rem;
             border: 1px solid var(--glass-border);
@@ -491,11 +491,11 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
         /* Flèche du panneau dépliable : rotation à l'ouverture */
         details[open] > summary .pl-chevron { transform: rotate(90deg); }
         /* Éditeur riche du programme */
-        .dh-prog-toolbar { display:flex; flex-wrap:wrap; gap:0.3rem; padding:0.5rem; border:1px solid var(--glass-border); border-bottom:0; border-radius:12px 12px 0 0; background:rgba(255,255,255,0.03); }
+        .dh-prog-toolbar { display:flex; flex-wrap:wrap; gap:0.3rem; padding:0.5rem; border:1px solid var(--glass-border); border-bottom:0; border-radius:10px 10px 0 0; background:rgba(255,255,255,0.03); }
         .dh-prog-toolbar button { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; min-width:34px; height:32px; padding:0 0.5rem; cursor:pointer; font-size:0.9rem; line-height:1; transition:all 0.15s ease; }
         .dh-prog-toolbar button:hover { border-color:var(--accent); color:var(--accent); }
         .dh-prog-toolbar .sep { width:1px; background:var(--glass-border); margin:0 0.2rem; }
-        .dh-prog-editor { min-height:150px; border:1px solid var(--glass-border); border-radius:0 0 12px 12px; padding:0.9rem 1rem; background:rgba(255,255,255,0.02); color:var(--white); font-size:0.94rem; line-height:1.6; outline:none; overflow-y:auto; max-height:420px; }
+        .dh-prog-editor { min-height:150px; border:1px solid var(--glass-border); border-radius:0 0 10px 10px; padding:0.9rem 1rem; background:rgba(255,255,255,0.02); color:var(--white); font-size:0.94rem; line-height:1.6; outline:none; overflow-y:auto; max-height:420px; }
         .dh-prog-editor:focus { border-color:var(--accent); }
         .dh-prog-editor:empty::before { content:attr(data-placeholder); color:var(--text-muted); white-space:pre-line; }
         .dh-prog-editor h3, .dh-prog-editor h4 { color:#fff; margin:0.5rem 0 0.3rem; }
@@ -512,8 +512,8 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                 <h1 class="admin-page-title">📅 Planning Hebdomadaire du Dahira</h1>
                 <div style="height:0.6rem;"></div>
 
-                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <!-- Indicateurs (groupe replié fermé par défaut, filtrables par année) -->
                 <details class="glass-card" style="margin-bottom:1.5rem;">
@@ -698,7 +698,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                                 <label class="form-label">🖼️ Image (facultatif) — affichée dans la page du Dahira</label>
                                 <?php if (!empty($prochain['image_path'])): ?>
                                     <div style="margin-bottom:0.5rem;">
-                                        <img src="uploads/<?php echo htmlspecialchars((string)$prochain['image_path']); ?>" alt="" style="max-height:130px; max-width:100%; border-radius:12px; border:1px solid rgba(255,255,255,0.15);">
+                                        <img src="uploads/<?php echo htmlspecialchars((string)$prochain['image_path']); ?>" alt="" style="max-height:130px; max-width:100%; border-radius:10px; border:1px solid rgba(255,255,255,0.15);">
                                         <label style="display:flex; align-items:center; gap:0.5rem; margin-top:0.4rem; cursor:pointer; font-size:0.85rem; color:var(--white);"><input type="checkbox" name="retirer_image" value="1"> Retirer cette image</label>
                                     </div>
                                 <?php endif; ?>

@@ -8,6 +8,7 @@
  *   et peut gérer leurs MEMBRES (pas les responsables).
  */
 require_once __DIR__ . '/commission_guard.php'; // $__isAdmin, $__managedCommissions, $pdo
+$embed = !empty($_GET['embed']); // affichage intégré dans « Mes commissions » (iframe)
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/magal_helper.php';        // magal_annee_defaut() (liste des années à partir de 2027)
 require_once __DIR__ . '/sous_commission_helper.php'; // un membre = une seule sous-commission par commission
@@ -691,6 +692,12 @@ try {
         $commissions = [];
     }
 
+    // Mode intégré dans « Mes commissions » (iframe) : une seule commission, sans en-tête ni menu
+    if ($embed) {
+        $embedCid = (int) ($_GET['commission'] ?? 0);
+        $commissions = array_values(array_filter($commissions, function ($c) use ($embedCid) { return (int) $c['id'] === $embedCid; }));
+    }
+
     $allMembers = $pdo->query("SELECT id, prenom, nom, photo_path FROM membres WHERE status = 'approved' ORDER BY nom ASC, prenom ASC")->fetchAll();
 
     // Membres et responsables par commission
@@ -773,7 +780,7 @@ try {
         if ($rAnn) {
             $cnom = reunion_commission_nom($pdo, (int) $r['commission_id']);
             $waLink = 'https://wa.me/?text=' . rawurlencode(reunion_message_annulation($r, $cnom));
-            $h = '<div style="border:1px solid rgba(191,33,33,0.4); border-radius:12px; padding:0.7rem 0.9rem; background:rgba(191,33,33,0.06);">';
+            $h = '<div style="border:1px solid rgba(191,33,33,0.4); border-radius:10px; padding:0.7rem 0.9rem; background:rgba(191,33,33,0.06);">';
             $h .= '<div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">';
             $h .= '<div style="color:#fff; font-weight:700;">📌 ' . htmlspecialchars($r['titre']) . '</div>';
             $h .= '<span class="badge" style="background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">🚫 Annulée</span>';
@@ -789,7 +796,7 @@ try {
         $estSerie = ($r['periodicite'] ?? 'ponctuelle') !== 'ponctuelle';
         $canPublish = $estSerie ? !reunion_precedente_non_cloturee($pdo, $r) : true;
         $nextToPublish = $estSerie ? reunion_prochaine_a_publier($pdo, $r) : null;
-        $h = '<div style="border:1px solid var(--glass-border); border-radius:12px; padding:0.7rem 0.9rem; background:rgba(255,255,255,0.03);">';
+        $h = '<div style="border:1px solid var(--glass-border); border-radius:10px; padding:0.7rem 0.9rem; background:rgba(255,255,255,0.03);">';
         $h .= '<div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">';
         $h .= '<div style="color:#fff; font-weight:700;">' . ($showTitle ? '📌 ' . htmlspecialchars($r['titre']) : '🗓️ ' . $rDateFr) . '</div>';
         $h .= '<div style="display:flex; gap:0.3rem; flex-wrap:wrap;">';
@@ -923,12 +930,12 @@ $membersJs = array_map(function ($m) {
     <link rel="stylesheet" href="style.css">
     <style>
         .kourel-wrap { max-width: 960px; margin: 2rem auto; }
-        .kourel-card { margin-bottom: 1.25rem; border-radius: 18px; padding: 1.25rem 1.5rem; }
+        .kourel-card { margin-bottom: 1.25rem; border-radius: 12px; padding: 1.25rem 1.5rem; }
         .kourel-card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
         .kourel-card-head h3 { margin: 0; color: var(--white); font-size: 1.2rem; }
         .com-sub { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gold); font-weight: 700; margin: 0.5rem 0 0.5rem; }
         .km-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
-        .km-chip { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 50px; padding: 0.25rem 0.7rem 0.25rem 0.3rem; }
+        .km-chip { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.25rem 0.7rem 0.25rem 0.3rem; }
         .km-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .km-avatar--ph { background: rgba(212,175,55,0.15); color: var(--gold); font-size: 0.72rem; font-weight: 700; border: 1px solid rgba(212,175,55,0.35); }
         .km-chip .km-name { font-size: 0.85rem; color: var(--white); font-weight: 600; }
@@ -940,9 +947,9 @@ $membersJs = array_map(function ($m) {
             .km-actions .btn, .km-actions span.btn { width: 100%; justify-content: center; text-align: center; }
         }
         .com-filters { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
-        .com-filters input { flex: 1 1 240px; border-radius: 50px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 1rem; }
+        .com-filters input { flex: 1 1 240px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 1rem; }
         .com-filters input:focus { outline: none; border-color: var(--accent); }
-        .com-dd { flex: 1 1 200px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 0.9rem; color-scheme: dark; }
+        .com-dd { flex: 1 1 200px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 0.9rem; color-scheme: dark; }
         .com-dd option { background-color: #0c241a; color: #fff; }
         .com-dd:focus { outline: none; border-color: var(--accent); }
         .com-count { font-size: 0.82rem; color: var(--text-muted); margin-left: auto; }
@@ -957,7 +964,7 @@ $membersJs = array_map(function ($m) {
         #members-modal.active { display: flex; }
         #sub-members-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
         #sub-members-modal.active { display: flex; }
-        .tl-card { width: 100%; max-width: 820px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.25); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
+        .tl-card { width: 100%; max-width: 820px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.25); border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
         .tl-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg,#1b4332,#2d6a4f); flex-shrink: 0; }
         .tl-head h3 { margin: 0; color: #fff; font-size: 1.05rem; }
         .tl-x { background: rgba(255,255,255,0.15); color: #fff; border: 0; width: 28px; height: 28px; border-radius: 50%; font-size: 1.1rem; line-height: 1; cursor: pointer; flex-shrink: 0; }
@@ -966,10 +973,10 @@ $membersJs = array_map(function ($m) {
         .tl-col + .tl-col { border-left: 1px solid var(--glass-border); }
         .tl-col-head { padding: 0.75rem 1rem 0.5rem; flex-shrink: 0; }
         .tl-col-head .tl-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gold); font-weight: 700; }
-        .tl-col-head input { width: 100%; margin-top: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 50px; color: #fff; font-size: 0.85rem; padding: 0.45rem 0.9rem; }
+        .tl-col-head input { width: 100%; margin-top: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 12px; color: #fff; font-size: 0.85rem; padding: 0.45rem 0.9rem; }
         .tl-col-head input:focus { outline: none; border-color: var(--accent); }
         .tl-list { flex: 1; overflow-y: auto; padding: 0.5rem 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.35rem; }
-        .tl-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(255,255,255,0.03); }
+        .tl-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(255,255,255,0.03); }
         .tl-av { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .tl-av--ph { background: rgba(212,175,55,0.15); color: var(--gold); font-size: 0.72rem; font-weight: 700; border: 1px solid rgba(212,175,55,0.35); }
         .tl-name { flex: 1; color: #fff; font-size: 0.88rem; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -983,7 +990,7 @@ $membersJs = array_map(function ($m) {
         .tl-count { font-size: 0.8rem; color: var(--text-muted); }
         @media (max-width: 600px) { .tl-cols { flex-direction: column; } .tl-col + .tl-col { border-left: 0; border-top: 1px solid var(--glass-border); } .tl-list { max-height: 30vh; } }
         /* Wadial Magal dans une commission : groupes repliables et cartes bordées */
-        .mg-grp { border: 1px solid var(--glass-border); border-radius: 16px; background: rgba(255,255,255,0.025); margin: 0.7rem 0; overflow: hidden; }
+        .mg-grp { border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(255,255,255,0.025); margin: 0.7rem 0; overflow: hidden; }
         .mg-grp > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; color: var(--white); font-weight: 800; font-size: 0.92rem; }
         .mg-grp > summary::-webkit-details-marker { display: none; }
         .mg-grp > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
@@ -991,33 +998,55 @@ $membersJs = array_map(function ($m) {
         .mg-grp[open] > summary { border-bottom: 1px solid var(--glass-border); background: rgba(212,175,55,0.07); }
         .mg-n { color: var(--text-muted); font-weight: 600; font-size: 0.8rem; }
         .mg-body { padding: 0.8rem 1rem 1rem; }
-        .mg-item { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.045); border: 1px solid rgba(212,175,55,0.35); border-left: 4px solid var(--text-muted); border-radius: 14px; padding: 0.65rem 0.9rem; margin-bottom: 0.55rem; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
+        .mg-item { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.045); border: 1px solid rgba(212,175,55,0.35); border-left: 4px solid var(--text-muted); border-radius: 10px; padding: 0.65rem 0.9rem; margin-bottom: 0.55rem; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
         .mg-item.mg-st-fait, .mg-item.mg-st-obtenu { border-left-color: #25d366; }
         .mg-item.mg-st-en_cours { border-left-color: var(--gold); }
         .mg-item.mg-st-a_trouver, .mg-item.mg-st-a_faire { border-left-color: #bf2121; }
         .mg-item.mg-late { border-color: rgba(191,33,33,0.6); }
-        .mg-add { padding: 0.9rem 1rem; border: 1px dashed rgba(212,175,55,0.55); border-radius: 14px; background: rgba(212,175,55,0.05); }
+        .mg-add { padding: 0.9rem 1rem; border: 1px dashed rgba(212,175,55,0.55); border-radius: 10px; background: rgba(212,175,55,0.05); }
         /* Gestion de la commission : groupes modernes avec bordure */
-        .com-members-group, .com-reu-group { border: 1px solid rgba(212,175,55,0.38); border-radius: 16px; background: rgba(255,255,255,0.03); overflow: hidden; margin: 0.8rem 0 !important; padding: 0 !important; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+        .com-members-group, .com-reu-group { border: 1px solid rgba(212,175,55,0.38); border-radius: 12px; background: rgba(255,255,255,0.03); overflow: hidden; margin: 0.8rem 0 !important; padding: 0 !important; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
         .com-members-group > summary, .com-reu-group > summary { padding: 0.8rem 1rem !important; margin: 0 !important; font-size: 0.92rem !important; font-weight: 800 !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--white); transition: background .15s; }
         .com-members-group > summary:hover, .com-reu-group > summary:hover { background: rgba(212,175,55,0.08); }
         .com-members-group[open] > summary, .com-reu-group[open] > summary { background: rgba(212,175,55,0.1); border-bottom: 1px solid rgba(212,175,55,0.3); color: var(--gold); }
         .com-members-group > :not(summary), .com-reu-group > :not(summary) { margin-left: 1rem !important; margin-right: 1rem !important; }
         .com-members-group > :not(summary):first-of-type, .com-reu-group > summary + * { margin-top: 0.8rem !important; }
+        /* Groupe « Gestion de la commission » : peu d'espace avant le bouton « Gérer les membres » */
+        .com-reu-group[data-section="gestion"] > summary + * { margin-top: 0.25rem !important; }
+        .com-reu-group[data-section="gestion"] > .km-actions { padding-top: 0.4rem !important; border-top: 0 !important; margin-bottom: 0.8rem !important; }
+        /* Peu d'espace avant le groupe « Membres de la commission » */
+        .com-members-group { margin-top: 0.2rem !important; }
+        .com-managers-list { margin-bottom: 0.2rem !important; }
+        .kourel-card-head { margin-bottom: 0.4rem !important; }
+        /* Pas d'espace superflu avant la carte de la commission */
+        .kourel-wrap { margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
+        .kourel-wrap > .admin-welcome-banner, .kourel-wrap > .form-card, .com-filters { margin-bottom: 0.5rem !important; }
+        .kourel-card.com-filterable { margin-top: 0 !important; }
+        body.embed .kourel-wrap { margin: 0 auto !important; }
         .com-members-group > :last-child, .com-reu-group > :last-child { margin-bottom: 1rem !important; }
         /* groupes imbriqués (ex. réunions passées dans le groupe Réunions) : cadre plus discret */
         .com-reu-group .com-reu-group { border-color: var(--glass-border); background: rgba(255,255,255,0.02); box-shadow: none; }
+        /* Mode intégré (iframe de « Mes commissions ») : uniquement la gestion de la commission */
+        body.embed .admin-welcome-banner, body.embed .kourel-wrap > .form-card, body.embed .com-filters, body.embed .app-footer, body.embed footer { display: none !important; }
+        body.embed main.container { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+        body.embed .dashboard-layout { display: block !important; margin-top: 0 !important; }
+        body.embed .kourel-card-head { display: none !important; }
+        body.embed .kourel-card.glass-card { border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: transparent !important; margin: 0 !important; }
+        body.embed .dashboard-main { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+        body.embed, body.embed html { min-height: 0 !important; height: auto !important; }
+        body.embed { overflow: hidden; background: transparent !important; }
+        body.embed #members-modal, body.embed #sub-members-modal, body.embed .modal-overlay, body.embed .mdp-overlay { position: absolute !important; inset: var(--vt, 0px) 0 auto 0 !important; width: 100% !important; height: var(--vh, 100vh) !important; }
     </style>
 </head>
-<body>
-    <?php include __DIR__ . '/header.php'; ?>
+<body class="<?php echo $embed ? 'embed' : ''; ?>">
+    <?php if (!$embed) { include __DIR__ . '/header.php'; } else { echo '<script src="soft-submit.js" defer></script>'; } ?>
     <main class="container">
         <div class="dashboard-layout">
-            <?php if ($__isAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } ?>
+            <?php if (!$embed) { if ($__isAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } } ?>
             <div class="dashboard-main">
 
         <div class="kourel-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>📋 Espaces commissions — <strong class="gold-text"><?php echo count($commissions); ?></strong> commission(s)</span>
                 <?php if ($__isAdmin): ?>
                     <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
@@ -1109,7 +1138,7 @@ $membersJs = array_map(function ($m) {
                                 <p class="km-empty">Aucune sous-commission.</p>
                             <?php endif; ?>
                             <?php foreach ($sousDeC as $sc): ?>
-                                <details id="sc-<?php echo (int) $sc['id']; ?>" style="border:1px solid var(--glass-border); border-radius:12px; padding:0.6rem 0.9rem; background:rgba(255,255,255,0.02); margin-bottom:0.5rem;">
+                                <details id="sc-<?php echo (int) $sc['id']; ?>" style="border:1px solid var(--glass-border); border-radius:10px; padding:0.6rem 0.9rem; background:rgba(255,255,255,0.02); margin-bottom:0.5rem;">
                                     <summary style="cursor:pointer; font-weight:700; color:var(--white); display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
                                         🧩 <?php echo htmlspecialchars($sc['nom']); ?>
                                         <span class="badge badge-approved"><?php echo count($sc['membres']); ?> membre(s)</span>
@@ -1176,8 +1205,8 @@ $membersJs = array_map(function ($m) {
                                                 foreach ($allMembers as $am) { $pairesMembres[] = [(int) $am['id'], trim($am['prenom'] . ' ' . $am['nom'])]; }
                                             ?>
                                             <style>
-                                                .msel-sup-panel { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 30; margin-top: 4px; max-height: 230px; overflow-y: auto; background: #10241b; border: 1px solid rgba(212,175,55,0.45); border-radius: 12px; box-shadow: 0 14px 34px rgba(0,0,0,0.5); padding: 0.25rem; }
-                                                .msel-sup-opt { padding: 0.5rem 0.8rem; border-radius: 9px; cursor: pointer; color: var(--white); font-size: 0.88rem; }
+                                                .msel-sup-panel { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 30; margin-top: 4px; max-height: 230px; overflow-y: auto; background: #10241b; border: 1px solid rgba(212,175,55,0.45); border-radius: 10px; box-shadow: 0 14px 34px rgba(0,0,0,0.5); padding: 0.25rem; }
+                                                .msel-sup-opt { padding: 0.5rem 0.8rem; border-radius: 8px; cursor: pointer; color: var(--white); font-size: 0.88rem; }
                                                 .msel-sup-opt:hover, .msel-sup-opt.is-actif { background: rgba(212,175,55,0.18); }
                                                 .msel-sup-vide { padding: 0.7rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
                                             </style>
@@ -1279,7 +1308,7 @@ $membersJs = array_map(function ($m) {
                                 </details>
                             <?php endforeach; ?>
                             <?php if ($peutSous): ?>
-                            <form method="POST" data-section="sous-ajout" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin-top:0.8rem; padding:1rem 1.1rem; border:1px solid rgba(212,175,55,0.45); border-radius:14px; background:rgba(255,255,255,0.03);">
+                            <form method="POST" data-section="sous-ajout" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end; margin-top:0.8rem; padding:1rem 1.1rem; border:1px solid rgba(212,175,55,0.45); border-radius:10px; background:rgba(255,255,255,0.03);">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="create_sous_commission">
                                 <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
@@ -1297,15 +1326,15 @@ $membersJs = array_map(function ($m) {
                                 <div class="mpick-zone" style="flex-basis:100%; display:none;">
                                     <?php if (empty($mpickAssets)): $mpickAssets = true; ?>
                                     <style>
-                                        .mpick { border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(255,255,255,0.03); overflow: hidden; }
+                                        .mpick { border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(255,255,255,0.03); overflow: hidden; }
                                         .mpick-search { width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--white); padding: 0.65rem 0.9rem; font-size: 0.9rem; }
                                         .mpick-search:focus { outline: none; background: rgba(255,255,255,0.08); }
                                         .mpick-list { max-height: 210px; overflow-y: auto; padding: 0.3rem; }
-                                        .mpick-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.42rem 0.55rem; border-radius: 10px; cursor: pointer; }
+                                        .mpick-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.42rem 0.55rem; border-radius: 8px; cursor: pointer; }
                                         .mpick-item:hover { background: rgba(212,175,55,0.1); }
                                         .mpick-item.is-on { background: rgba(212,175,55,0.14); }
                                         .mpick-nom { flex: 1; color: var(--white); font-size: 0.88rem; }
-                                        .mpick-tag { font-size: 0.68rem; font-weight: 700; padding: 0.12rem 0.5rem; border-radius: 50px; border: 1px solid var(--glass-border); color: var(--text-muted); white-space: nowrap; }
+                                        .mpick-tag { font-size: 0.68rem; font-weight: 700; padding: 0.12rem 0.5rem; border-radius: 12px; border: 1px solid var(--glass-border); color: var(--text-muted); white-space: nowrap; }
                                         .mpick-tag.com { color: #7bd8a6; border-color: rgba(37,211,102,0.4); }
                                         .mpick-tag.sup { color: #8ec5ff; border-color: rgba(45,140,255,0.4); }
                                         .mpick-foot { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.45rem 0.8rem; border-top: 1px solid var(--glass-border); font-size: 0.78rem; color: var(--text-muted); }
@@ -1428,7 +1457,7 @@ $membersJs = array_map(function ($m) {
                                             $dmin = date('d/m/Y', strtotime($periodes[0]['date_reunion']));
                                             $dmax = date('d/m/Y', strtotime($periodes[count($periodes) - 1]['date_reunion']));
                                         ?>
-                                        <div style="border:1px solid rgba(212,175,55,0.35); border-radius:14px; padding:0.8rem 0.9rem; background:rgba(212,175,55,0.05);">
+                                        <div style="border:1px solid rgba(212,175,55,0.35); border-radius:10px; padding:0.8rem 0.9rem; background:rgba(212,175,55,0.05);">
                                             <div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                                                 <div style="color:var(--gold); font-weight:800;">🔁 <?php echo htmlspecialchars($first['titre']); ?></div>
                                                 <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
@@ -1481,7 +1510,7 @@ $membersJs = array_map(function ($m) {
                                 </div>
                             </details>
                             <?php endif; ?>
-                            <details data-section="creer-reunion" style="border:1px solid var(--glass-border); border-radius:12px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
+                            <details data-section="creer-reunion" style="border:1px solid var(--glass-border); border-radius:10px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Créer une réunion</summary>
                                 <form method="POST" class="reunion-create-form" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
@@ -1921,7 +1950,7 @@ $membersJs = array_map(function ($m) {
         // Un membre de la commission déjà dans une AUTRE sous-commission n'est plus proposé
         function smDansAutre(id) { return smDansCommission(id) && (smSub().autres || []).map(Number).indexOf(id) !== -1; }
         function smEligible(id) { if (smDansAutre(id)) { return false; } return smDansCommission(id) || !!smSub().accepte; }
-        function smTag(id) { return smDansCommission(id) ? '' : '<span style="font-size:0.68rem; font-weight:700; color:#8ec5ff; border:1px solid rgba(45,140,255,0.4); border-radius:50px; padding:0.1rem 0.45rem; margin-left:0.3rem;">🤝 support</span>'; }
+        function smTag(id) { return smDansCommission(id) ? '' : '<span style="font-size:0.68rem; font-weight:700; color:#8ec5ff; border:1px solid rgba(45,140,255,0.4); border-radius:12px; padding:0.1rem 0.45rem; margin-left:0.3rem;">🤝 support</span>'; }
         function smRender() {
             var term = tlNorm(document.getElementById('sm-search').value);
             var av = document.getElementById('sm-available'), se = document.getElementById('sm-selected');
@@ -2089,7 +2118,7 @@ $membersJs = array_map(function ($m) {
                 <h3 style="color:var(--accent); margin:0;">📄 Compte rendu PDF</h3>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="closeCrPdfDash()">✕ Fermer</button>
             </div>
-            <div style="flex:1; min-height:0; margin:0.7rem 0; border-radius:10px; overflow:hidden; background:#fff;">
+            <div style="flex:1; min-height:0; margin:0.7rem 0; border-radius:8px; overflow:hidden; background:#fff;">
                 <iframe id="crd-frame" src="" title="Compte rendu" style="width:100%; height:100%; border:0;"></iframe>
             </div>
             <div class="modal-footer" style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end; align-items:center;">
@@ -2162,6 +2191,42 @@ $membersJs = array_map(function ($m) {
     }, 150);
 })();
 </script>
+<?php if ($embed): ?>
+<script>
+// Mode intégré : les liens vers une autre page s'ouvrent dans la fenêtre principale
+(function () {
+    document.addEventListener('click', function (ev) {
+        var a = ev.target.closest && ev.target.closest('a[href]');
+        if (!a || a.target || a.getAttribute('href').charAt(0) === '#') { return; }
+        try {
+            var u = new URL(a.href, location.href);
+            if (u.origin === location.origin && u.pathname.split('/').pop() !== 'commission_dashboard.php') { a.target = '_top'; }
+        } catch (e) { /* ignoré */ }
+    }, true);
+})();
+// Mode intégré : hauteur envoyée à « Mes commissions » ; réception de la zone visible (pour centrer les fenêtres)
+(function () {
+    var dernier = 0;
+    function hauteur() {
+        var h = Math.ceil(document.body.getBoundingClientRect().height) + 12;
+        if (Math.abs(h - dernier) < 2) { return; }
+        dernier = h;
+        try { parent.postMessage({ type: 'embed-height', h: h }, location.origin); } catch (e) { /* ignoré */ }
+    }
+    if (window.ResizeObserver) { new ResizeObserver(hauteur).observe(document.body); }
+    window.addEventListener('load', hauteur);
+    setInterval(hauteur, 700);
+    window.addEventListener('message', function (e) {
+        if (e.origin !== location.origin) { return; }
+        var d = e.data || {};
+        if (d.type === 'embed-viewport') {
+            document.documentElement.style.setProperty('--vt', d.top + 'px');
+            document.documentElement.style.setProperty('--vh', d.height + 'px');
+        }
+    });
+})();
+</script>
+<?php endif; ?>
 <script src="modern-date.js" defer></script>
 </body>
 </html>

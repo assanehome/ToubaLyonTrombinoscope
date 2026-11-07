@@ -127,7 +127,7 @@ function verif_envoyer_code(PDO $pdo, int $membreId, bool $force = false): array
     $html = '<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;">'
         . '<h2 style="color:#1b4332;">As-salaamu haleykum 🙏</h2>'
         . '<p style="color:#333;">Voici votre code pour valider votre adresse e-mail et confirmer votre inscription au Dahira :</p>'
-        . '<p style="text-align:center;margin:22px 0;"><span style="display:inline-block;font-size:32px;letter-spacing:8px;font-weight:bold;color:#1b4332;background:#f6f3e8;border:1px solid #d4af37;border-radius:12px;padding:12px 22px;">' . $code . '</span></p>'
+        . '<p style="text-align:center;margin:22px 0;"><span style="display:inline-block;font-size:32px;letter-spacing:8px;font-weight:bold;color:#1b4332;background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 22px;">' . $code . '</span></p>'
         . '<p style="color:#555;font-size:14px;">Ce code est valable <strong>10 minutes</strong>. Si vous n\'êtes pas à l\'origine de cette inscription, ignorez simplement ce message.</p>'
         . '<p style="color:#888;font-size:12px;">— Dahira Touba Lyon (Mubawwa-A-Sidqin)</p></div>';
     $ok = false;
@@ -214,7 +214,7 @@ function verif_ecran_html(string $email, string $page): string
     $e = htmlspecialchars($email, ENT_QUOTES);
     $p = htmlspecialchars($page, ENT_QUOTES);
     return '
-<div class="glass-card" id="vf-box" style="border:2px solid rgba(212,175,55,0.5); border-radius:20px; padding:1.6rem 1.5rem; margin-bottom:1.5rem; text-align:left;">
+<div class="glass-card" id="vf-box" style="border:2px solid rgba(212,175,55,0.5); border-radius:12px; padding:1.6rem 1.5rem; margin-bottom:1.5rem; text-align:left;">
     <div style="display:flex; align-items:center; gap:0.8rem; margin-bottom:0.9rem;">
         <div style="width:46px; height:46px; border-radius:50%; background:rgba(212,175,55,0.16); display:flex; align-items:center; justify-content:center; font-size:1.5rem;">📧</div>
         <div>
@@ -233,7 +233,7 @@ function verif_ecran_html(string $email, string $page): string
         <button type="button" id="vf-resend" class="btn btn-secondary btn-sm">Renvoyer le code</button>
         ou <a href="#" id="vf-change-link" style="color:var(--gold); font-weight:700;">✏️ modifier mon adresse e-mail</a>.
     </div>
-    <div id="vf-change" style="display:none; margin-top:0.9rem; padding:0.9rem; border-radius:14px; background:rgba(212,175,55,0.07); border:1px solid rgba(212,175,55,0.35);">
+    <div id="vf-change" style="display:none; margin-top:0.9rem; padding:0.9rem; border-radius:10px; background:rgba(212,175,55,0.07); border:1px solid rgba(212,175,55,0.35);">
         <label for="vf-newemail" class="form-label">Nouvelle adresse e-mail</label>
         <input type="email" id="vf-newemail" class="form-input" value="' . $e . '" autocomplete="email">
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.6rem;">

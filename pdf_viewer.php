@@ -46,7 +46,7 @@ if (!$lisible) {
             body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
                    background: #0a110e; color: #e8e2d0; font-family: 'Inter', system-ui, -apple-system, sans-serif; padding: 1.5rem; }
             .carte { max-width: 420px; text-align: center; border: 1px solid rgba(212,175,55,0.25);
-                     border-radius: 18px; padding: 2rem 1.6rem; background: rgba(255,255,255,0.03); }
+                     border-radius: 12px; padding: 2rem 1.6rem; background: rgba(255,255,255,0.03); }
             h1 { color: #ffd873; font-size: 1.25rem; margin: 0 0 0.7rem; }
             p { color: #a9b5ad; line-height: 1.55; margin: 0 0 1.4rem; font-size: 0.92rem; }
             a { display: inline-block; text-decoration: none; color: #ffd873; font-weight: 600;

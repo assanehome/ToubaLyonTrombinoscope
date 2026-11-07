@@ -559,17 +559,17 @@ if ($commissionId > 0) {
             .gu-actions-bar > *, .gu-actions-bar form { width: 100%; }
             .gu-actions-bar .btn { width: 100%; justify-content: center; }
         }
-        .pl-card { border-radius: 16px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+        .pl-card { border-radius: 12px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
         .pl-date { font-size: 1.05rem; font-weight: 700; color: var(--white); }
         .pl-date small { color: var(--text-muted); font-weight: 400; font-size: 0.78rem; }
-        .pl-prog { white-space: pre-wrap; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.7rem; max-height: 220px; overflow-y: auto; }
+        .pl-prog { white-space: pre-wrap; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.7rem; max-height: 220px; overflow-y: auto; }
         .pl-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
         .pl-badge { font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 6px; }
         .pl-badge-ok { background: rgba(37,211,102,0.15); color: #7bd8a6; border: 1px solid rgba(37,211,102,0.3); }
         .pl-badge-no { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--glass-border); }
         .pl-badge-annul { background: rgba(191,33,33,0.15); color: #fca5a5; border: 1px solid rgba(191,33,33,0.4); }
         details.pl-details summary { cursor: pointer; color: var(--text-muted); font-size: 0.8rem; }
-        details.pl-details pre { white-space: pre-wrap; font-family: inherit; font-size: 0.83rem; color: var(--white); background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.9rem; margin-top: 0.5rem; }
+        details.pl-details pre { white-space: pre-wrap; font-family: inherit; font-size: 0.83rem; color: var(--white); background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.9rem; margin-top: 0.5rem; }
         .pl-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.8rem; }
         .pl-params .form-group { margin: 0; }
         /* Paramètres : une ligne par information (champs empilés en pleine largeur) */
@@ -627,7 +627,7 @@ if ($commissionId > 0) {
             gap: 0.9rem;
             padding: 1rem 1.1rem;
             border: 1.5px solid var(--glass-border);
-            border-radius: 14px;
+            border-radius: 10px;
             background: rgba(255,255,255,0.03);
             cursor: pointer;
             transition: var(--transition);
@@ -640,7 +640,7 @@ if ($commissionId > 0) {
             background: rgba(37,211,102,0.08);
         }
         /* Case à cocher : le rendu vient du style global (style.css), ici seulement la grande taille tactile */
-        .guddi-presentiel-toggle input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch) { width: 28px; height: 28px; min-width: 28px; border-radius: 9px; }
+        .guddi-presentiel-toggle input[type="checkbox"]:not(.native-checkbox):not(.checkbox-switch) { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
         .guddi-presentiel-toggle .guddi-toggle-ico { font-size: 1.5rem; }
         .guddi-presentiel-toggle .guddi-toggle-txt { font-size: 1rem; font-weight: 600; color: var(--white); line-height: 1.35; }
         .guddi-presentiel-toggle .guddi-toggle-txt small { display: block; font-weight: 400; font-size: 0.78rem; color: var(--text-muted); }
@@ -651,7 +651,7 @@ if ($commissionId > 0) {
         }
         /* Boutons de filtre par année (indicateurs) : pilules modernes */
         .guddi-annee-btn {
-            border-radius: 50px;
+            border-radius: 12px;
             padding: 0.45rem 1rem;
             font-size: 0.85rem;
             border: 1px solid var(--glass-border);
@@ -731,8 +731,8 @@ if ($commissionId > 0) {
                     </div>
                 </details>
 
-                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <!-- Passés non clôturés (groupe replié, en haut) -->
                 <?php if (!empty($planningsPassesNonClotures)): ?>

@@ -42,7 +42,7 @@ try {
     <style>
         .stk-wrap { max-width: 900px; margin: 2rem auto; }
         .stk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
-        .stk-card { border-radius: 16px; padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; text-decoration: none; }
+        .stk-card { border-radius: 12px; padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; text-decoration: none; }
         .stk-card:hover { border-color: rgba(212,175,55,0.5); }
         .stk-card h3 { margin: 0; color: var(--white); font-size: 1.15rem; }
         .stk-meta { color: var(--text-muted); font-size: 0.85rem; }
@@ -57,7 +57,7 @@ try {
             <div class="dashboard-main">
 
         <div class="stk-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>📦 Stock par commission — <strong class="gold-text"><?php echo count($commissions); ?></strong> commission(s)</span>
                 <?php if ($__isAdmin): ?>
                     <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>

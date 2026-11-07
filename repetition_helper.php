@@ -103,7 +103,7 @@ function repetition_notifier_membres(PDO $pdo, array $rep): int
                 '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;">'
                 . '<h2 style="color:#1b4332;">Assalamu aleykum ' . htmlspecialchars($destinataire) . ' 🙏</h2>'
                 . '<p style="color:#333;">Une <strong>répétition</strong> du Kurel <strong>' . htmlspecialchars($kourelNom) . '</strong> est programmée :</p>'
-                . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 16px;color:#1b4332;">'
+                . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:8px;padding:12px 16px;color:#1b4332;">'
                 . '🎼 <strong>' . htmlspecialchars($titre) . '</strong><br>'
                 . ($dateFr !== '' ? '🗓️ ' . htmlspecialchars($dateFr) : '')
                 . ($heure !== '' ? ' &nbsp;🕐 ' . htmlspecialchars($heure) : '')

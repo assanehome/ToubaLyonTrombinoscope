@@ -548,14 +548,14 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
     <link rel="stylesheet" href="style.css">
     <style>
         .gd-wrap { max-width: 860px; margin: 0 auto; }
-        .gd-hero { border-radius: 24px; padding: 1.6rem 1.6rem 1.4rem; background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%); border: 2px solid rgba(212,175,55,0.5); margin-bottom: 1.4rem; position: relative; overflow: hidden; }
+        .gd-hero { border-radius: 12px; padding: 1.6rem 1.6rem 1.4rem; background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%); border: 2px solid rgba(212,175,55,0.5); margin-bottom: 1.4rem; position: relative; overflow: hidden; }
         .gd-hero::before { content: ''; position: absolute; top: 0; left: -20%; right: -20%; height: 2px; background: linear-gradient(90deg, transparent, rgba(212,175,55,0.9), rgba(241,210,121,0.95), transparent); background-size: 200% 100%; animation: gdFlow 4.5s linear infinite; }
         @keyframes gdFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         .gd-hero .gd-date { font-size: 1.6rem; font-weight: 800; color: var(--accent); line-height: 1.25; }
         .gd-hero .gd-date small { display: block; font-size: 0.85rem; font-weight: 400; color: var(--text-muted); margin-top: 0.25rem; }
         .gd-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem; }
         .gd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
-        .gd-item { border-radius: 14px; padding: 1rem 1.1rem; }
+        .gd-item { border-radius: 10px; padding: 1rem 1.1rem; }
         .gd-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .gd-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
         .gd-back { display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1rem; }
@@ -565,10 +565,10 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
         .gd-presence .btn-primary { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
         .gd-presence .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); filter: brightness(1.05); }
         @media (max-width: 480px) { .gd-presence { text-align: center; } .gd-presence .btn { width: 100%; } }
-        .gd-zoom-btn { display: flex; align-items: center; justify-content: center; gap: 0.9rem; width: 100%; background: linear-gradient(135deg, #2d8cff 0%, #1a63d0 100%); color: #fff; font-weight: 800; font-size: 1.25rem; border: 0; border-radius: 18px; padding: 1.2rem 1.4rem; text-decoration: none; box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2); transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease; animation: gdZoomPulse 2.6s ease-in-out infinite; }
+        .gd-zoom-btn { display: flex; align-items: center; justify-content: center; gap: 0.9rem; width: 100%; background: linear-gradient(135deg, #2d8cff 0%, #1a63d0 100%); color: #fff; font-weight: 800; font-size: 1.25rem; border: 0; border-radius: 12px; padding: 1.2rem 1.4rem; text-decoration: none; box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2); transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease; animation: gdZoomPulse 2.6s ease-in-out infinite; }
         @keyframes gdZoomPulse { 0%, 100% { box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2); } 50% { box-shadow: 0 18px 42px rgba(45,140,255,0.6), inset 0 1px 0 rgba(255,255,255,0.2); } }
         .gd-zoom-btn:hover { transform: translateY(-2px); filter: brightness(1.08); animation-play-state: paused; }
-        .gd-zoom-btn .zoom-ic { width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0; background: rgba(255,255,255,0.22); display: inline-flex; align-items: center; justify-content: center; }
+        .gd-zoom-btn .zoom-ic { width: 48px; height: 48px; border-radius: 10px; flex-shrink: 0; background: rgba(255,255,255,0.22); display: inline-flex; align-items: center; justify-content: center; }
         .gd-zoom-btn .zoom-lbl { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
         .gd-zoom-btn .zoom-lbl small { font-size: 0.78rem; font-weight: 600; opacity: 0.85; }
         .gd-zoom-hint { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.6rem; text-align: center; }
@@ -577,14 +577,14 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
         .pl-badge-no { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--glass-border); }
         .pl-badge-pub { background: rgba(45,140,255,0.15); color: #8ec5ff; border: 1px solid rgba(45,140,255,0.4); }
         /* Tâches de réunion */
-        .tk-item { border-radius: 14px; padding: 0.9rem 1rem; margin-bottom: 0.7rem; border-left: 3px solid var(--glass-border); }
+        .tk-item { border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 0.7rem; border-left: 3px solid var(--glass-border); }
         .tk-item.tk-fait { opacity: 0.72; border-left-color: rgba(37,211,102,0.5); }
         .tk-item.tk-encours { border-left-color: rgba(45,140,255,0.6); }
         .tk-titre { font-weight: 700; color: var(--white); font-size: 0.98rem; }
         .tk-titre.done { text-decoration: line-through; color: var(--text-muted); }
         .tk-desc { color: var(--text-muted); font-size: 0.85rem; white-space: pre-line; margin-top: 0.3rem; }
         .tk-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.55rem; font-size: 0.8rem; color: var(--text-muted); }
-        .tk-chip { padding: 0.15rem 0.55rem; border-radius: 50px; border: 1px solid var(--glass-border); font-size: 0.76rem; }
+        .tk-chip { padding: 0.15rem 0.55rem; border-radius: 12px; border: 1px solid var(--glass-border); font-size: 0.76rem; }
         .tk-chip-assignee { background: rgba(212,175,55,0.14); color: var(--accent); border-color: rgba(212,175,55,0.4); }
         .tk-badge { font-size: 0.72rem; padding: 0.18rem 0.55rem; border-radius: 6px; }
         .tk-badge-a { background: rgba(255,255,255,0.06); color: var(--text-muted); border: 1px solid var(--glass-border); }
@@ -595,11 +595,11 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
         .tk-actions select option { background-color: #0c241a; color: #fff; }
         @media (max-width: 480px) { .tk-actions { flex-direction: column; align-items: stretch; } .tk-actions form, .tk-actions select { width: 100%; } }
         /* Compte rendu : éditeur riche */
-        .cr-toolbar { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.5rem; border: 1px solid var(--glass-border); border-bottom: 0; border-radius: 12px 12px 0 0; background: rgba(255,255,255,0.03); }
+        .cr-toolbar { display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.5rem; border: 1px solid var(--glass-border); border-bottom: 0; border-radius: 10px 10px 0 0; background: rgba(255,255,255,0.03); }
         .cr-toolbar button { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); border-radius: 8px; min-width: 34px; height: 32px; padding: 0 0.5rem; cursor: pointer; font-size: 0.9rem; line-height: 1; transition: all 0.15s ease; }
         .cr-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
         .cr-toolbar .sep { width: 1px; background: var(--glass-border); margin: 0 0.2rem; }
-        .cr-editor { min-height: 180px; border: 1px solid var(--glass-border); border-radius: 0 0 12px 12px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); color: var(--white); font-size: 0.94rem; line-height: 1.6; outline: none; overflow-y: auto; max-height: 460px; }
+        .cr-editor { min-height: 180px; border: 1px solid var(--glass-border); border-radius: 0 0 10px 10px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); color: var(--white); font-size: 0.94rem; line-height: 1.6; outline: none; overflow-y: auto; max-height: 460px; }
         .cr-editor:focus { border-color: var(--accent); }
         .cr-editor:empty::before { content: attr(data-placeholder); color: var(--text-muted); }
         .cr-editor h3, .cr-editor h4 { color: #fff; margin: 0.6rem 0 0.3rem; }
@@ -640,8 +640,8 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                 <?php if ($__reAdmin): ?><a href="<?php echo $retour; ?>" class="gd-back btn btn-secondary btn-sm">← Retour</a><?php endif; ?>
                 <h1 class="admin-page-title">👥 Détail réunion</h1>
 
-                <?php if (!empty($success)): ?><div class="gd-wrap" style="margin-bottom:0;"><div style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="gd-wrap" style="margin-bottom:0;"><div style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="gd-wrap" style="margin-bottom:0;"><div style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="gd-wrap" style="margin-bottom:0;"><div style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div></div><?php endif; ?>
 
                 <div class="gd-wrap">
                     <!-- En-tête -->
@@ -880,7 +880,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                             <div style="display:flex; flex-direction:column;">
                             <?php if (!$reunionClosed): ?>
                             <!-- Créer une tâche (bloc bordé) -->
-                            <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="margin:0 0 1.1rem; padding:0.9rem; border:1px solid var(--glass-border); border-radius:12px; background:rgba(255,255,255,0.02);">
+                            <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="margin:0 0 1.1rem; padding:0.9rem; border:1px solid var(--glass-border); border-radius:10px; background:rgba(255,255,255,0.02);">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="add_tache">
                                 <div style="font-weight:700; color:#fff; font-size:0.92rem; margin-bottom:0.7rem;">➕ Créer une tâche</div>
@@ -912,7 +912,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
 
                             <?php endif; ?>
                             <!-- Liste des tâches (bloc bordé, affiché au-dessus du formulaire) -->
-                            <div style="order:-1; border:1px solid var(--glass-border); border-radius:12px; padding:0.9rem; margin-bottom:1.1rem; background:rgba(255,255,255,0.015);">
+                            <div style="order:-1; border:1px solid var(--glass-border); border-radius:10px; padding:0.9rem; margin-bottom:1.1rem; background:rgba(255,255,255,0.015);">
                             <div style="font-weight:700; color:#fff; font-size:0.92rem; margin-bottom:0.7rem;">📋 Liste des tâches</div>
                             <?php if (empty($taches)): ?>
                                 <p style="color:var(--text-muted); text-align:center; padding:0.6rem 0; margin:0;">Aucune tâche pour le moment.</p>
@@ -1009,7 +1009,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                 <h3 style="color:var(--accent); margin:0;">📄 Compte rendu</h3>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="closeCrPdf()">✕ Fermer</button>
             </div>
-            <div style="flex:1; min-height:0; margin:0.7rem 0; border-radius:10px; overflow:hidden; background:#fff;">
+            <div style="flex:1; min-height:0; margin:0.7rem 0; border-radius:8px; overflow:hidden; background:#fff;">
                 <iframe id="cr-pdf-frame" src="" title="Compte rendu" style="width:100%; height:100%; border:0;"></iframe>
             </div>
             <div class="modal-footer" style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:flex-end; align-items:center;">

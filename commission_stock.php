@@ -212,13 +212,13 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
     <style>
         .stock-wrap { max-width: 980px; margin: 2rem auto; }
         .stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
-        .stock-card { border-radius: 16px; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+        .stock-card { border-radius: 12px; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
         .stock-photo { width: 100%; aspect-ratio: 4/3; object-fit: cover; background: #081c15; display: block; }
         .stock-photo-ph { width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; font-size: 2.4rem; color: var(--gold); background: rgba(212,175,55,0.08); }
         .stock-body { padding: 0.9rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
         .stock-name { font-weight: 700; color: var(--white); font-size: 1rem; }
         .stock-desc { color: var(--text-muted); font-size: 0.82rem; line-height: 1.4; }
-        .stock-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; border-radius: 50px; padding: 2px 10px; width: fit-content; }
+        .stock-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; border-radius: 12px; padding: 2px 10px; width: fit-content; }
         .stock-qty { display: flex; align-items: center; gap: 0.4rem; }
         .stock-qty .q { min-width: 2.2rem; text-align: center; font-weight: 700; color: var(--white); }
         .stock-qty button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: #fff; font-size: 1rem; cursor: pointer; }
@@ -228,7 +228,7 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
         .stock-select { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff; font-size: 0.78rem; padding: 0.3rem 0.5rem; color-scheme: dark; }
         .stock-select option { background-color: #0c241a; }
         /* miniature d'upload (photo / album) */
-        .photo-tile { width: 116px; height: 116px; border-radius: 14px; border: 2px dashed var(--glass-border); background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; position: relative; }
+        .photo-tile { width: 116px; height: 116px; border-radius: 10px; border: 2px dashed var(--glass-border); background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; position: relative; }
         .photo-tile:hover { border-color: var(--accent); }
         .photo-tile img { width: 100%; height: 100%; object-fit: cover; }
         .photo-tile .ph { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; font-size: 0.72rem; color: var(--text-muted); text-align: center; padding: 0.5rem; }
@@ -245,18 +245,18 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
         }
         /* indicateurs */
         .stk-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
-        .stk-stat { border-radius: 14px; padding: 0.85rem 1rem; text-align: center; }
+        .stk-stat { border-radius: 10px; padding: 0.85rem 1rem; text-align: center; }
         .stk-stat .n { font-size: 1.5rem; font-weight: 800; color: var(--white); line-height: 1.1; }
         .stk-stat .l { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 0.2rem; }
         /* barre filtres + vue */
         .stk-toolbar { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
         .stk-toolbar input, .stk-toolbar select { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.88rem; padding: 0.55rem 0.9rem; color-scheme: dark; }
-        .stk-toolbar input { flex: 1 1 200px; border-radius: 50px; }
-        .stk-toolbar select { flex: 0 1 150px; border-radius: 10px; }
+        .stk-toolbar input { flex: 1 1 200px; border-radius: 12px; }
+        .stk-toolbar select { flex: 0 1 150px; border-radius: 8px; }
         .stk-toolbar select option { background-color: #0c241a; color: #fff; }
         .stk-toolbar input:focus, .stk-toolbar select:focus { outline: none; border-color: var(--accent); }
         .stk-count { font-size: 0.8rem; color: var(--text-muted); }
-        .stk-viewtog { display: inline-flex; border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden; margin-left: auto; }
+        .stk-viewtog { display: inline-flex; border: 1px solid var(--glass-border); border-radius: 8px; overflow: hidden; margin-left: auto; }
         .stk-viewtog button { background: transparent; color: var(--text-muted); border: 0; padding: 0.45rem 0.8rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
         .stk-viewtog button.active { background: var(--accent); color: var(--secondary); }
         /* vue liste */
@@ -266,11 +266,11 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
         .stk-list .li-photo { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; }
         .stk-list .li-actions { display: flex; gap: 0.3rem; flex-wrap: wrap; }
         .stk-list .li-actions .btn { padding: 0.28rem 0.55rem; font-size: 0.7rem; }
-        @media (max-width: 720px) { .stk-list thead { display: none; } .stk-list, .stk-list tbody, .stk-list tr, .stk-list td { display: block; width: 100%; } .stk-list tr { border: 1px solid var(--glass-border); border-radius: 12px; margin-bottom: 0.7rem; padding: 0.6rem 0.8rem; } .stk-list td { border: none; padding: 0.2rem 0; } }
+        @media (max-width: 720px) { .stk-list thead { display: none; } .stk-list, .stk-list tbody, .stk-list tr, .stk-list td { display: block; width: 100%; } .stk-list tr { border: 1px solid var(--glass-border); border-radius: 10px; margin-bottom: 0.7rem; padding: 0.6rem 0.8rem; } .stk-list td { border: none; padding: 0.2rem 0; } }
         /* modal edit (moderne) */
         #stock-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.62); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); display: none; align-items: center; justify-content: center; padding: 1rem; }
         #stock-modal.active { display: flex; }
-        .stock-modal-card { width: 100%; max-width: 480px; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(180deg,#143a2b 0%, #0b2118 100%); border: 1px solid rgba(212,175,55,0.28); border-radius: 20px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); transform: translateY(14px) scale(0.98); opacity: 0; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
+        .stock-modal-card { width: 100%; max-width: 480px; max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(180deg,#143a2b 0%, #0b2118 100%); border: 1px solid rgba(212,175,55,0.28); border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,0.6); transform: translateY(14px) scale(0.98); opacity: 0; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
         #stock-modal.active .stock-modal-card { transform: translateY(0) scale(1); opacity: 1; }
         .stock-modal-card form { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
         .stock-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.35rem; background: linear-gradient(135deg,#1b4332,#2d6a4f); flex-shrink: 0; }
@@ -289,7 +289,7 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
             <div class="dashboard-main">
 
         <div class="stock-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>📦 Stock — <strong class="gold-text"><?php echo htmlspecialchars($commission['nom']); ?></strong> — <?php echo count($items); ?> article(s), <?php echo (int)$totalQty; ?> en stock</span>
                 <a href="commission_dashboard.php" class="btn btn-secondary btn-sm">← Espaces commissions</a>
             </div>

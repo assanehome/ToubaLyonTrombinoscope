@@ -103,7 +103,7 @@ try {
             <?php include __DIR__ . '/admin_menu.php'; ?>
             <div class="dashboard-main">
         <div class="comm-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>Commissions — <strong class="gold-text"><?php echo count($commissions); ?></strong></span>
                 <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
             </div>

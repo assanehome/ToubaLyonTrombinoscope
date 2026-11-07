@@ -14,7 +14,7 @@ const RGPD_VERSION = '2026-11';
 function rgpd_consent_html(): string
 {
     return <<<'HTML'
-<div class="rgpd-box" style="margin:1.4rem 0 0.4rem; padding:1rem 1.1rem; border:1px solid rgba(212,175,55,0.45); border-radius:14px; background:rgba(255,255,255,0.03);">
+<div class="rgpd-box" style="margin:1.4rem 0 0.4rem; padding:1rem 1.1rem; border:1px solid rgba(212,175,55,0.45); border-radius:10px; background:rgba(255,255,255,0.03);">
     <div style="color:var(--gold); font-weight:800; margin-bottom:0.5rem;">🔒 Protection de vos données (RGPD)</div>
     <label style="display:flex; align-items:flex-start; gap:0.7rem; cursor:pointer; color:var(--white); font-size:0.92rem; line-height:1.5;">
         <input type="checkbox" name="rgpd_accepte" id="rgpd_accepte" value="1" required style="margin-top:2px;">

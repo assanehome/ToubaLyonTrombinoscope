@@ -143,7 +143,7 @@ $waHref = 'https://wa.me/?text=' . rawurlencode($shareText);
         table.rpt th, table.rpt td { border: 1px solid #e0e0e0; padding: 7px 10px; text-align: left; vertical-align: top; }
         table.rpt th { background: #f6f3e8; color: #1b4332; }
         .pres-list { columns: 2; font-size: 13.5px; margin: 4px 0; padding-left: 18px; }
-        .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 50px; }
+        .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
         .b-fait { background: #dcfce7; color: #166534; }
         .b-encours { background: #dbeafe; color: #1e40af; }
         .b-afaire { background: #f1f1f1; color: #555; }

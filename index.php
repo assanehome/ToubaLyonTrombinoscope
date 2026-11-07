@@ -375,7 +375,7 @@ try {
             max-width: 820px;
             margin: 0 auto 1.5rem;
             padding: 1.5rem 1.5rem 1.25rem;
-            border-radius: 20px;
+            border-radius: 12px;
             background: linear-gradient(160deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
             backdrop-filter: blur(18px);
             -webkit-backdrop-filter: blur(18px);
@@ -387,7 +387,7 @@ try {
         @keyframes wtvFlowIdxs { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         .wtv-idx-top { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
         .wtv-idx-icon {
-            width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+            width: 46px; height: 46px; border-radius: 10px; flex-shrink: 0;
             display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
             background: rgba(255,255,255,0.08);
             border: 1px solid rgba(255,255,255,0.15);
@@ -396,7 +396,7 @@ try {
         .wtv-idx-title { font-size: 1.05rem; font-weight: 800; color: #fff; letter-spacing: -0.01em; }
         .wtv-idx-session { font-size: 0.82rem; color: rgba(255,255,255,0.7); font-weight: 600; }
         .wtv-idx-cta { margin-left: auto; white-space: nowrap; }
-        .wtv-idx-count { font-size: 0.78rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg, #d4af37, #f1d279); border-radius: 50px; padding: 4px 13px; box-shadow: 0 4px 12px rgba(212,175,55,0.35); margin-left: auto; }
+        .wtv-idx-count { font-size: 0.78rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg, #d4af37, #f1d279); border-radius: 12px; padding: 4px 13px; box-shadow: 0 4px 12px rgba(212,175,55,0.35); margin-left: auto; }
         .wtv-idx-list { display: flex; flex-wrap: wrap; gap: 0.55rem; margin-top: 1.1rem; }
         /* Regroupement des Juz à valider par Kamil (session) */
         .wtv-idx-groups { display: flex; flex-direction: column; gap: 1rem; margin-top: 1.1rem; }
@@ -406,7 +406,7 @@ try {
             display: inline-flex; align-items: center; gap: 0.45rem;
             background: rgba(255,255,255,0.05);
             border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 12px;
+            border-radius: 10px;
             padding: 5px 6px;
             animation: wtvChipIdx 0.45s cubic-bezier(0.22,1,0.36,1) both;
             transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
@@ -416,7 +416,7 @@ try {
         .wtv-item-idx .wtv-num { font-weight: 800; font-size: 0.88rem; color: #fff; padding: 4px 6px 4px 12px; white-space: nowrap; cursor: pointer; border-radius: 8px; transition: background 0.2s; }
         .wtv-item-idx .wtv-num:hover { background: rgba(255,255,255,0.1); }
         .wtv-item-idx .wtv-btn {
-            background: rgba(45,106,79,0.9); color: #fff; border: 0; border-radius: 9px;
+            background: rgba(45,106,79,0.9); color: #fff; border: 0; border-radius: 8px;
             font-weight: 700; font-size: 0.82rem; padding: 7px 13px; cursor: pointer;
             display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
             transition: transform 0.12s ease, filter 0.2s ease;
@@ -431,7 +431,7 @@ try {
         .renc-card {
             position: relative;
             border: 1px solid var(--glass-border);
-            border-radius: 16px;
+            border-radius: 12px;
             padding: 1rem 1.1rem;
             background: rgba(255,255,255,0.03);
             overflow: hidden;
@@ -462,7 +462,7 @@ try {
             .renc-card > div:first-child { justify-content: center; }
         }
         /* ── Badges d'état d'une rencontre (en cours / annulé) ── */
-        .renc-badge { font-size: 0.68rem; font-weight: 700; padding: 0.18rem 0.5rem; border-radius: 50px; white-space: nowrap; line-height: 1.2; }
+        .renc-badge { font-size: 0.68rem; font-weight: 700; padding: 0.18rem 0.5rem; border-radius: 12px; white-space: nowrap; line-height: 1.2; }
         .renc-badge-live { background: rgba(37,211,102,0.15); color: #7bd8a6; border: 1px solid rgba(37,211,102,0.45); }
         .renc-badge-annule { background: rgba(191,33,33,0.15); color: #fca5a5; border: 1px solid rgba(191,33,33,0.45); }
         /* Carte « en cours » : liseré vert pulsant */
@@ -480,7 +480,7 @@ try {
             display: flex; align-items: flex-start; gap: 0.7rem;
             background: rgba(255,255,255,0.03);
             border: 1px solid var(--glass-border);
-            border-radius: 12px;
+            border-radius: 10px;
             padding: 0.7rem 0.9rem;
             text-decoration: none;
             cursor: pointer;
@@ -508,7 +508,7 @@ try {
         .dash-notif-body.open { max-height: 1200px; opacity: 1; }
         .dash-notif-count {
             background: linear-gradient(135deg, #d4af37, #f1d279); color: #0c241a;
-            border-radius: 50px; padding: 0.15rem 0.65rem; font-size: 0.75rem; font-weight: 800;
+            border-radius: 12px; padding: 0.15rem 0.65rem; font-size: 0.75rem; font-weight: 800;
             margin-left: 0.4rem; box-shadow: 0 2px 8px rgba(212,175,55,0.3);
         }
         /* Boutons d'action du banner : pleine largeur + centrés sur mobile */
@@ -518,6 +518,33 @@ try {
             .dash-actions { flex-direction: column; align-items: stretch; }
             .dash-actions .btn { width: 100%; }
         }
+        /* Bascule vers le mode administration */
+        /* Groupe fermé par défaut ; la carte n'a plus son propre cadre à l'intérieur */
+        details.adm-grp { border: 1px solid rgba(212,175,55,0.5); border-radius: 12px; background: linear-gradient(135deg, rgba(212,175,55,0.12), rgba(255,255,255,0.02)); overflow: hidden; padding: 0; }
+        details.adm-grp > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.85rem 1.1rem; color: var(--gold); font-weight: 800; font-size: 0.95rem; transition: background .15s; }
+        details.adm-grp > summary::-webkit-details-marker { display: none; }
+        details.adm-grp > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
+        details.adm-grp[open] > summary::after { transform: rotate(90deg); }
+        details.adm-grp > summary:hover { background: rgba(212,175,55,0.08); }
+        details.adm-grp[open] > summary { border-bottom: 1px solid rgba(212,175,55,0.3); background: rgba(212,175,55,0.1); }
+        details.adm-grp .adm-card { margin: 0 !important; border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 1rem 1.1rem; }
+        details.adm-grp .adm-card::before { display: none; }
+        .adm-card { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 1rem 1.2rem; border-radius: 12px; border: 1px solid rgba(212,175,55,0.5);
+            background: linear-gradient(135deg, rgba(212,175,55,0.16) 0%, rgba(212,175,55,0.04) 55%, rgba(255,255,255,0.02) 100%); box-shadow: 0 6px 22px rgba(0,0,0,0.22); position: relative; overflow: hidden; }
+        .adm-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(180deg, #f2d675, #b8921f); }
+        .adm-card-ic { flex: 0 0 auto; width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+            background: linear-gradient(135deg, rgba(242,214,117,0.32), rgba(184,146,31,0.2)); border: 1px solid rgba(212,175,55,0.55); }
+        .adm-card-txt { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+        .adm-card-txt strong { color: var(--gold); font-size: 1rem; letter-spacing: 0.01em; }
+        .adm-card-txt span { color: var(--text-muted); font-size: 0.84rem; line-height: 1.4; }
+        .adm-card-form { margin: 0; flex: 0 0 auto; }
+        .adm-card-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; cursor: pointer; border: 0; padding: 0.75rem 1.4rem; font-weight: 800; font-size: 0.9rem; font-family: inherit;
+            color: #1b1b1b; background: linear-gradient(135deg, #f2d675, #d4af37 55%, #b8921f); box-shadow: 0 4px 14px rgba(212,175,55,0.35); transition: transform .15s, box-shadow .15s, filter .15s; white-space: nowrap; }
+        .adm-card-btn span { transition: transform .15s; }
+        .adm-card-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(212,175,55,0.45); filter: brightness(1.05); }
+        .adm-card-btn:hover span { transform: translateX(4px); }
+        .adm-card-btn:active { transform: translateY(0) scale(0.98); }
+        @media (max-width: 600px) { .adm-card { flex-direction: column; align-items: stretch; text-align: center; } .adm-card-ic { align-self: center; } .adm-card-txt { flex: 0 0 auto; } .adm-card-form, .adm-card-btn { width: 100%; } }
         .adm-switch summary::-webkit-details-marker { display: none; }
         .adm-switch[open] .adm-switch-chevron { transform: rotate(90deg); }
     </style>
@@ -533,25 +560,20 @@ try {
         <?php // Rôle d'administrateur accordé à ce membre : il ouvre l'autre espace
               // dans la même session, avec le même compte et le même mot de passe. ?>
         <?php if (!empty($me['is_admin'])): ?>
-            <details class="glass-card adm-switch" style="margin-top: 2rem; padding: 0.75rem 1.15rem; border-color: rgba(212, 175, 55, 0.45);">
-                <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:var(--gold); font-weight:700; font-size:0.9rem;">
-                    🛡️ Mode administration
-                    <span class="adm-switch-chevron" style="margin-left:auto; color:var(--text-muted); transition:transform 0.2s;">▸</span>
-                </summary>
-                <div style="margin-top: 0.8rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
-                    <div style="font-size: 0.86rem; color: #fff; line-height: 1.5;">
-                        🛡️ Vous êtes aussi <strong>administrateur</strong> du Dahira.
-                        <span style="color: var(--text-muted);">Votre espace membre reste ici.</span>
-                    </div>
-                    <form action="basculer_admin.php" method="POST" style="margin: 0;">
-                        <?php echo csrf_field(); ?>
-                        <input type="hidden" name="vers" value="admin">
-                        <button type="submit" class="btn btn-sm"
-                                style="background: rgba(212, 175, 55, 0.16); border: 1px solid rgba(212, 175, 55, 0.5); color: var(--gold); white-space: nowrap;">
-                            🛡️ Passer en mode administration
-                        </button>
-                    </form>
+            <details class="adm-grp" style="margin-top: 2rem;">
+                <summary>🛡️ Mode administration</summary>
+            <div class="adm-card">
+                <div class="adm-card-ic" aria-hidden="true">🛡️</div>
+                <div class="adm-card-txt">
+                    <strong>Mode administration</strong>
+                    <span>Vous êtes aussi administrateur du Dahira. Votre espace membre reste ici.</span>
                 </div>
+                <form action="basculer_admin.php" method="POST" class="adm-card-form">
+                    <?php echo csrf_field(); ?>
+                    <input type="hidden" name="vers" value="admin">
+                    <button type="submit" class="adm-card-btn">Passer en mode admin <span aria-hidden="true">→</span></button>
+                </form>
+            </div>
             </details>
         <?php endif; ?>
 
@@ -577,7 +599,7 @@ try {
 
         <!-- User Welcome Banner -->
         <?php if (isset($_SESSION['player_id'])): ?>
-            <div class="user-welcome-banner glass-card" style="margin-top: 2rem; margin-bottom: 1rem; padding: 1.4rem 1.6rem; border-radius: 20px; position: relative; overflow: hidden;">
+            <div class="user-welcome-banner glass-card" style="margin-top: 2rem; margin-bottom: 1rem; padding: 1.4rem 1.6rem; border-radius: 12px; position: relative; overflow: hidden;">
                 <div style="display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap;">
                     <!-- Photo / avatar -->
                     <div style="width: 64px; height: 64px; border-radius: 50%; overflow: hidden; border: 2px solid var(--accent); box-shadow: 0 4px 14px rgba(0,0,0,0.4); flex-shrink: 0; background: var(--primary); display:flex; align-items:center; justify-content:center;">
@@ -598,11 +620,11 @@ try {
                     </div>
                     <!-- Score + notifications -->
                     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:0.5rem;">
-                        <span class="player-score-badge" style="background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: var(--white); font-weight: 800; padding: 0.5rem 1.25rem; border-radius: 50px; font-size: 1rem; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 12px rgba(27,67,50,0.3); white-space: nowrap;">
+                        <span class="player-score-badge" style="background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: var(--white); font-weight: 800; padding: 0.5rem 1.25rem; border-radius: 12px; font-size: 1rem; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 12px rgba(27,67,50,0.3); white-space: nowrap;">
                             🏆 <?php echo (int)($_SESSION['player_score'] ?? 0); ?> pts
                         </span>
                         <a href="notifications_page.php" style="color: var(--text-muted); text-decoration: none; font-size: 0.82rem; font-weight:600; display:inline-flex; align-items:center; gap:0.35rem;">
-                            🔔 Notifications <?php if (isset($notifNonLues) && $notifNonLues > 0): ?><span style="background: var(--accent); color: var(--secondary); border-radius: 50px; padding: 0.05rem 0.5rem; font-size: 0.75rem; font-weight: 800;"><?php echo (int)$notifNonLues > 99 ? '99+' : (int)$notifNonLues; ?></span><?php endif; ?>
+                            🔔 Notifications <?php if (isset($notifNonLues) && $notifNonLues > 0): ?><span style="background: var(--accent); color: var(--secondary); border-radius: 12px; padding: 0.05rem 0.5rem; font-size: 0.75rem; font-weight: 800;"><?php echo (int)$notifNonLues > 99 ? '99+' : (int)$notifNonLues; ?></span><?php endif; ?>
                         </a>
                     </div>
                 </div>
@@ -615,14 +637,14 @@ try {
 
         <!-- Complétion du profil : inciter à compléter les informations manquantes -->
         <?php if (isset($_SESSION['player_id']) && $profilManque): ?>
-        <a href="profile.php" class="glass-card" style="display:block; text-decoration:none; margin-bottom:1.25rem; padding:1.1rem 1.35rem; border-radius:16px; border:1px solid rgba(212,175,55,0.4); background:linear-gradient(160deg, rgba(212,175,55,0.12), rgba(255,255,255,0.03));">
+        <a href="profile.php" class="glass-card" style="display:block; text-decoration:none; margin-bottom:1.25rem; padding:1.1rem 1.35rem; border-radius:12px; border:1px solid rgba(212,175,55,0.4); background:linear-gradient(160deg, rgba(212,175,55,0.12), rgba(255,255,255,0.03));">
             <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
                 <div style="font-size:1.6rem;">📝</div>
                 <div style="flex:1; min-width:180px;">
                     <div style="color:#fff; font-weight:800; font-size:1rem;">Complétez vos informations</div>
                     <div style="color:var(--text-muted); font-size:0.85rem; margin-top:0.15rem;">Votre profil est rempli à <strong style="color:var(--accent);"><?php echo (int) $profilCompletion; ?>%</strong> — quelques champs manquent encore.</div>
-                    <div style="height:8px; border-radius:50px; background:rgba(255,255,255,0.08); margin-top:0.6rem; overflow:hidden;">
-                        <div style="height:100%; width:<?php echo (int) $profilCompletion; ?>%; background:linear-gradient(90deg, #d4af37, #f1d279); border-radius:50px;"></div>
+                    <div style="height:8px; border-radius:12px; background:rgba(255,255,255,0.08); margin-top:0.6rem; overflow:hidden;">
+                        <div style="height:100%; width:<?php echo (int) $profilCompletion; ?>%; background:linear-gradient(90deg, #d4af37, #f1d279); border-radius:12px;"></div>
                     </div>
                 </div>
                 <span class="btn btn-primary btn-sm" style="white-space:nowrap;">Compléter →</span>
@@ -640,7 +662,7 @@ try {
         <style>
             .paie-group > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:0.6rem; user-select:none; }
             .paie-group > summary::-webkit-details-marker { display:none; }
-            .paie-chip { font-size:0.72rem; font-weight:700; padding:0.2rem 0.6rem; border-radius:50px; white-space:nowrap; }
+            .paie-chip { font-size:0.72rem; font-weight:700; padding:0.2rem 0.6rem; border-radius:12px; white-space:nowrap; }
             .paie-chip-retard { animation:paieChipPulse 1.8s ease-in-out infinite; }
             @keyframes paieChipPulse { 0%,100%{opacity:1;} 50%{opacity:0.55;} }
             .paie-chevron { transition:transform 0.25s ease; display:inline-block; }
@@ -668,7 +690,7 @@ try {
             </summary>
             <div class="paie-inner" style="margin-top:0.9rem; display:flex; flex-direction:column; gap:0.9rem;">
                 <?php if ($paieRetard): ?>
-                <a href="cotisation.php" class="glass-card" style="display:block; text-decoration:none; padding:1.1rem 1.35rem; border-radius:16px; border:1px solid rgba(191,33,33,0.55); background:linear-gradient(160deg, rgba(191,33,33,0.16), rgba(255,255,255,0.03));">
+                <a href="cotisation.php" class="glass-card" style="display:block; text-decoration:none; padding:1.1rem 1.35rem; border-radius:12px; border:1px solid rgba(191,33,33,0.55); background:linear-gradient(160deg, rgba(191,33,33,0.16), rgba(255,255,255,0.03));">
                     <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
                         <div style="font-size:1.7rem;">🔴</div>
                         <div style="flex:1; min-width:180px;">
@@ -676,7 +698,7 @@ try {
                             <?php if (!empty($cotisationRetardMois)): ?>
                             <div style="display:flex; flex-wrap:wrap; gap:0.3rem; margin-top:0.4rem;">
                                 <?php foreach ($cotisationRetardMois as $mr): ?>
-                                    <span style="font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:50px; background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">🔴 <?php echo htmlspecialchars(cotisation_libelle_mois($mr)); ?></span>
+                                    <span style="font-size:0.72rem; font-weight:700; padding:0.15rem 0.5rem; border-radius:12px; background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">🔴 <?php echo htmlspecialchars(cotisation_libelle_mois($mr)); ?></span>
                                 <?php endforeach; ?>
                             </div>
                             <?php endif; ?>
@@ -688,7 +710,7 @@ try {
                 <?php endif; ?>
 
                 <?php if ($paieAlerte): ?>
-                <a href="cotisation.php" class="glass-card" style="display:block; text-decoration:none; padding:1.1rem 1.35rem; border-radius:16px; border:1px solid rgba(99,91,255,0.5); background:linear-gradient(160deg, rgba(99,91,255,0.15), rgba(255,255,255,0.03));">
+                <a href="cotisation.php" class="glass-card" style="display:block; text-decoration:none; padding:1.1rem 1.35rem; border-radius:12px; border:1px solid rgba(99,91,255,0.5); background:linear-gradient(160deg, rgba(99,91,255,0.15), rgba(255,255,255,0.03));">
                     <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
                         <div style="font-size:1.7rem;">💶</div>
                         <div style="flex:1; min-width:180px;">
@@ -701,7 +723,7 @@ try {
                 <?php endif; ?>
 
                 <?php if ($paieVirement): ?>
-                <div class="glass-card" style="padding:1.1rem 1.35rem; border-radius:16px; border:1px solid rgba(37,211,102,0.45); background:linear-gradient(160deg, rgba(37,211,102,0.14), rgba(255,255,255,0.03));">
+                <div class="glass-card" style="padding:1.1rem 1.35rem; border-radius:12px; border:1px solid rgba(37,211,102,0.45); background:linear-gradient(160deg, rgba(37,211,102,0.14), rgba(255,255,255,0.03));">
                     <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
                         <div style="font-size:1.7rem;">🎉</div>
                         <div style="flex:1; min-width:180px;">
@@ -738,7 +760,7 @@ try {
                     <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:#fff; font-weight:700;">
                         <span><?php echo $acEmoji; ?></span>
                         <span style="flex:1; min-width:0;"><?php echo htmlspecialchars((string) ($ac['titre'] ?? '')); ?></span>
-                        <?php if (!empty($ac['type'])): ?><span style="font-size:0.7rem; color:var(--accent); border:1px solid rgba(212,175,55,0.4); border-radius:50px; padding:0.1rem 0.55rem; white-space:nowrap;"><?php echo htmlspecialchars((string) $ac['type']); ?></span><?php endif; ?>
+                        <?php if (!empty($ac['type'])): ?><span style="font-size:0.7rem; color:var(--accent); border:1px solid rgba(212,175,55,0.4); border-radius:12px; padding:0.1rem 0.55rem; white-space:nowrap;"><?php echo htmlspecialchars((string) $ac['type']); ?></span><?php endif; ?>
                         <span class="actu-chevron" style="color:var(--text-muted);">▸</span>
                     </summary>
                     <div class="actu-body">
@@ -781,7 +803,7 @@ try {
                 <div class="renc-card">
                     <div style="display:flex; justify-content:space-between; gap:0.6rem; align-items:flex-start; flex-wrap:wrap;">
                         <div style="font-weight:800; color:#fff;">📌 <?php echo htmlspecialchars((string) $mt['titre']); ?></div>
-                        <span style="font-size:0.72rem; font-weight:700; border-radius:50px; padding:0.15rem 0.6rem; white-space:nowrap; <?php echo $badgeStyle; ?>"><?php echo $badgeTxt; ?></span>
+                        <span style="font-size:0.72rem; font-weight:700; border-radius:12px; padding:0.15rem 0.6rem; white-space:nowrap; <?php echo $badgeStyle; ?>"><?php echo $badgeTxt; ?></span>
                     </div>
                     <div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.35rem;">
                         👥 <?php echo htmlspecialchars((string) ($mt['commission_nom'] ?? '')); ?> · 📅 <?php echo htmlspecialchars((string) $mt['reunion_titre']); ?>

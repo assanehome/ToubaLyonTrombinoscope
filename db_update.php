@@ -138,7 +138,7 @@ try {
         .step-item {
             background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--glass-border);
-            border-radius: 12px;
+            border-radius: 10px;
             padding: 1rem 1.5rem;
             margin-bottom: 0.75rem;
             display: flex;
@@ -163,7 +163,7 @@ try {
             font-size: 0.8rem;
             font-weight: 700;
             padding: 0.35rem 0.75rem;
-            border-radius: 50px;
+            border-radius: 12px;
             text-transform: uppercase;
         }
         .status-success {

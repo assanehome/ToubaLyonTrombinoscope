@@ -291,12 +291,12 @@ $aujourdhui = date('Y-m-d');
     <style>
         .mg-wrap { max-width: 980px; margin: 2rem auto; }
         .mg-tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
-        .mg-tabs a { padding: 0.5rem 1rem; border-radius: 50px; border: 1px solid var(--glass-border); color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+        .mg-tabs a { padding: 0.5rem 1rem; border-radius: 12px; border: 1px solid var(--glass-border); color: var(--text-muted); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
         .mg-tabs a.active { background: rgba(212,175,55,0.15); border-color: rgba(212,175,55,0.6); color: var(--gold); }
-        .mg-card { border-radius: 16px; padding: 1.1rem 1.3rem; margin-bottom: 1rem; }
+        .mg-card { border-radius: 12px; padding: 1.1rem 1.3rem; margin-bottom: 1rem; }
         .mg-card h3 { margin: 0 0 0.7rem; color: var(--white); font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
-        .mg-count { font-size: 0.72rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg,#d4af37,#f1d279); border-radius: 50px; padding: 2px 10px; }
-        .mg-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.5rem 0.8rem; margin-bottom: 0.45rem; }
+        .mg-count { font-size: 0.72rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg,#d4af37,#f1d279); border-radius: 12px; padding: 2px 10px; }
+        .mg-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.5rem 0.8rem; margin-bottom: 0.45rem; }
         .mg-row .mg-main { flex: 1; min-width: 160px; }
         .mg-row .mg-sub { color: var(--text-muted); font-size: 0.78rem; margin-top: 2px; }
         .mg-row.done .mg-main strong { text-decoration: line-through; opacity: 0.6; }
@@ -304,10 +304,10 @@ $aujourdhui = date('Y-m-d');
         .mg-form .form-group { margin: 0; flex: 1; min-width: 150px; }
         .mg-sel { background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); color: var(--white); border-radius: 8px; padding: 0.3rem 0.5rem; font-size: 0.82rem; color-scheme: dark; }
         .mg-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.7rem; margin-bottom: 1.1rem; }
-        .mg-stat { border-radius: 14px; padding: 0.8rem 1rem; text-align: center; }
+        .mg-stat { border-radius: 10px; padding: 0.8rem 1rem; text-align: center; }
         .mg-stat .v { font-size: 1.4rem; font-weight: 800; color: var(--white); }
         .mg-stat .l { color: var(--text-muted); font-size: 0.78rem; }
-        .mg-badge { font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 50px; white-space: nowrap; border: 1px solid; }
+        .mg-badge { font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 12px; white-space: nowrap; border: 1px solid; }
         .mg-b-ok { background: rgba(37,211,102,0.15); color: #7bd8a6; border-color: rgba(37,211,102,0.4); }
         .mg-b-att { background: rgba(255,193,7,0.15); color: #ffd873; border-color: rgba(255,193,7,0.4); }
         .mg-b-info { background: rgba(45,140,255,0.15); color: #8ec5ff; border-color: rgba(45,140,255,0.4); }
@@ -322,7 +322,7 @@ $aujourdhui = date('Y-m-d');
             <?php if ($__mgAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } ?>
             <div class="dashboard-main">
         <div class="mg-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.25rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.25rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>🕌 Wadial Magal — <strong class="gold-text"><?php echo (int) $annee; ?></strong></span>
                 <form method="GET" action="magal.php" style="margin:0; display:flex; align-items:center; gap:0.5rem;">
                     <input type="hidden" name="tab" value="<?php echo $h($tab); ?>">

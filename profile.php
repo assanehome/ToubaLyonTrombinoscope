@@ -108,7 +108,7 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                         'Statut du dossier' => htmlspecialchars($statutFr[$member['status']] ?? $member['status']),
                     ])
                     . '<p style="margin:16px 0 8px;font-weight:bold;color:#1b4332;">Son message :</p>'
-                    . '<div style="white-space:pre-wrap;background:#f6f7f6;border-left:4px solid #1b4332;border-radius:10px;padding:14px 18px;margin:0 0 18px;">' . nl2br(htmlspecialchars($body)) . '</div>'
+                    . '<div style="white-space:pre-wrap;background:#f6f7f6;border-left:4px solid #1b4332;border-radius:8px;padding:14px 18px;margin:0 0 18px;">' . nl2br(htmlspecialchars($body)) . '</div>'
                     . '<p style="margin:0;">Merci de prendre contact avec ce membre afin de poursuivre son intégration. '
                     . 'Vous pouvez lui répondre directement par e-mail (' . htmlspecialchars($member['email']) . ')'
                     . (!empty($member['telephone']) ? ' ou par téléphone (' . htmlspecialchars($member['telephone']) . ')' : '') . '.</p>',
@@ -319,7 +319,7 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
         }
         .profile-large-photo-wrap.editable:hover .pp-cam, .profile-large-photo-wrap.editable:focus-within .pp-cam { transform: scale(1.1); }
         .profile-large-photo-wrap.editable:hover .pp-clip img { filter: brightness(0.8); }
-        .pp-save-bar { display: none; margin-top: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 12px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.4); font-size: 0.85rem; color: var(--white); }
+        .pp-save-bar { display: none; margin-top: 0.75rem; padding: 0.6rem 0.8rem; border-radius: 10px; background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.4); font-size: 0.85rem; color: var(--white); }
         .pp-save-bar .btn { margin-top: 0.45rem; }
         .profile-large-photo-wrap img {
             width: 100%;
@@ -339,14 +339,14 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
             font-size: 0.75rem;
             font-weight: 700;
             padding: 0.25rem 0.75rem;
-            border-radius: 50px;
+            border-radius: 12px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
         .info-warning-box {
             background: rgba(212, 175, 55, 0.08);
             border: 1px solid rgba(212, 175, 55, 0.3);
-            border-radius: 16px;
+            border-radius: 12px;
             padding: 1.25rem;
             margin-bottom: 2rem;
             display: flex;
@@ -379,27 +379,27 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
         }
         /* ── Modale e-mail (UI moderne) ── */
         .mailx-overlay { align-items:center; justify-content:center; }
-        .mailx-card { width:100%; max-width:520px; background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:22px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,0.55); transform:translateY(14px) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
+        .mailx-card { width:100%; max-width:520px; background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:12px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,0.55); transform:translateY(14px) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
         .modal-overlay.active .mailx-card { transform:translateY(0) scale(1); opacity:1; }
         .mailx-header { display:flex; align-items:center; gap:0.9rem; padding:1.4rem 1.5rem; background:linear-gradient(135deg,#1b4332 0%, #2d6a4f 100%); border-bottom:1px solid rgba(212,175,55,0.25); position:relative; }
-        .mailx-header-icon { width:44px; height:44px; border-radius:14px; background:rgba(212,175,55,0.18); color:#f2d574; display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1px solid rgba(212,175,55,0.35); }
+        .mailx-header-icon { width:44px; height:44px; border-radius:10px; background:rgba(212,175,55,0.18); color:#f2d574; display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1px solid rgba(212,175,55,0.35); }
         .mailx-title { font-size:1.15rem; font-weight:700; color:#fff; margin:0; }
         .mailx-subtitle { font-size:0.8rem; color:#b7d4c5; margin:0.1rem 0 0; }
         .mailx-close { position:absolute; top:0.85rem; right:1rem; background:rgba(255,255,255,0.1); border:none; color:#fff; width:30px; height:30px; border-radius:50%; font-size:1.2rem; line-height:1; cursor:pointer; transition:background .2s ease; }
         .mailx-close:hover { background:rgba(255,255,255,0.25); }
         .mailx-body { padding:1.4rem 1.5rem 0.5rem; }
-        .mailx-recipient { display:flex; align-items:center; gap:0.6rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:12px; padding:0.55rem 0.75rem; margin-bottom:1.1rem; }
+        .mailx-recipient { display:flex; align-items:center; gap:0.6rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:10px; padding:0.55rem 0.75rem; margin-bottom:1.1rem; }
         .mailx-recipient-label { font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; }
         .mailx-avatar { width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#d4af37,#b8902f); color:#0c241a; font-weight:800; font-size:0.8rem; display:flex; align-items:center; justify-content:center; text-transform:uppercase; flex-shrink:0; }
         .mailx-recipient-name { color:#fff; font-weight:600; font-size:0.95rem; }
         .mailx-field { margin-bottom:1.1rem; }
         .mailx-field label { display:block; font-size:0.75rem; color:#f2d574; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.4rem; }
-        .mailx-field input, .mailx-field textarea { width:100%; padding:0.8rem 1rem; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:12px; color:#fff; font-size:0.95rem; font-family:inherit; transition:border-color .2s ease, box-shadow .2s ease; }
+        .mailx-field input, .mailx-field textarea { width:100%; padding:0.8rem 1rem; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:10px; color:#fff; font-size:0.95rem; font-family:inherit; transition:border-color .2s ease, box-shadow .2s ease; }
         .mailx-field textarea { resize:vertical; min-height:120px; line-height:1.5; }
         .mailx-field input:focus, .mailx-field textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(212,175,55,0.15); }
         .mailx-hint { display:block; font-size:0.72rem; color:var(--text-muted); margin-top:0.4rem; }
         .mailx-footer { display:flex; justify-content:flex-end; gap:0.6rem; padding:0.6rem 1.5rem 1.4rem; }
-        .mailx-btn { display:inline-flex; align-items:center; gap:0.45rem; padding:0.7rem 1.4rem; border-radius:12px; font-size:0.9rem; font-weight:700; cursor:pointer; border:1px solid transparent; transition:transform .15s ease, background .2s ease, box-shadow .2s ease; }
+        .mailx-btn { display:inline-flex; align-items:center; gap:0.45rem; padding:0.7rem 1.4rem; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; border:1px solid transparent; transition:transform .15s ease, background .2s ease, box-shadow .2s ease; }
         .mailx-btn:active { transform:scale(0.97); }
         .mailx-btn-ghost { background:transparent; border-color:var(--glass-border); color:var(--text-muted); }
         .mailx-btn-ghost:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
@@ -480,7 +480,7 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
             </div>
 
             <?php if ($member['status'] !== 'approved'): ?>
-            <div style="background:rgba(212,175,55,0.12); border:1px solid rgba(212,175,55,0.4); border-radius:16px; padding:1.25rem 1.5rem; margin-bottom:1.5rem; display:flex; gap:1rem; align-items:flex-start;">
+            <div style="background:rgba(212,175,55,0.12); border:1px solid rgba(212,175,55,0.4); border-radius:12px; padding:1.25rem 1.5rem; margin-bottom:1.5rem; display:flex; gap:1rem; align-items:flex-start;">
                 <span style="font-size:1.5rem; line-height:1;">⏳</span>
                 <p style="color:var(--text-muted); font-size:0.95rem; line-height:1.5; margin:0;">
                     <strong style="color:var(--gold);">Compte en attente de validation.</strong> Votre inscription (ou vos dernières modifications) doit être validée par un administrateur avant que vous puissiez accéder au Dahira - Mubawwa-A-Sidqin et au jeu Ki Kan La. Vous pouvez consulter et modifier votre profil en attendant.
@@ -488,7 +488,7 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
             </div>
 
             <!-- Suivi intégration (lecture seule) -->
-            <div class="glass-card" style="border-radius:16px; padding:1.5rem; margin-bottom:1.5rem;">
+            <div class="glass-card" style="border-radius:12px; padding:1.5rem; margin-bottom:1.5rem;">
                 <h3 class="gold-text" style="font-size:1.15rem; font-weight:700; margin-bottom:1rem;">🧭 Votre suivi d'intégration</h3>
                 <?php if ($integrateur): ?>
                     <p style="color:var(--text-muted); font-size:0.92rem; line-height:1.6; margin:0 0 1rem;">

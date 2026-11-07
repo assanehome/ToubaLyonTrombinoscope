@@ -203,27 +203,42 @@ if (!empty($smgData)) {
     <title>📋 Mes commissions — Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
     <style>
-        .mc-wrap { max-width: 860px; margin: 1.5rem auto; }
-        .mc-card { border-radius: 18px; padding: 1.2rem 1.4rem; margin-bottom: 1.2rem; }
+        .mc-wrap { max-width: 860px; margin: 0 auto; }
+        .mc-card { border-radius: 12px; padding: 1.2rem 1.4rem; margin-bottom: 1.2rem; }
         .mc-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
         .mc-head h2 { margin: 0; color: var(--white); font-size: 1.2rem; }
         .mc-sub { color: var(--text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin: 0.9rem 0 0.4rem; }
         .mc-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-        .mc-chip { background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); border-radius: 50px; padding: 0.2rem 0.7rem; font-size: 0.82rem; color: var(--white); }
+        .mc-chip { background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.2rem 0.7rem; font-size: 0.82rem; color: var(--white); }
         .mc-chip.resp { border-color: rgba(212,175,55,0.5); color: var(--gold); }
-        .mc-grp { border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.55rem 0.9rem; background: rgba(255,255,255,0.03); margin-bottom: 0.5rem; }
+        .mc-grp { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.9rem; background: rgba(255,255,255,0.03); margin-bottom: 0.5rem; }
         .mc-grp > summary { cursor: pointer; list-style: none; font-weight: 700; color: var(--white); font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; }
         .mc-grp > summary::-webkit-details-marker { display: none; }
-        .mc-reu { border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.55rem 0.8rem; margin-top: 0.5rem; background: rgba(255,255,255,0.04); }
+        .mc-reu { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.8rem; margin-top: 0.5rem; background: rgba(255,255,255,0.04); }
         .mc-reu-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
         .mc-reu-titre { color: var(--white); font-weight: 700; }
         .mc-reu-meta { color: var(--text-muted); font-size: 0.8rem; margin-top: 2px; }
-        .mc-cr { margin-top: 0.6rem; padding: 0.7rem 0.9rem; background: rgba(255,255,255,0.05); border-radius: 10px; color: var(--white); font-size: 0.9rem; line-height: 1.55; }
+        .mc-cr { margin-top: 0.6rem; padding: 0.7rem 0.9rem; background: rgba(255,255,255,0.05); border-radius: 8px; color: var(--white); font-size: 0.9rem; line-height: 1.55; }
         .mc-cr h3, .mc-cr h4 { color: var(--gold); margin: 0.6rem 0 0.2rem; }
         .mc-cr ul, .mc-cr ol { padding-left: 1.3rem; }
         .mc-cr blockquote { border-left: 3px solid var(--gold); margin: 0.4rem 0; padding-left: 0.7rem; color: var(--text-muted); }
         .mc-cr a { color: var(--accent); }
         .mc-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.8rem; }
+        .mc-frame-full { display: block; width: 100%; border: 0; min-height: 260px; background: transparent; overflow: hidden; }
+        /* Une commission = un groupe, au même format que les autres groupes de l'application */
+        details.mc-com { border: 1px solid rgba(212,175,55,0.38); border-radius: 12px; background: rgba(255,255,255,0.03); overflow: hidden; margin: 0 0 1rem; padding: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+        details.mc-com > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.85rem 1rem; color: var(--white); font-weight: 800; font-size: 0.92rem; transition: background .15s; }
+        details.mc-com > summary::-webkit-details-marker { display: none; }
+        details.mc-com > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
+        details.mc-com[open] > summary::after { transform: rotate(90deg); }
+        details.mc-com > summary:hover { background: rgba(212,175,55,0.08); }
+        details.mc-com[open] > summary { background: rgba(212,175,55,0.1); border-bottom: 1px solid rgba(212,175,55,0.3); color: var(--gold); }
+        .mc-com-nom { flex: 1 1 auto; min-width: 0; }
+        .mc-com-nom .mg-n { color: var(--text-muted); font-weight: 600; font-size: 0.8rem; }
+        .mc-com-badges { display: flex; gap: 0.35rem; flex-wrap: wrap; flex: 0 0 auto; }
+        .mc-com-body { padding: 0; }
+        @media (max-width: 480px) { .mc-com-badges { display: none; } }
+        .mc-com .mc-card-in { border: 0; background: transparent; box-shadow: none; margin: 0; border-radius: 0; padding: 1rem; }
     </style>
 </head>
 <body>
@@ -285,42 +300,25 @@ if (!empty($smgData)) {
                         $groupePrec = $groupeCourant;
                     }
                 ?>
-                <div class="glass-card mc-card" id="commission-<?php echo $cid; ?>">
-                    <div class="mc-head">
-                        <h2>📋 <?php echo $h($c['nom']); ?></h2>
-                        <span>
-                            <?php if ($estResp): ?><span class="badge badge-approved">🎖️ Responsable</span><?php else: ?><span class="badge">Membre</span><?php endif; ?>
-                            <span class="badge"><?php echo $nbMembres; ?> membre(s)</span>
-                        </span>
+                <?php if ($estResp): ?>
+                <details class="mc-com" id="commission-<?php echo $cid; ?>" open>
+                    <summary>
+                        <span class="mc-com-nom">📋 <?php echo $h($c['nom']); ?> <span class="mg-n">(<?php echo $nbMembres; ?> membre(s))</span></span>
+                        <span class="mc-com-badges"><span class="badge badge-approved">🎖️ Responsable</span></span>
+                    </summary>
+                    <div class="mc-com-body">
+                        <iframe class="mc-frame-full" data-cid="<?php echo $cid; ?>" scrolling="no" title="Commission <?php echo $h($c['nom']); ?>" data-src="commission_dashboard.php?embed=1&commission=<?php echo $cid; ?>"></iframe>
                     </div>
+                </details>
+                <?php else: ?>
+                <details class="mc-com" id="commission-<?php echo $cid; ?>" open>
+                    <summary>
+                        <span class="mc-com-nom">📋 <?php echo $h($c['nom']); ?> <span class="mg-n">(<?php echo $nbMembres; ?> membre(s))</span></span>
+                        <span class="mc-com-badges"><span class="badge">Membre</span></span>
+                    </summary>
+                    <div class="mc-com-body">
+                    <div class="mc-card mc-card-in">
 
-                    <?php if ($estResp):
-                        $nomL = mb_strtolower((string) $c['nom']);
-                        $dash = 'commission_dashboard.php?ouvrir=%s#com-card-' . $cid;
-                        $liensGestion = [
-                            [sprintf($dash, 'creer-reunion'), '➕ Créer une réunion'],
-                            [sprintf($dash, 'membres'), '👥 Membres'],
-                            [sprintf($dash, 'sous-ajout'), '➕ Ajouter une sous-commission'],
-                            [sprintf($dash, 'sous'), '🧩 Gérer les sous-commissions'],
-                            [sprintf($dash, 'parametres'), '⚙️ Paramètres (lien Zoom…)'],
-                            ['sondage_gestion.php', '📊 Nouveau sondage'],
-                        ];
-                        // Wadial Magal : seulement si cette commission est impliquée dans l'édition en cours
-                        if (isset($magalCommissions[$cid])) { $liensGestion[] = ['magal.php?annee=' . (int) $magalAnnee, '🕌 Wadial Magal']; }
-                        if (!empty($c['stock_enabled'])) { $liensGestion[] = ['stock_index.php', '📦 Stock']; }
-                        if (strpos($nomL, 'culte') !== false) { $liensGestion[] = ['wird_admin.php', '📖 Lecture Coran']; $liensGestion[] = ['admin_guddi.php', '💎 Guddi Àjjuma']; }
-                        if (strpos($nomL, 'secrétar') !== false || strpos($nomL, 'secretar') !== false) { $liensGestion[] = ['admin_planning.php', '📅 Planning Dahira']; $liensGestion[] = ['actualites.php', '📰 Actualités']; }
-                        if (strpos($nomL, 'financ') !== false) { $liensGestion[] = ['admin_cotisations.php', '💶 Cotisations']; }
-                        if (strpos($nomL, 'kourel') !== false || strpos($nomL, 'kurel') !== false) { $liensGestion[] = ['kourel_dashboard.php', '🎵 Kurels']; }
-                    ?>
-                    <details class="mc-grp" style="margin:0.4rem 0 0.8rem; border-color:rgba(212,175,55,0.45); background:rgba(212,175,55,0.07);">
-                        <summary style="color:var(--gold);">🛠️ Gérer cette commission <span style="color:var(--text-muted); font-weight:400; font-size:0.78rem;">(actions de responsable)</span></summary>
-                        <div style="color:var(--text-muted); font-size:0.8rem; margin:0.6rem 0;">Vous êtes responsable : vous gérez la commission depuis votre espace membre, sans passer en mode administration.</div>
-                        <div style="display:flex; flex-direction:column; gap:0.45rem;">
-                            <?php foreach ($liensGestion as $lg): ?><a href="<?php echo $h($lg[0]); ?>" class="btn btn-secondary btn-sm" style="width:100%; box-sizing:border-box; padding:0.75rem 1.1rem; justify-content:center; text-align:center; border-color:rgba(212,175,55,0.5); color:var(--gold);"><?php echo $h($lg[1]); ?></a><?php endforeach; ?>
-                        </div>
-                    </details>
-                    <?php endif; ?>
 
                     <div class="mc-sub">🎖️ Responsable(s)</div>
                     <?php if (empty($responsables[$cid])): ?>
@@ -435,6 +433,9 @@ if (!empty($smgData)) {
                         <?php endif; ?>
                     </div>
                 </div>
+                    </div>
+                </details>
+                <?php endif; ?>
                 <?php endforeach; ?>
 
                 </div>
@@ -448,7 +449,7 @@ if (!empty($smgData)) {
     <style>
         #smg-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
         #smg-modal.active { display: flex; }
-        .smg-card { width: 100%; max-width: 760px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.3); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
+        .smg-card { width: 100%; max-width: 760px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.3); border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
         .smg-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg,#1b4332,#2d6a4f); }
         .smg-head h3 { margin: 0; color: #fff; font-size: 1.05rem; }
         .smg-x { background: none; border: 0; color: #fff; font-size: 1.7rem; line-height: 1; cursor: pointer; }
@@ -458,13 +459,13 @@ if (!empty($smgData)) {
         .smg-col:last-child { border-right: 0; }
         .smg-col-head { padding: 0.7rem 0.9rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .smg-title { color: var(--gold); font-weight: 700; font-size: 0.82rem; margin-bottom: 0.4rem; }
-        .smg-col-head input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; color: #fff; padding: 0.5rem 0.7rem; font-size: 0.88rem; }
+        .smg-col-head input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; color: #fff; padding: 0.5rem 0.7rem; font-size: 0.88rem; }
         .smg-list { overflow-y: auto; padding: 0.4rem; min-height: 180px; max-height: 50vh; }
-        .smg-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border-radius: 10px; }
+        .smg-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border-radius: 8px; }
         .smg-item:hover { background: rgba(255,255,255,0.05); }
         .smg-av { width: 30px; height: 30px; border-radius: 50%; background: rgba(212,175,55,0.22); color: var(--gold); display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 800; flex-shrink: 0; }
         .smg-name { flex: 1; color: #fff; font-size: 0.88rem; min-width: 0; }
-        .smg-tag { font-size: 0.66rem; font-weight: 700; color: #8ec5ff; border: 1px solid rgba(45,140,255,0.4); border-radius: 50px; padding: 0.08rem 0.45rem; margin-left: 0.3rem; white-space: nowrap; }
+        .smg-tag { font-size: 0.66rem; font-weight: 700; color: #8ec5ff; border: 1px solid rgba(45,140,255,0.4); border-radius: 12px; padding: 0.08rem 0.45rem; margin-left: 0.3rem; white-space: nowrap; }
         .smg-btn { width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer; font-size: 1.15rem; font-weight: 800; line-height: 1; flex-shrink: 0; }
         .smg-btn.add { background: rgba(37,211,102,0.2); color: #7bd8a6; }
         .smg-btn.rem { background: rgba(191,33,33,0.2); color: #fca5a5; }
@@ -572,5 +573,34 @@ if (!empty($smgData)) {
         })();
     </script>
     <?php endif; ?>
+    <script>
+    // Gestion de la commission intégrée (bloc identique à l'espace commission) : hauteur automatique + position de la fenêtre visible
+    (function () {
+        var frames = [].slice.call(document.querySelectorAll('iframe.mc-frame-full'));
+        if (!frames.length) { return; }
+        function visible(f) {
+            var r = f.getBoundingClientRect();
+            var top = Math.max(0, -r.top);
+            var h = Math.max(0, Math.min(window.innerHeight, r.bottom) - Math.max(0, r.top));
+            try { f.contentWindow.postMessage({ type: 'embed-viewport', top: top, height: h || window.innerHeight }, location.origin); } catch (e) { /* ignoré */ }
+        }
+        function tous() { frames.forEach(visible); }
+        window.addEventListener('message', function (e) {
+            if (e.origin !== location.origin) { return; }
+            var d = e.data || {};
+            if (d.type !== 'embed-height') { return; }
+            frames.forEach(function (f) { if (f.contentWindow === e.source) { f.style.height = Math.max(260, d.h) + 'px'; visible(f); } });
+        });
+        window.addEventListener('scroll', tous, { passive: true });
+        window.addEventListener('resize', tous);
+        frames.forEach(function (f) { f.addEventListener('load', function () { visible(f); }); });
+        // Le cadre de gestion se charge dès que le groupe est ouvert (ouvert par défaut ; chargement à l'ouverture pour les autres)
+        document.querySelectorAll('details.mc-com').forEach(function (d) {
+            function charger() { var f = d.querySelector('iframe.mc-frame-full'); if (f && !f.getAttribute('src')) { f.setAttribute('src', f.getAttribute('data-src')); } }
+            d.addEventListener('toggle', function () { if (d.open) { charger(); } });
+            if (d.open) { charger(); }
+        });
+    })();
+    </script>
 </body>
 </html>

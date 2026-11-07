@@ -158,12 +158,12 @@ function dahira_wa_button(string $link, string $label = 'Partager sur WhatsApp',
         return '<span title="Disponible une fois l\'événement publié" aria-disabled="true"'
             . ' style="display:inline-flex;align-items:center;gap:0.4rem;background:rgba(37,211,102,0.22);'
             . 'color:rgba(255,255,255,0.5);font-weight:700;font-size:' . $font . ';padding:' . $padding . ';'
-            . 'border-radius:50px;white-space:nowrap;cursor:not-allowed;opacity:0.65;">'
+            . 'border-radius:12px;white-space:nowrap;cursor:not-allowed;opacity:0.65;">'
             . '<span>🟢</span><span>' . htmlspecialchars($label) . '</span></span>';
     }
     return '<a href="' . htmlspecialchars($link) . '" target="_blank" rel="noopener"'
         . ' style="display:inline-flex;align-items:center;gap:0.4rem;background:#25D366;color:#06281a;'
-        . 'font-weight:700;font-size:' . $font . ';padding:' . $padding . ';border-radius:50px;'
+        . 'font-weight:700;font-size:' . $font . ';padding:' . $padding . ';border-radius:12px;'
         . 'text-decoration:none;white-space:nowrap;">'
         . '<span>🟢</span><span>' . htmlspecialchars($label) . '</span></a>';
 }
@@ -264,12 +264,12 @@ function dahira_email_annonce(string $date, string $lieu, string $debut, string 
         . '<h2 style="color:#1b4332;">As-salaamu haleykum 🙏</h2>'
         . '<p style="color:#333;">' . dahira_type_un($type) . ' <strong>' . htmlspecialchars(dahira_type_libelle($type)) . '</strong> aura lieu ce '
         . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> :</p>'
-        . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 16px;color:#1b4332;">'
+        . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:8px;padding:12px 16px;color:#1b4332;">'
         . '📍 ' . nl2br(htmlspecialchars(trim($lieu))) . '<br>🕐 De <strong>' . htmlspecialchars($debut) . '</strong> à <strong>' . htmlspecialchars($fin) . '</strong><br>📋 Commission Secrétariat Général</p>';
 
     if (trim($programme) !== '') {
         $inner .= '<h3 style="color:#1b4332;margin:20px 0 8px;">🗓️ Programme</h3>'
-            . '<div style="background:#ffffff;border:1px solid #e6e6e6;border-radius:12px;padding:12px 16px;color:#333;line-height:1.5;">'
+            . '<div style="background:#ffffff;border:1px solid #e6e6e6;border-radius:10px;padding:12px 16px;color:#333;line-height:1.5;">'
             . dahira_sanitize_html(trim($programme)) . '</div>';
     }
 
@@ -306,7 +306,7 @@ function dahira_email_annulation(string $date, string $signature = '', string $t
         . '<p style="color:#333;">As-salaamu haleykum,</p>'
         . '<p style="color:#333;">' . (dahira_type_feminin($type) ? 'L\'' : 'Le ') . '<strong>' . htmlspecialchars(dahira_type_libelle($type)) . '</strong> prévu' . (dahira_type_feminin($type) ? 'e' : '') . ' ce '
         . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> est <strong>annulé' . (dahira_type_feminin($type) ? 'e' : '') . '</strong> inshallaah.</p>'
-        . '<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;color:#991b1b;">Ñungi leen di tuubal bu baax.</p>'
+        . '<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;color:#991b1b;">Ñungi leen di tuubal bu baax.</p>'
         . '<p style="color:#333;margin-top:16px;">' . nl2br(htmlspecialchars(trim($signature))) . '</p>'
         . '<p style="color:#888;font-size:12px;">— Dahira Touba Lyon (Mubawwa-A-Sidqin)</p>'
         . '</div>';

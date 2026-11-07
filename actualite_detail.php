@@ -53,14 +53,14 @@ $retour = $__acAdmin ? 'actualites.php' : 'index.php';
     <link rel="stylesheet" href="style.css">
     <style>
         .ad-wrap { max-width: 780px; margin: 2rem auto; }
-        .ad-hero { border-radius: 20px; padding: 1.6rem 1.6rem 1.3rem; background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%); border: 2px solid rgba(212,175,55,0.5); margin-bottom: 1.3rem; }
+        .ad-hero { border-radius: 12px; padding: 1.6rem 1.6rem 1.3rem; background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%); border: 2px solid rgba(212,175,55,0.5); margin-bottom: 1.3rem; }
         .ad-type { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
         .ad-title { font-size: 1.55rem; font-weight: 800; color: var(--white); line-height: 1.25; margin: 0.3rem 0; }
         .ad-date { font-size: 0.82rem; color: var(--text-muted); }
         .ad-content { color: #e8e8e8; font-size: 0.98rem; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
         .ad-content a { color: var(--accent); font-weight: 700; }
-        .ad-img { width: 100%; border-radius: 14px; border: 1px solid var(--glass-border); margin: 1.1rem 0; }
-        .ad-pdf-btn { display: inline-flex; align-items: center; gap: 0.5rem; background: linear-gradient(135deg,#d4af37,#e8c766); color: #08150f; font-weight: 800; border-radius: 12px; padding: 0.8rem 1.3rem; text-decoration: none; }
+        .ad-img { width: 100%; border-radius: 10px; border: 1px solid var(--glass-border); margin: 1.1rem 0; }
+        .ad-pdf-btn { display: inline-flex; align-items: center; gap: 0.5rem; background: linear-gradient(135deg,#d4af37,#e8c766); color: #08150f; font-weight: 800; border-radius: 10px; padding: 0.8rem 1.3rem; text-decoration: none; }
         @media (max-width: 600px) { .ad-title { font-size: 1.3rem; } .ad-pdf-btn { width: 100%; justify-content: center; box-sizing: border-box; } }
     </style>
 </head>

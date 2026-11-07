@@ -286,7 +286,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--glass-border);
             padding: 0.4rem 1rem;
-            border-radius: 50px;
+            border-radius: 12px;
             font-size: 0.85rem;
             font-weight: 700;
             color: var(--gold);
@@ -310,7 +310,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
             width: 100%;
             height: 6px;
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 50px;
+            border-radius: 12px;
             overflow: hidden;
             border: 1px solid var(--glass-border);
         }
@@ -318,7 +318,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
         .progress-bar-fill {
             height: 100%;
             background: linear-gradient(90deg, var(--gold), var(--primary-light));
-            border-radius: 50px;
+            border-radius: 12px;
             transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
@@ -328,7 +328,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
             max-width: 220px;
             aspect-ratio: 1/1;
             margin: 0 auto 0.75rem;
-            border-radius: 20px;
+            border-radius: 12px;
             overflow: hidden;
             border: 2.5px solid var(--glass-border);
             box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
@@ -363,7 +363,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
             background: rgba(255, 255, 255, 0.04);
             border: 1.5px solid var(--glass-border);
             padding: 0.9rem 1.25rem;
-            border-radius: 16px;
+            border-radius: 12px;
             color: var(--white);
             font-size: 1rem;
             font-weight: 600;
@@ -402,7 +402,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
 
         /* Inline Feedback Card */
         .feedback-toast {
-            border-radius: 16px;
+            border-radius: 12px;
             padding: 0.85rem 1.25rem;
             text-align: center;
             margin-top: 0.5rem;
@@ -434,7 +434,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
             width: 100%;
             padding: 0.95rem;
             font-size: 1.05rem;
-            border-radius: 50px;
+            border-radius: 12px;
             font-weight: 700;
             text-align: center;
             background: var(--accent);
@@ -490,7 +490,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
             background: var(--gold);
             color: #081c15;
             padding: 0.2rem 0.6rem;
-            border-radius: 50px;
+            border-radius: 12px;
             font-size: 0.8rem;
             font-weight: 800;
             box-shadow: 0 4px 10px rgba(212,175,55,0.4);
@@ -565,17 +565,17 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">Vous avez répondu aux 10 questions.</p>
                 
                 <form action="play.php" method="POST" style="margin-bottom: 2rem;">
-                    <button type="submit" name="reset_game" class="btn btn-primary" style="width: 100%; padding: 0.95rem; font-size: 1.05rem; border-radius: 50px;">
+                    <button type="submit" name="reset_game" class="btn btn-primary" style="width: 100%; padding: 0.95rem; font-size: 1.05rem; border-radius: 12px;">
                         ⚡ Rejouer une partie
                     </button>
                 </form>
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 1rem; border-radius: 16px;">
+                    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 1rem; border-radius: 12px;">
                         <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">Bonnes réponses</div>
                         <div style="color: var(--white); font-size: 1.5rem; font-weight: 800;"><?php echo (int)$_SESSION['game_round']['correct_answers']; ?> / 10</div>
                     </div>
-                    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 1rem; border-radius: 16px;">
+                    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 1rem; border-radius: 12px;">
                         <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">Score gagné</div>
                         <div style="color: var(--gold); font-size: 1.5rem; font-weight: 800;">+<?php echo (int)$_SESSION['game_round']['round_score']; ?> pts</div>
                     </div>

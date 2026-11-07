@@ -94,23 +94,23 @@ try {
     <style>
         .integ-wrap { max-width: 900px; margin: 2rem auto; }
         .role-search { margin-bottom: 1rem; }
-        .role-search input { width:100%; padding:0.7rem 1.1rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:50px; color:var(--white); font-size:0.95rem; }
+        .role-search input { width:100%; padding:0.7rem 1.1rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:12px; color:var(--white); font-size:0.95rem; }
         .role-search input:focus { outline:none; border-color:var(--accent); }
         .role-filters { display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center; }
         .role-filters input, .role-select { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); font-size:0.9rem; padding:0.6rem 1rem; color-scheme:dark; }
-        .role-filters input { flex:1 1 240px; border-radius:50px; }
-        .role-select { flex:1 1 180px; border-radius:10px; }
+        .role-filters input { flex:1 1 240px; border-radius:12px; }
+        .role-select { flex:1 1 180px; border-radius:8px; }
         .role-select option { background-color:#0c241a; color:#fff; }
         .role-filters input:focus, .role-select:focus { outline:none; border-color:var(--accent); }
         .role-count { font-size:0.82rem; color:var(--text-muted); margin-left:auto; }
         @media (max-width:600px){ .role-filters input, .role-select { flex:1 1 100%; } }
-        .role-badge { display:inline-block; background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.4); border-radius:50px; padding:0.05rem 0.6rem; font-size:0.72rem; font-weight:700; }
+        .role-badge { display:inline-block; background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.4); border-radius:12px; padding:0.05rem 0.6rem; font-size:0.72rem; font-weight:700; }
         /* ── Optimisation mobile : lignes en cartes, bouton pleine largeur ── */
         @media (max-width: 600px) {
             .table-responsive { overflow:visible; }
             .admin-table thead { display:none; }
             .admin-table, .admin-table tbody, .admin-table tr, .admin-table td { display:block; width:100%; }
-            .admin-table tr { border:1px solid var(--glass-border); border-radius:14px; margin-bottom:0.75rem; padding:0.85rem 1rem; background:rgba(255,255,255,0.03); }
+            .admin-table tr { border:1px solid var(--glass-border); border-radius:10px; margin-bottom:0.75rem; padding:0.85rem 1rem; background:rgba(255,255,255,0.03); }
             .admin-table td { border:none !important; padding:0.25rem 0; }
             .admin-table td form { display:block; width:100%; margin-top:0.5rem; }
             .admin-table td .btn { display:flex; width:100%; justify-content:center; }
@@ -124,7 +124,7 @@ try {
             <?php if ($isAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } ?>
             <div class="dashboard-main">
         <div class="integ-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>Intégrateurs — <strong class="gold-text"><?php echo $nbInteg; ?></strong> membre(s) avec le rôle</span>
                 <a href="<?php echo $isAdmin ? 'admin_dashboard.php' : 'admin_reponses.php'; ?>" class="btn btn-secondary btn-sm">← <?php echo $isAdmin ? 'Tableau de bord' : 'Suivi intégration'; ?></a>
             </div>

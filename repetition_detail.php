@@ -107,14 +107,14 @@ $retour = $__reAdmin ? 'kourel_dashboard.php' : 'index.php';
     <link rel="stylesheet" href="style.css">
     <style>
         .gd-wrap { max-width: 860px; margin: 0 auto; }
-        .gd-hero { border-radius: 24px; padding: 1.6rem 1.6rem 1.4rem; background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%); border: 2px solid rgba(212,175,55,0.5); margin-bottom: 1.4rem; position: relative; overflow: hidden; }
+        .gd-hero { border-radius: 12px; padding: 1.6rem 1.6rem 1.4rem; background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%); border: 2px solid rgba(212,175,55,0.5); margin-bottom: 1.4rem; position: relative; overflow: hidden; }
         .gd-hero::before { content: ''; position: absolute; top: 0; left: -20%; right: -20%; height: 2px; background: linear-gradient(90deg, transparent, rgba(212,175,55,0.9), rgba(241,210,121,0.95), transparent); background-size: 200% 100%; animation: gdFlow 4.5s linear infinite; }
         @keyframes gdFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         .gd-hero .gd-date { font-size: 1.6rem; font-weight: 800; color: var(--accent); line-height: 1.25; }
         .gd-hero .gd-date small { display: block; font-size: 0.85rem; font-weight: 400; color: var(--text-muted); margin-top: 0.25rem; }
         .gd-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem; }
         .gd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
-        .gd-item { border-radius: 14px; padding: 1rem 1.1rem; }
+        .gd-item { border-radius: 10px; padding: 1rem 1.1rem; }
         .gd-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .gd-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
         .gd-back { display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1rem; }
@@ -124,10 +124,10 @@ $retour = $__reAdmin ? 'kourel_dashboard.php' : 'index.php';
         .gd-presence .btn-primary { transition: transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; }
         .gd-presence .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); filter: brightness(1.05); }
         @media (max-width: 480px) { .gd-presence { text-align: center; } .gd-presence .btn { width: 100%; } }
-        .gd-zoom-btn { display: flex; align-items: center; justify-content: center; gap: 0.9rem; width: 100%; background: linear-gradient(135deg, #2d8cff 0%, #1a63d0 100%); color: #fff; font-weight: 800; font-size: 1.25rem; border: 0; border-radius: 18px; padding: 1.2rem 1.4rem; text-decoration: none; box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2); transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease; animation: gdZoomPulse 2.6s ease-in-out infinite; }
+        .gd-zoom-btn { display: flex; align-items: center; justify-content: center; gap: 0.9rem; width: 100%; background: linear-gradient(135deg, #2d8cff 0%, #1a63d0 100%); color: #fff; font-weight: 800; font-size: 1.25rem; border: 0; border-radius: 12px; padding: 1.2rem 1.4rem; text-decoration: none; box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2); transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.2s ease; animation: gdZoomPulse 2.6s ease-in-out infinite; }
         @keyframes gdZoomPulse { 0%, 100% { box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2); } 50% { box-shadow: 0 18px 42px rgba(45,140,255,0.6), inset 0 1px 0 rgba(255,255,255,0.2); } }
         .gd-zoom-btn:hover { transform: translateY(-2px); filter: brightness(1.08); animation-play-state: paused; }
-        .gd-zoom-btn .zoom-ic { width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0; background: rgba(255,255,255,0.22); display: inline-flex; align-items: center; justify-content: center; }
+        .gd-zoom-btn .zoom-ic { width: 48px; height: 48px; border-radius: 10px; flex-shrink: 0; background: rgba(255,255,255,0.22); display: inline-flex; align-items: center; justify-content: center; }
         .gd-zoom-btn .zoom-lbl { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
         .gd-zoom-btn .zoom-lbl small { font-size: 0.78rem; font-weight: 600; opacity: 0.85; }
         .gd-zoom-hint { color: var(--text-muted); font-size: 0.8rem; margin-top: 0.6rem; text-align: center; }

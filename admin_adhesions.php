@@ -117,19 +117,19 @@ function filter_select($id, $label, $options) {
     <link rel="stylesheet" href="style.css">
     <style>
         .adh-filter { display:flex; flex-wrap:wrap; gap:0.4rem; }
-        .adh-filter-btn { background:rgba(255,255,255,0.05); color:var(--text-muted); border:1px solid var(--glass-border); border-radius:50px; padding:0.35rem 0.9rem; font-size:0.82rem; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
+        .adh-filter-btn { background:rgba(255,255,255,0.05); color:var(--text-muted); border:1px solid var(--glass-border); border-radius:12px; padding:0.35rem 0.9rem; font-size:0.82rem; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
         .adh-filter-btn:hover { border-color:var(--accent); color:var(--white); }
         .adh-filter-btn.active { background:var(--accent); color:var(--secondary); border-color:var(--accent); }
         .adh-filters-adv { display:flex; flex-wrap:wrap; gap:0.6rem; margin:0 0 1rem; align-items:center; }
-        .adh-filters-adv input, .adh-select { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:10px; color:var(--white); font-size:0.85rem; padding:0.5rem 0.75rem; color-scheme:dark; }
-        .adh-filters-adv input { flex:1 1 220px; min-width:180px; border-radius:50px; }
+        .adh-filters-adv input, .adh-select { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:8px; color:var(--white); font-size:0.85rem; padding:0.5rem 0.75rem; color-scheme:dark; }
+        .adh-filters-adv input { flex:1 1 220px; min-width:180px; border-radius:12px; }
         .adh-select { flex:1 1 160px; min-width:150px; }
         .adh-select option { background-color:#0c241a; color:#fff; }
         .adh-filters-adv input:focus, .adh-select:focus { outline:none; border-color:var(--accent); }
-        #adh-reset { background:transparent; border:1px solid var(--glass-border); color:var(--text-muted); border-radius:50px; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
+        #adh-reset { background:transparent; border:1px solid var(--glass-border); color:var(--text-muted); border-radius:12px; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
         #adh-reset:hover { border-color:var(--danger); color:var(--danger); }
         .adh-count { font-size:0.82rem; color:var(--text-muted); margin-left:auto; }
-        .adh-toggle { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:50px; padding:0.45rem 1rem; font-size:0.85rem; font-weight:600; cursor:pointer; margin-bottom:1rem; display:inline-flex; align-items:center; gap:0.4rem; }
+        .adh-toggle { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:12px; padding:0.45rem 1rem; font-size:0.85rem; font-weight:600; cursor:pointer; margin-bottom:1rem; display:inline-flex; align-items:center; gap:0.4rem; }
         .adh-toggle:hover { border-color:var(--accent); }
         .adh-toggle .chev { transition:transform 0.2s ease; }
         .adh-toggle.open .chev { transform:rotate(180deg); }
@@ -138,11 +138,11 @@ function filter_select($id, $label, $options) {
         #suivi-modal { position:fixed; inset:0; overflow:hidden; }
         .suivi2-card { position:fixed; left:50%; top:50%; width:calc(100vw - 28px); max-width:440px; max-height:88vh; display:flex; flex-direction:column;
             background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25);
-            border-radius:20px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,0.55); z-index:2001;
+            border-radius:12px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,0.55); z-index:2001;
             transform:translate(-50%, -46%) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
         #suivi-modal.active .suivi2-card { transform:translate(-50%, -50%) scale(1); opacity:1; }
         .suivi2-head { display:flex; align-items:center; gap:0.8rem; padding:1.1rem 1.25rem; background:linear-gradient(135deg,#1b4332,#2d6a4f); border-bottom:1px solid rgba(212,175,55,0.25); position:relative; flex-shrink:0; }
-        .suivi2-head .ic { width:40px; height:40px; border-radius:12px; background:rgba(212,175,55,0.18); border:1px solid rgba(212,175,55,0.35); display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0; }
+        .suivi2-head .ic { width:40px; height:40px; border-radius:10px; background:rgba(212,175,55,0.18); border:1px solid rgba(212,175,55,0.35); display:flex; align-items:center; justify-content:center; font-size:1.2rem; flex-shrink:0; }
         .suivi2-head .t { min-width:0; }
         .suivi2-head .t b { display:block; color:#fff; font-size:1rem; }
         .suivi2-head .t span { display:block; color:#b7d4c5; font-size:0.78rem; }
@@ -154,7 +154,7 @@ function filter_select($id, $label, $options) {
         .suivi2-row:last-child { border-bottom:none; }
         .suivi2-row > label, .suivi2-row > .k { font-size:0.72rem; color:#f2d574; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; }
         .suivi2-row .v { color:#fff; font-size:0.95rem; font-weight:600; }
-        .suivi2-row select { width:100%; padding:0.65rem 0.8rem; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:12px; color:#fff; font-size:0.92rem; color-scheme:dark; }
+        .suivi2-row select { width:100%; padding:0.65rem 0.8rem; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:10px; color:#fff; font-size:0.92rem; color-scheme:dark; }
         .suivi2-row select option { background-color:#0c241a; color:#fff; }
         .suivi2-row select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(212,175,55,0.15); }
         .suivi2-foot { display:flex; gap:0.6rem; padding:0.9rem 1.25rem; border-top:1px solid rgba(255,255,255,0.08); flex-shrink:0; }
@@ -168,7 +168,7 @@ function filter_select($id, $label, $options) {
             .table-responsive { overflow:visible; }
             .admin-table thead { display:none; }
             .admin-table, .admin-table tbody, .admin-table tr, .admin-table td { display:block; width:100%; }
-            .admin-table tr { border:1px solid var(--glass-border); border-radius:14px; margin-bottom:0.85rem; padding:0.85rem 1rem; background:rgba(255,255,255,0.03); }
+            .admin-table tr { border:1px solid var(--glass-border); border-radius:10px; margin-bottom:0.85rem; padding:0.85rem 1rem; background:rgba(255,255,255,0.03); }
             .admin-table td { border:none !important; padding:0.3rem 0; }
             .table-actions { display:flex; flex-direction:column; align-items:stretch; gap:0.5rem; margin-top:0.4rem; }
             .table-actions .btn, .table-actions a, .table-actions button { width:100%; justify-content:center; display:flex; }
@@ -183,7 +183,7 @@ function filter_select($id, $label, $options) {
         <div class="dashboard-layout">
             <?php include __DIR__ . '/admin_menu.php'; ?>
             <div class="dashboard-main">
-        <div class="admin-welcome-banner glass-card" style="margin-top:2rem; margin-bottom:1rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+        <div class="admin-welcome-banner glass-card" style="margin-top:2rem; margin-bottom:1rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
             <span>Inscriptions au Dahira — <strong class="gold-text"><?php echo count($adhesions); ?></strong> demande(s)</span>
             <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
         </div>

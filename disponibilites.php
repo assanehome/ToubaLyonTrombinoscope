@@ -218,15 +218,15 @@ foreach ($blocs as $k => $bl) {
     <link rel="stylesheet" href="style.css">
     <style>
         .dp-wrap { max-width: 900px; margin: 1.5rem auto; }
-        .dp-card { border-radius: 16px; padding: 1.1rem 1.3rem; margin-bottom: 1.2rem; }
+        .dp-card { border-radius: 12px; padding: 1.1rem 1.3rem; margin-bottom: 1.2rem; }
         .dp-card h2 { margin: 0 0 0.3rem; font-size: 1.1rem; color: var(--white); }
         .dp-hint { color: var(--text-muted); font-size: 0.85rem; margin: 0 0 0.9rem; }
-        .dp-row { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; flex-wrap: wrap; padding: 0.6rem 0.8rem; margin-bottom: 0.5rem; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 12px; }
+        .dp-row { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; flex-wrap: wrap; padding: 0.6rem 0.8rem; margin-bottom: 0.5rem; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 10px; }
         .dp-date { color: var(--white); font-weight: 700; }
         .dp-date small { display: block; color: var(--text-muted); font-weight: 500; }
         .dp-choix { display: flex; gap: 0.35rem; }
         .dp-choix input { position: absolute; opacity: 0; pointer-events: none; }
-        .dp-choix label { padding: 0.4rem 0.8rem; border-radius: 50px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.82rem; font-weight: 600; cursor: pointer; user-select: none; }
+        .dp-choix label { padding: 0.4rem 0.8rem; border-radius: 12px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.82rem; font-weight: 600; cursor: pointer; user-select: none; }
         .dp-choix input:checked + label.l-dispo { background: rgba(37,211,102,0.2); border-color: rgba(37,211,102,0.6); color: #7bd8a6; }
         .dp-choix input:checked + label.l-indispo { background: rgba(191,33,33,0.2); border-color: rgba(191,33,33,0.6); color: #fca5a5; }
         .dp-choix input:checked + label.l-nr { background: rgba(255,255,255,0.1); color: var(--white); }
@@ -243,7 +243,7 @@ foreach ($blocs as $k => $bl) {
         .dp-nr { color: var(--text-muted); }
         .dp-table tfoot td { font-weight: 700; color: #7bd8a6; border-bottom: 0; }
         .dp-table tfoot td:first-child { color: var(--text-muted); }
-        .dp-sc { border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(255,255,255,0.03); margin-bottom: 0.7rem; overflow: hidden; }
+        .dp-sc { border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(255,255,255,0.03); margin-bottom: 0.7rem; overflow: hidden; }
         .dp-sc-tete { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; padding: 0.6rem 0.9rem; background: rgba(212,175,55,0.09); border-bottom: 1px solid var(--glass-border); }
         .dp-sc-titre { color: var(--gold); font-weight: 800; font-size: 0.9rem; }
         .dp-sc-n { color: #7bd8a6; font-weight: 700; font-size: 0.82rem; }
@@ -251,16 +251,16 @@ foreach ($blocs as $k => $bl) {
         .dp-m:last-child { border-bottom: 0; }
         .dp-m-nom { color: var(--white); font-size: 0.92rem; min-width: 0; word-break: break-word; }
         .dp-m.dp-me .dp-m-nom { color: var(--accent); font-weight: 700; }
-        .dp-b { flex: 0 0 auto; padding: 0.2rem 0.65rem; border-radius: 50px; font-size: 0.78rem; font-weight: 700; border: 1px solid var(--glass-border); white-space: nowrap; }
+        .dp-b { flex: 0 0 auto; padding: 0.2rem 0.65rem; border-radius: 12px; font-size: 0.78rem; font-weight: 700; border: 1px solid var(--glass-border); white-space: nowrap; }
         .dp-b-ok { background: rgba(37,211,102,0.15); border-color: rgba(37,211,102,0.5); color: #7bd8a6; }
         .dp-b-ko { background: rgba(191,33,33,0.15); border-color: rgba(191,33,33,0.5); color: #fca5a5; }
         .dp-b-nr { color: var(--text-muted); }
         /* Choix de disponibilité : boutons modernes */
-        .dp-form { margin-top: 0.7rem; padding: 0.9rem 1rem 1rem; border: 1px solid rgba(212,175,55,0.35); border-radius: 16px; background: rgba(212,175,55,0.05); position: relative; }
+        .dp-form { margin-top: 0.7rem; padding: 0.9rem 1rem 1rem; border: 1px solid rgba(212,175,55,0.35); border-radius: 12px; background: rgba(212,175,55,0.05); position: relative; }
         .dp-form-tete { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
         .dp-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.55rem; }
         .dp-seg input { position: absolute; opacity: 0; pointer-events: none; }
-        .dp-opt { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.9rem 0.4rem; border-radius: 16px; border: 1.5px solid var(--glass-border); background: rgba(255,255,255,0.04); color: var(--text-muted); font-weight: 700; font-size: 0.85rem; text-align: center; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform .12s, border-color .15s, background .15s, box-shadow .15s, color .15s; }
+        .dp-opt { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.9rem 0.4rem; border-radius: 12px; border: 1.5px solid var(--glass-border); background: rgba(255,255,255,0.04); color: var(--text-muted); font-weight: 700; font-size: 0.85rem; text-align: center; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform .12s, border-color .15s, background .15s, box-shadow .15s, color .15s; }
         .dp-opt .ic { font-size: 1.6rem; line-height: 1; filter: grayscale(0.7); opacity: 0.7; transition: filter .15s, opacity .15s, transform .15s; }
         .dp-opt:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.3); }
         .dp-opt:active { transform: scale(0.97); }
@@ -272,7 +272,7 @@ foreach ($blocs as $k => $bl) {
         .dp-save { width: 100%; margin-top: 0.8rem; justify-content: center; }
         @media (max-width: 420px) { .dp-opt { padding: 0.8rem 0.2rem; font-size: 0.78rem; } }
         /* Dimanches à venir : groupe fermé par défaut */
-        .dp-futurs { margin-top: 0.8rem; border: 1px solid var(--glass-border); border-radius: 16px; background: rgba(255,255,255,0.025); overflow: hidden; }
+        .dp-futurs { margin-top: 0.8rem; border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(255,255,255,0.025); overflow: hidden; }
         .dp-futurs > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; color: var(--white); font-weight: 800; font-size: 0.92rem; }
         .dp-futurs > summary::-webkit-details-marker { display: none; }
         .dp-futurs > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
@@ -280,9 +280,9 @@ foreach ($blocs as $k => $bl) {
         .dp-futurs[open] > summary { border-bottom: 1px solid var(--glass-border); background: rgba(212,175,55,0.07); }
         .dp-futurs-n { color: var(--text-muted); font-weight: 600; font-size: 0.78rem; }
         .dp-futurs-corps { padding: 0.8rem 1rem 1rem; position: relative; }
-        .dp-fr { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; flex-wrap: wrap; padding: 0.65rem 0.8rem; margin-bottom: 0.5rem; border: 1px solid rgba(212,175,55,0.3); border-radius: 14px; background: rgba(255,255,255,0.04); }
+        .dp-fr { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; flex-wrap: wrap; padding: 0.65rem 0.8rem; margin-bottom: 0.5rem; border: 1px solid rgba(212,175,55,0.3); border-radius: 10px; background: rgba(255,255,255,0.04); }
         .dp-mini { gap: 0.35rem; }
-        .dp-mini .dp-opt { flex-direction: row; padding: 0.45rem 0.7rem; border-radius: 50px; font-size: 0.8rem; gap: 0.3rem; }
+        .dp-mini .dp-opt { flex-direction: row; padding: 0.45rem 0.7rem; border-radius: 12px; font-size: 0.8rem; gap: 0.3rem; }
         .dp-mini .dp-opt .ic { font-size: 1rem; }
         @media (max-width: 520px) { .dp-fr { flex-direction: column; align-items: stretch; } .dp-mini { grid-template-columns: repeat(3, 1fr); } .dp-mini .dp-opt { justify-content: center; } }
     </style>
@@ -412,7 +412,7 @@ foreach ($blocs as $k => $bl) {
 
     <?php include __DIR__ . '/modern_popup.php'; ?>
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
-    <div id="dp-toast" style="position:fixed; left:50%; bottom:1.2rem; transform:translateX(-50%) translateY(20px); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:10060; padding:0.65rem 1.1rem; border-radius:50px; font-weight:700; font-size:0.9rem; box-shadow:0 8px 24px rgba(0,0,0,0.45);"></div>
+    <div id="dp-toast" style="position:fixed; left:50%; bottom:1.2rem; transform:translateX(-50%) translateY(20px); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:10060; padding:0.65rem 1.1rem; border-radius:12px; font-weight:700; font-size:0.9rem; box-shadow:0 8px 24px rgba(0,0,0,0.45);"></div>
     <script>
     // Enregistrement automatique : dès qu'un choix est fait, sans bouton
     (function () {

@@ -66,26 +66,26 @@ $trobaCsrf = csrf_token();
 
 <?php if (in_array($currentPage, ['login.php', 'admin_login.php'], true)): ?>
 <!-- ── Bouton d'installation PWA (raccourci écran d'accueil) — page de connexion uniquement ── -->
-<div id="pwa-install-bar" style="display:none; position:fixed; left:50%; transform:translateX(-50%); bottom:1rem; z-index:9998; max-width:92%; background:linear-gradient(135deg,#1b4332,#2d6a4f); border:1px solid rgba(212,175,55,0.4); border-radius:16px; box-shadow:0 12px 34px rgba(0,0,0,0.45); padding:0.7rem 0.8rem 0.7rem 1rem; display:flex; align-items:center; gap:0.8rem;">
-    <img src="icone_192.png" alt="" style="width:34px; height:34px; border-radius:9px; background:#fff; padding:2px; flex-shrink:0;">
+<div id="pwa-install-bar" style="display:none; position:fixed; left:50%; transform:translateX(-50%); bottom:1rem; z-index:9998; max-width:92%; background:linear-gradient(135deg,#1b4332,#2d6a4f); border:1px solid rgba(212,175,55,0.4); border-radius:12px; box-shadow:0 12px 34px rgba(0,0,0,0.45); padding:0.7rem 0.8rem 0.7rem 1rem; display:flex; align-items:center; gap:0.8rem;">
+    <img src="icone_192.png" alt="" style="width:34px; height:34px; border-radius:8px; background:#fff; padding:2px; flex-shrink:0;">
     <div style="display:flex; flex-direction:column; line-height:1.25;">
         <strong style="color:#fff; font-size:0.9rem;">Installer l'application</strong>
         <span style="color:#b7d4c5; font-size:0.76rem;">Ajouter Dahira Touba Lyon à l'écran d'accueil</span>
     </div>
-    <button id="pwa-install-btn" type="button" style="margin-left:0.4rem; background:#d4af37; color:#0c241a; border:0; border-radius:10px; font-weight:800; font-size:0.85rem; padding:0.55rem 1rem; cursor:pointer; white-space:nowrap;">Installer</button>
+    <button id="pwa-install-btn" type="button" style="margin-left:0.4rem; background:#d4af37; color:#0c241a; border:0; border-radius:8px; font-weight:800; font-size:0.85rem; padding:0.55rem 1rem; cursor:pointer; white-space:nowrap;">Installer</button>
     <button id="pwa-install-close" type="button" aria-label="Fermer" style="background:rgba(255,255,255,0.12); color:#fff; border:0; width:28px; height:28px; border-radius:50%; font-size:1.1rem; line-height:1; cursor:pointer; flex-shrink:0;">&times;</button>
 </div>
 
 <!-- Instructions iOS (pas d'installation automatique sur Safari) -->
 <div id="pwa-ios-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; padding:1.25rem;">
-    <div style="max-width:360px; background:#0c241a; border:1px solid rgba(212,175,55,0.35); border-radius:18px; padding:1.5rem; text-align:center; color:#fff;">
-        <img src="icone_192.png" alt="" style="width:56px; height:56px; border-radius:14px; background:#fff; padding:4px;">
+    <div style="max-width:360px; background:#0c241a; border:1px solid rgba(212,175,55,0.35); border-radius:12px; padding:1.5rem; text-align:center; color:#fff;">
+        <img src="icone_192.png" alt="" style="width:56px; height:56px; border-radius:10px; background:#fff; padding:4px;">
         <h3 style="color:#d4af37; margin:1rem 0 0.6rem; font-size:1.1rem;">Installer sur iPhone / iPad</h3>
         <p style="color:#cfe8db; font-size:0.9rem; line-height:1.6; margin:0 0 1rem;">
             Touchez <strong>Partager</strong> <span style="font-size:1.1em;">&#x2191;</span> en bas de Safari,
             puis <strong>« Sur l'écran d'accueil »</strong>.
         </p>
-        <button id="pwa-ios-close" type="button" style="background:#d4af37; color:#0c241a; border:0; border-radius:50px; font-weight:700; padding:0.65rem 1.5rem; cursor:pointer;">J'ai compris</button>
+        <button id="pwa-ios-close" type="button" style="background:#d4af37; color:#0c241a; border:0; border-radius:12px; font-weight:700; padding:0.65rem 1.5rem; cursor:pointer;">J'ai compris</button>
     </div>
 </div>
 
@@ -276,7 +276,7 @@ $trobaCsrf = csrf_token();
                 min-width: 19px;
                 height: 19px;
                 padding: 0 5px;
-                border-radius: 50px;
+                border-radius: 12px;
                 background: #bf2121;
                 color: #fff;
                 font-size: 0.68rem;
@@ -292,7 +292,7 @@ $trobaCsrf = csrf_token();
                 width: min(330px, calc(100vw - 24px));
                 background: #0a1f18;
                 border: 1px solid rgba(212, 175, 55, 0.35);
-                border-radius: 14px;
+                border-radius: 10px;
                 box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
                 z-index: 9200;
                 overflow: hidden;
@@ -332,7 +332,7 @@ $trobaCsrf = csrf_token();
             .troba-toast {
                 position: fixed; left: 50%; bottom: 1.4rem; transform: translateX(-50%) translateY(20px);
                 z-index: 9999; max-width: min(92vw, 420px);
-                background: rgba(12, 36, 26, 0.97); border: 1px solid var(--accent); border-radius: 14px;
+                background: rgba(12, 36, 26, 0.97); border: 1px solid var(--accent); border-radius: 10px;
                 padding: 0.9rem 1.1rem; box-shadow: 0 14px 44px rgba(0,0,0,0.5);
                 opacity: 0; transition: opacity .3s ease, transform .3s ease; cursor: pointer;
                 display: flex; align-items: center; gap: 0.8rem;
@@ -354,7 +354,7 @@ $trobaCsrf = csrf_token();
                 gap: 0.6rem;
                 background: rgba(8, 28, 21, 0.96);
                 border: 1px solid rgba(212, 175, 55, 0.45);
-                border-radius: 50px;
+                border-radius: 12px;
                 padding: 0.55rem 0.7rem 0.55rem 1rem;
                 box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
                 font-size: 0.85rem;
@@ -368,7 +368,7 @@ $trobaCsrf = csrf_token();
                 font-size: 0.8rem;
                 font-weight: 700;
                 border: 0;
-                border-radius: 50px;
+                border-radius: 12px;
                 padding: 0.4rem 0.9rem;
                 cursor: pointer;
                 white-space: nowrap;
@@ -528,7 +528,7 @@ $trobaCsrf = csrf_token();
         var color = isError ? 'var(--danger)' : 'var(--accent)';
         var toast = document.createElement('div');
         toast.setAttribute('role', 'status');
-        toast.style.cssText = 'position:fixed;left:50%;bottom:2rem;transform:translateX(-50%) translateY(20px);z-index:9999;max-width:90%;background:rgba(12,36,26,0.96);border:1px solid ' + color + ';border-radius:14px;padding:1rem 1.5rem;box-shadow:0 12px 40px rgba(0,0,0,0.45);opacity:0;transition:opacity .3s ease, transform .3s ease;cursor:pointer;';
+        toast.style.cssText = 'position:fixed;left:50%;bottom:2rem;transform:translateX(-50%) translateY(20px);z-index:9999;max-width:90%;background:rgba(12,36,26,0.96);border:1px solid ' + color + ';border-radius:10px;padding:1rem 1.5rem;box-shadow:0 12px 40px rgba(0,0,0,0.45);opacity:0;transition:opacity .3s ease, transform .3s ease;cursor:pointer;';
         var span = document.createElement('span');
         span.style.cssText = 'color:' + color + ';font-weight:600;font-size:0.95rem;line-height:1.5;';
         span.textContent = msg;

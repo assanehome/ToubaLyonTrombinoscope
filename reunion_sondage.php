@@ -167,8 +167,8 @@ if ($statut === 'clos') {
     <link rel="stylesheet" href="style.css">
     <style>
         .sd-wrap { max-width: 760px; margin: 1.5rem auto; }
-        .sd-card { border-radius: 16px; padding: 1.1rem 1.3rem; margin-bottom: 1rem; }
-        .sd-opt { border: 1px solid var(--glass-border); border-radius: 14px; padding: 0.8rem 1rem; margin-bottom: 0.7rem; background: rgba(255,255,255,0.04); }
+        .sd-card { border-radius: 12px; padding: 1.1rem 1.3rem; margin-bottom: 1rem; }
+        .sd-opt { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.8rem 1rem; margin-bottom: 0.7rem; background: rgba(255,255,255,0.04); }
         .sd-opt.top { border-color: rgba(212,175,55,0.6); background: rgba(212,175,55,0.07); }
         .sd-opt.retenue { border-color: rgba(37,211,102,0.6); background: rgba(37,211,102,0.08); }
         .sd-date { color: var(--white); font-weight: 700; }
@@ -176,7 +176,7 @@ if ($statut === 'clos') {
         .sd-count { color: var(--text-muted); font-size: 0.82rem; margin-top: 0.25rem; }
         .sd-choix { display: flex; gap: 0.35rem; margin-top: 0.55rem; flex-wrap: wrap; }
         .sd-choix input { position: absolute; opacity: 0; pointer-events: none; }
-        .sd-choix label { padding: 0.4rem 0.9rem; border-radius: 50px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.85rem; font-weight: 600; cursor: pointer; user-select: none; }
+        .sd-choix label { padding: 0.4rem 0.9rem; border-radius: 12px; border: 1px solid var(--glass-border); color: var(--text-muted); font-size: 0.85rem; font-weight: 600; cursor: pointer; user-select: none; }
         .sd-choix input:checked + label.l-oui { background: rgba(37,211,102,0.2); border-color: rgba(37,211,102,0.6); color: #7bd8a6; }
         .sd-choix input:checked + label.l-non { background: rgba(191,33,33,0.2); border-color: rgba(191,33,33,0.6); color: #fca5a5; }
         .sd-choix input:checked + label.l-nr { background: rgba(255,255,255,0.1); color: var(--white); }

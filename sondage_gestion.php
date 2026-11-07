@@ -236,8 +236,8 @@ $carte = function (array $s) use ($pdo, $h, $csrf): string {
             <div class="admin-content">
                 <h1 class="admin-page-title">📊 Gérer les sondages</h1>
                 <div class="sd-wrap">
-                    <?php if ($success !== ''): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo $h($success); ?></div><?php endif; ?>
-                    <?php if ($error !== ''): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo $h($error); ?></div><?php endif; ?>
+                    <?php if ($success !== ''): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo $h($success); ?></div><?php endif; ?>
+                    <?php if ($error !== ''): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo $h($error); ?></div><?php endif; ?>
 
                     <?php echo sondage_formulaire_creation($mesCommissions, $csrf, 'sondage_gestion.php', 'gestion', $prefillForm, $formOuvert); ?>
 

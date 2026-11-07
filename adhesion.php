@@ -201,7 +201,7 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
         .charte-box {
             background: rgba(212, 175, 55, 0.06);
             border: 1px solid rgba(212, 175, 55, 0.25);
-            border-radius: 14px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;
+            border-radius: 10px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;
             font-size: 0.9rem; color: var(--text-muted); line-height: 1.6;
             max-height: 280px; overflow-y: auto;
         }
@@ -217,7 +217,7 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
         .charte-reader {
             background: rgba(212, 175, 55, 0.06);
             border: 1px solid rgba(212, 175, 55, 0.25);
-            border-radius: 14px; padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+            border-radius: 10px; padding: 1.25rem 1.5rem; margin-bottom: 1rem;
         }
         .charte-page { display: none; font-size: 0.92rem; color: var(--text-muted); line-height: 1.6; min-height: 230px; }
         .charte-page.active { display: block; animation: fadeIn 0.25s ease; }
@@ -299,7 +299,7 @@ function chk($a, $b) { return $a === $b ? 'checked' : ''; }
                 à la liste des membres et la confection de votre carte de membre.
             </p>
 
-            <div style="display:flex; align-items:flex-start; gap:0.65rem; background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.3); border-radius:12px; padding:0.85rem 1rem; margin-bottom:1.75rem;">
+            <div style="display:flex; align-items:flex-start; gap:0.65rem; background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.3); border-radius:10px; padding:0.85rem 1rem; margin-bottom:1.75rem;">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:2px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 <p style="font-size:0.85rem; color:var(--text-muted); margin:0; line-height:1.5;">
                     <strong style="color:var(--gold);">NB :</strong> Les informations recueillies seront enregistrées et traitées dans un cadre sécurisé.

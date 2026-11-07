@@ -257,7 +257,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             padding: 1rem 1.25rem;
             background: rgba(255,255,255,0.03);
             border: 1px solid var(--glass-border);
-            border-radius: 12px;
+            border-radius: 10px;
             margin-bottom: 0.75rem;
             cursor: pointer;
             transition: all 0.25s;

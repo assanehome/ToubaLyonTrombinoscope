@@ -44,6 +44,12 @@
     /* Transitions */
     --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
+    /* Échelle des arrondis (uniforme, discrète) : cartes / groupes / fenêtres, champs / boutons / éléments, puces */
+    --radius-lg: 12px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --radius-btn: 999px; /* boutons : arrondi complet, identique partout */
+
     /* Semantic additions */
     --success: #2d6a4f;
     --danger: #bf2121;
@@ -121,7 +127,7 @@ h3 {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
-    border-radius: 24px;
+    border-radius: 12px;
     padding: 2.5rem;
     transition: var(--transition);
 }
@@ -162,7 +168,7 @@ h3 {
     align-items: center;
     justify-content: center;
     padding: 0.85rem 1.8rem;
-    border-radius: 50px;
+    border-radius: 12px;
     font-weight: 600;
     text-decoration: none;
     transition: var(--transition);
@@ -324,7 +330,7 @@ h3 {
 .hdr-logo-img-wrap {
     width: 64px;
     height: 64px;
-    border-radius: 14px;
+    border-radius: 10px;
     background: rgba(212, 175, 55, 0.06);
     border: 1px solid rgba(212, 175, 55, 0.18);
     display: flex;
@@ -356,7 +362,7 @@ h3 {
 .hdr--scrolled .hdr-logo-img-wrap {
     width: 50px;
     height: 50px;
-    border-radius: 10px;
+    border-radius: 8px;
 }
 
 .hdr--scrolled .hdr-logo-img-wrap img {
@@ -586,7 +592,7 @@ h3 {
     padding: 0;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 12px;
+    border-radius: 10px;
     cursor: pointer;
     flex-shrink: 0;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -691,7 +697,7 @@ h3 {
         margin-right: 0;
         margin-bottom: 1.25rem;
         padding: 0.75rem 1.25rem;
-        border-radius: 12px;
+        border-radius: 10px;
         justify-content: space-between;
         background: rgba(255, 255, 255, 0.05);
         border-color: rgba(255, 255, 255, 0.1);
@@ -703,7 +709,7 @@ h3 {
     .hdr-btn {
         width: 100%;
         padding: 0.85rem 1.15rem !important;
-        border-radius: 12px !important;
+        border-radius: 10px !important;
         font-size: 0.95rem !important;
         justify-content: flex-start;
         border: 1px solid rgba(255, 255, 255, 0.03);
@@ -732,7 +738,7 @@ h3 {
     .hdr-logo-img-wrap {
         width: 46px;
         height: 46px;
-        border-radius: 10px;
+        border-radius: 8px;
     }
 
     .hdr-logo-img-wrap img {
@@ -794,7 +800,7 @@ h3 {
     padding: 1rem 1.5rem 1rem 3.5rem;
     background: rgba(255, 255, 255, 0.05);
     border: 1.5px solid var(--glass-border);
-    border-radius: 50px;
+    border-radius: 12px;
     color: var(--white);
     font-family: inherit;
     font-size: 1.05rem;
@@ -901,7 +907,7 @@ h3 {
 .member-card {
     position: relative;
     display: block;
-    border-radius: 20px;
+    border-radius: 12px;
     overflow: hidden;
     aspect-ratio: 3 / 4;
     cursor: pointer;
@@ -1048,7 +1054,7 @@ h3 {
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid var(--glass-border);
-    border-radius: 24px;
+    border-radius: 12px;
     padding: 2.5rem;
     max-width: 550px;
     margin: 3rem auto;
@@ -1087,7 +1093,7 @@ h3 {
     padding: 0.9rem 1.25rem;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--glass-border);
-    border-radius: 12px;
+    border-radius: 10px;
     color: var(--white);
     font-family: inherit;
     font-size: 0.95rem;
@@ -1110,7 +1116,7 @@ h3 {
 
 .file-upload-box {
     border: 2px dashed var(--glass-border);
-    border-radius: 12px;
+    border-radius: 10px;
     padding: 2rem;
     text-align: center;
     background: rgba(255, 255, 255, 0.02);
@@ -1167,7 +1173,7 @@ h3 {
 /* Alerts */
 .alert {
     padding: 1rem 1.25rem;
-    border-radius: 12px;
+    border-radius: 10px;
     margin-bottom: 2rem;
     font-size: 0.95rem;
     display: flex;
@@ -1202,7 +1208,7 @@ h3 {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--glass-border);
     padding: 1.75rem;
-    border-radius: 20px;
+    border-radius: 12px;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
@@ -1239,7 +1245,7 @@ h3 {
 .dashboard-section {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--glass-border);
-    border-radius: 24px;
+    border-radius: 12px;
     padding: 2rem;
     margin-bottom: 3rem;
     backdrop-filter: blur(10px);
@@ -1265,7 +1271,7 @@ h3 {
     display: inline-flex;
     align-items: center;
     padding: 0.25rem 0.85rem;
-    border-radius: 50px;
+    border-radius: 12px;
     font-size: 0.72rem;
     font-weight: 600;
     text-transform: uppercase;
@@ -1474,7 +1480,7 @@ footer {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-top: 4px solid var(--accent);
-    border-radius: 28px;
+    border-radius: 12px;
     box-shadow:
         0 25px 50px -12px rgba(0, 0, 0, 0.6),
         0 0 40px rgba(212, 175, 55, 0.18),
@@ -1550,7 +1556,7 @@ footer {
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
-    border-radius: 12px;
+    border-radius: 10px;
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
@@ -1572,7 +1578,7 @@ footer {
     background: rgba(255, 255, 255, 0.08);
     color: var(--white);
     padding: 0.2rem 0.6rem;
-    border-radius: 50px;
+    border-radius: 12px;
     font-size: 0.8rem;
     font-weight: 600;
     margin-left: 0.5rem;
@@ -1641,7 +1647,7 @@ footer {
     font-weight: 600;
     cursor: pointer;
     transition: var(--transition);
-    border-radius: 14px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1674,7 +1680,7 @@ footer {
     background: rgba(255, 255, 255, 0.08);
     color: var(--white);
     padding: 0.2rem 0.6rem;
-    border-radius: 50px;
+    border-radius: 12px;
     font-size: 0.8rem;
     font-weight: 600;
     transition: var(--transition);
@@ -1727,7 +1733,7 @@ footer {
     background: rgba(255, 255, 255, 0.05);
     color: var(--white);
     border: 1px solid var(--glass-border);
-    border-radius: 12px;
+    border-radius: 10px;
     font-size: 1rem;
     font-family: inherit;
     line-height: 1.3;
@@ -1764,7 +1770,7 @@ footer {
     z-index: 60;
     background: #0c241a;
     border: 1px solid var(--glass-border);
-    border-radius: 12px;
+    border-radius: 10px;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
     padding: 0.35rem;
     max-height: 260px;
@@ -1815,7 +1821,7 @@ footer {
     .table-responsive {
         -webkit-overflow-scrolling: touch;
         border: 1px solid var(--glass-border);
-        border-radius: 12px;
+        border-radius: 10px;
     }
     .admin-table { min-width: 600px; }
     /* Tableau compact (peu de colonnes) : tient sans défilement horizontal */
@@ -1842,7 +1848,7 @@ footer {
         font-size: 0.95rem;
         border: 1px solid var(--glass-border);
         background: rgba(255, 255, 255, 0.04);
-        border-radius: 12px;
+        border-radius: 10px;
         color: var(--white);
     }
     .tab-btn.active {
@@ -1908,7 +1914,7 @@ select option:hover {
    (inspiré du menu du projet Daara)
 ─────────────────────────────────────────────── */
 .dashboard-layout { display:grid; grid-template-columns:240px minmax(0,1fr); gap:1.5rem; margin-top:2rem; align-items:start; }
-.admin-sidebar { position:sticky; top:1rem; display:flex; flex-direction:column; gap:0.35rem; background:rgba(255,255,255,0.02); border:1px solid var(--glass-border); border-radius:16px; padding:0.9rem; max-height:calc(100vh - 2rem); overflow:hidden; }
+.admin-sidebar { position:sticky; top:1rem; display:flex; flex-direction:column; gap:0.35rem; background:rgba(255,255,255,0.02); border:1px solid var(--glass-border); border-radius:12px; padding:0.9rem; max-height:calc(100vh - 2rem); overflow:hidden; }
 /* Seule la liste des liens défile ; l'en-tête du menu reste visible */
 .admin-menu-links { overflow-y:auto; overscroll-behavior:contain; min-height:0; flex:1 1 auto; padding-right:4px; scrollbar-width:thin; scrollbar-color:rgba(212,175,55,0.8) rgba(255,255,255,0.06); }
 .admin-menu-links::-webkit-scrollbar { width:10px; }
@@ -1918,10 +1924,10 @@ select option:hover {
 .admin-sidebar-user { font-size:0.82rem; color:var(--text-muted); line-height:1.4; padding:0.3rem 0.6rem 0.7rem; border-bottom:1px solid var(--glass-border); margin-bottom:0.3rem; }
 .dashboard-main { min-width:0; }
 .admin-menu-links { display:flex; flex-direction:column; gap:0.35rem; }
-.admin-menu-links a { background:transparent; border:1px solid transparent; color:var(--text-muted); padding:0.7rem 1rem; font-size:0.9rem; font-weight:600; cursor:pointer; border-radius:10px; transition:var(--transition); text-align:left; display:flex; align-items:center; gap:0.6rem; text-decoration:none; }
+.admin-menu-links a { background:transparent; border:1px solid transparent; color:var(--text-muted); padding:0.7rem 1rem; font-size:0.9rem; font-weight:600; cursor:pointer; border-radius:8px; transition:var(--transition); text-align:left; display:flex; align-items:center; gap:0.6rem; text-decoration:none; }
 .admin-menu-links a:hover { color:var(--white); background:rgba(255,255,255,0.04); }
 .admin-menu-links a.active { background:rgba(212,175,55,0.12); color:var(--accent); border:1px solid rgba(212,175,55,0.2); }
-.admin-menu-toggle { display:none; width:100%; align-items:center; justify-content:space-between; gap:0.75rem; background:rgba(212,175,55,0.1); border:1px solid rgba(212,175,55,0.3); color:var(--accent); font-weight:700; font-family:inherit; font-size:0.9rem; padding:0.75rem 1.1rem; border-radius:12px; cursor:pointer; }
+.admin-menu-toggle { display:none; width:100%; align-items:center; justify-content:space-between; gap:0.75rem; background:rgba(212,175,55,0.1); border:1px solid rgba(212,175,55,0.3); color:var(--accent); font-weight:700; font-family:inherit; font-size:0.9rem; padding:0.75rem 1.1rem; border-radius:10px; cursor:pointer; }
 /* Liens du menu latéral clonés dans le tiroir d'en-tête : masqués en bureau */
 .hdr-nav-admin { display:none; }
 /* ── Menu de gauche façon Daara ──
@@ -1937,7 +1943,7 @@ select option:hover {
     .hdr-nav { overflow-y:auto; }
     .hdr-nav-admin { display:flex; flex-direction:column; gap:0.3rem; width:100%; margin:0.35rem 0; padding-top:0.85rem; border-top:1px solid rgba(255,255,255,0.08); }
     .hdr-nav-admin-title { display:block; font-size:0.7rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:var(--accent); padding:0 0.3rem 0.15rem; }
-    .hdr-nav-admin a { display:block; padding:0.7rem 1.15rem; border-radius:12px; border:1px solid rgba(255,255,255,0.03); color:var(--text-muted); font-size:0.9rem; font-weight:600; text-decoration:none; transition:var(--transition); }
+    .hdr-nav-admin a { display:block; padding:0.7rem 1.15rem; border-radius:10px; border:1px solid rgba(255,255,255,0.03); color:var(--text-muted); font-size:0.9rem; font-weight:600; text-decoration:none; transition:var(--transition); }
     .hdr-nav-admin a:hover { color:var(--white); background:rgba(255,255,255,0.05); }
     .hdr-nav-admin a.active { color:var(--accent); background:rgba(212,175,55,0.12); border-color:rgba(212,175,55,0.2); }
 }
@@ -1988,7 +1994,7 @@ select option:hover {
     .hdr-notif .hdr-notif-btn {
         width: 40px;
         height: 40px;
-        border-radius: 12px;
+        border-radius: 10px;
     }
 }
 
@@ -2025,7 +2031,7 @@ select option:hover {
     .hdr-logo-img-wrap {
         width: 36px;
         height: 36px;
-        border-radius: 9px;
+        border-radius: 8px;
     }
     .hdr-logo-img-wrap img {
         width: 30px;
@@ -2046,7 +2052,7 @@ select option:hover {
     .hdr-burger {
         width: 34px;
         height: 34px;
-        border-radius: 10px;
+        border-radius: 8px;
     }
     .hdr-burger {
         gap: 4px;
@@ -2188,7 +2194,7 @@ input[type="checkbox"] {
         width: 1.65rem;
         height: 1.65rem;
         min-width: 1.65rem;
-        border-radius: 9px;
+        border-radius: 8px;
     }
     input[type="checkbox"].checkbox-switch {
         width: 3.4rem;
@@ -2218,7 +2224,7 @@ input[type="checkbox"] {
     width: 100%;
     box-sizing: border-box;
     border: 2px dashed var(--glass-border);
-    border-radius: 16px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.03);
     cursor: pointer;
     overflow: hidden;
@@ -2236,7 +2242,7 @@ input[type="checkbox"] {
 .mfile-full .mfile-clear { position: relative; z-index: 3; }
 .mfile-empty { display: flex; align-items: center; gap: 0.9rem; padding: 0.9rem 1rem; min-height: 64px; }
 .mfile-ico {
-    flex: 0 0 auto; width: 46px; height: 46px; border-radius: 14px;
+    flex: 0 0 auto; width: 46px; height: 46px; border-radius: 10px;
     display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
     background: rgba(212, 175, 55, 0.14); border: 1px solid rgba(212, 175, 55, 0.35);
 }
@@ -2249,8 +2255,8 @@ input[type="checkbox"] {
     background: var(--accent); color: #1b1b1b; font-size: 1.4rem; font-weight: 700; line-height: 1;
 }
 .mfile-thumbs { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.6rem 0.6rem 0; }
-.mfile-big { width: 100%; max-height: 240px; object-fit: contain; border-radius: 12px; background: rgba(0, 0, 0, 0.25); }
-.mfile-mini { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; border: 1px solid var(--glass-border); }
+.mfile-big { width: 100%; max-height: 240px; object-fit: contain; border-radius: 10px; background: rgba(0, 0, 0, 0.25); }
+.mfile-mini { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--glass-border); }
 .mfile-bar { display: flex; align-items: center; gap: 0.7rem; padding: 0.7rem 0.8rem; }
 .mfile-ok {
     flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
@@ -2294,23 +2300,23 @@ input[type="checkbox"] {
 .mdp-overlay.mdp-sheet { background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-end; justify-content: center; }
 .mdp {
     position: fixed; width: 304px; max-width: calc(100vw - 16px); box-sizing: border-box;
-    background: #0d2b1f; border: 1px solid rgba(212, 175, 55, 0.45); border-radius: 18px;
+    background: #0d2b1f; border: 1px solid rgba(212, 175, 55, 0.45); border-radius: 12px;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6); padding: 0.8rem 0.8rem 0.6rem; color: var(--white);
     animation: mdpIn .14s ease-out; outline: none; user-select: none; -webkit-user-select: none;
 }
-.mdp-sheet .mdp { position: relative; width: 100%; max-width: 440px; border-radius: 22px 22px 0 0; padding: 1rem 1rem calc(0.8rem + env(safe-area-inset-bottom)); animation: mdpUp .2s ease-out; }
+.mdp-sheet .mdp { position: relative; width: 100%; max-width: 440px; border-radius: 12px 12px 0 0; padding: 1rem 1rem calc(0.8rem + env(safe-area-inset-bottom)); animation: mdpUp .2s ease-out; }
 @keyframes mdpIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes mdpUp { from { transform: translateY(100%); } to { transform: none; } }
 .mdp-tete { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; margin-bottom: 0.5rem; }
-.mdp-titre { flex: 1; background: transparent; border: 0; color: var(--white); font-weight: 800; font-size: 1rem; cursor: pointer; padding: 0.4rem; border-radius: 10px; text-transform: capitalize; font-family: inherit; }
+.mdp-titre { flex: 1; background: transparent; border: 0; color: var(--white); font-weight: 800; font-size: 1rem; cursor: pointer; padding: 0.4rem; border-radius: 8px; text-transform: capitalize; font-family: inherit; }
 .mdp-titre:hover { background: rgba(255, 255, 255, 0.08); }
 .mdp-titre-fixe { text-align: center; cursor: default; }
-.mdp-nav { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255, 255, 255, 0.05); color: var(--gold); font-size: 1.3rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; }
+.mdp-nav { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(255, 255, 255, 0.05); color: var(--gold); font-size: 1.3rem; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; font-family: inherit; }
 .mdp-nav:hover { border-color: var(--accent); }
 .mdp-semaine { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; color: var(--text-muted); font-size: 0.72rem; font-weight: 700; margin-bottom: 0.2rem; }
 .mdp-grille { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .mdp-grille-m { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.mdp-j, .mdp-m { border: 1px solid transparent; background: transparent; color: var(--white); border-radius: 12px; cursor: pointer; font-family: inherit; font-size: 0.92rem; }
+.mdp-j, .mdp-m { border: 1px solid transparent; background: transparent; color: var(--white); border-radius: 10px; cursor: pointer; font-family: inherit; font-size: 0.92rem; }
 .mdp-j { aspect-ratio: 1 / 1; min-height: 38px; padding: 0; }
 .mdp-m { padding: 0.85rem 0; font-weight: 600; }
 .mdp-j:hover:not(:disabled), .mdp-m:hover:not(:disabled) { background: rgba(212, 175, 55, 0.16); }
@@ -2320,7 +2326,7 @@ input[type="checkbox"] {
 .mdp-sel { background: var(--accent) !important; color: #1b1b1b !important; font-weight: 800; border-color: var(--accent); }
 .mdp-off { opacity: 0.28; cursor: not-allowed; }
 .mdp-pied { display: flex; justify-content: space-between; gap: 0.4rem; margin-top: 0.6rem; padding-top: 0.5rem; border-top: 1px solid rgba(255, 255, 255, 0.08); }
-.mdp-lien { background: transparent; border: 0; color: var(--gold); font-weight: 700; font-size: 0.85rem; cursor: pointer; padding: 0.55rem 0.7rem; border-radius: 10px; font-family: inherit; }
+.mdp-lien { background: transparent; border: 0; color: var(--gold); font-weight: 700; font-size: 0.85rem; cursor: pointer; padding: 0.55rem 0.7rem; border-radius: 8px; font-family: inherit; }
 .mdp-lien:hover { background: rgba(212, 175, 55, 0.14); }
 .mdp-eff { color: #fca5a5; }
 .mdp-ferme { color: var(--text-muted); margin-left: auto; }
@@ -2355,3 +2361,66 @@ html.mdp-open { overflow-x: hidden; }
     .modal-footer .btn { width: 100%; }
     form .btn + .btn, .btn + form, form + .btn, .btn + .btn { margin-top: 0.3rem; }
 }
+
+/* ==========================================================================
+   Groupes (<details>) modernes avec bordure — dans toute l'application
+   (même rendu que dans la gestion des commissions ; exclusions : .no-group et groupes déjà stylés)
+   ========================================================================== */
+:where(main details:not(.no-group, .mg-grp, .mc-grp, .com-reu-group, .com-members-group, .sd-grp, .dp-futurs, .sd-votants, .kav-message, .mfile)) {
+    border: 1px solid rgba(212, 175, 55, 0.38);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
+    padding: 0 1rem 1rem;
+    margin-top: 0.8rem;
+    margin-bottom: 0.8rem;
+}
+:where(main details:not(.no-group, .mg-grp, .mc-grp, .com-reu-group, .com-members-group, .sd-grp, .dp-futurs, .sd-votants, .kav-message, .mfile):not([open])) { padding-bottom: 0; }
+:where(main details:not(.no-group, .mg-grp, .mc-grp, .com-reu-group, .com-members-group, .sd-grp, .dp-futurs, .sd-votants, .kav-message, .mfile) > summary) {
+    margin: 0 -1rem;
+    padding: 0.85rem 1rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+:where(main details:not(.no-group, .mg-grp, .mc-grp, .com-reu-group, .com-members-group, .sd-grp, .dp-futurs, .sd-votants, .kav-message, .mfile) > summary:hover) { background: rgba(212, 175, 55, 0.08); }
+:where(main details:not(.no-group, .mg-grp, .mc-grp, .com-reu-group, .com-members-group, .sd-grp, .dp-futurs, .sd-votants, .kav-message, .mfile)[open] > summary) {
+    background: rgba(212, 175, 55, 0.1);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.3);
+    color: var(--gold);
+    margin-bottom: 0.9rem;
+}
+/* groupes en carte (glass-card) : même rendu, marges internes plus larges */
+main details.glass-card:not(.no-group, .adm-switch, .mg-grp, .mc-grp, .com-reu-group, .sd-grp) { padding: 0 1.2rem 1.2rem; border: 1px solid rgba(212, 175, 55, 0.38); overflow: hidden; }
+main details.glass-card:not(.no-group, .adm-switch, .mg-grp, .mc-grp, .com-reu-group, .sd-grp):not([open]) { padding-bottom: 0; }
+main details.glass-card:not(.no-group, .adm-switch, .mg-grp, .mc-grp, .com-reu-group, .sd-grp) > summary { margin: 0 -1.2rem; padding: 0.95rem 1.2rem; }
+main details.glass-card:not(.no-group, .adm-switch, .mg-grp, .mc-grp, .com-reu-group, .sd-grp)[open] > summary { background: rgba(212, 175, 55, 0.1); border-bottom: 1px solid rgba(212, 175, 55, 0.3); margin-bottom: 0.9rem; }
+
+/* ==========================================================================
+   Boutons : même arrondi (complet) dans toute l'application
+   Un seul réglage : --radius-btn (en haut de ce fichier). Exclu : champs-boutons (.mdate-btn).
+   ========================================================================== */
+.btn, a.btn, button.btn,
+[class*="-btn"]:not(.mdate-btn),
+input[type="submit"], input[type="button"], input[type="reset"] {
+    border-radius: var(--radius-btn) !important;
+}
+
+/* ==========================================================================
+   Intérieur des groupes : objets rapprochés (espaces réduits entre les éléments)
+   ========================================================================== */
+:is(details.mc-com .mc-com-body, .com-reu-group, .com-members-group, .mg-body, .dp-futurs-corps, .dp-sc, .sd-grp, .mc-grp, main details) > :not(summary) + :not(summary) {
+    margin-top: 0.3rem !important;
+}
+:is(details.mc-com, .com-reu-group, .com-members-group, .mg-grp, .dp-futurs, .sd-grp, .mc-grp) :is(.mc-reu, .mg-item, .dp-fr, .dp-sc, .km-chip, .tl-item, .sd-card, .mc-chip) {
+    margin-bottom: 0.3rem !important;
+}
+details.mc-com .mc-card-in { padding: 0.7rem 0.9rem !important; }
+details.mc-com .mc-sub { margin: 0.6rem 0 0.25rem !important; }
+details.mc-com .mc-reu { margin-top: 0.3rem !important; }
+details.mc-com .mc-actions { margin-top: 0.4rem !important; }
+details.mc-com .mc-chips, .mc-chips { gap: 0.25rem !important; }
+details.mc-com .mc-grp, .com-reu-group .com-reu-group, .mg-grp { margin-top: 0.4rem !important; margin-bottom: 0.4rem !important; }
+.mg-body { padding: 0.6rem 0.8rem 0.8rem !important; }
+.dp-futurs-corps { padding: 0.6rem 0.8rem 0.8rem !important; }

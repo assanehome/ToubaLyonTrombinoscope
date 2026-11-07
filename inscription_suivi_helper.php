@@ -13,7 +13,7 @@ function inscription_login_card_html(string $email, string $message = ''): strin
     $e = htmlspecialchars($email, ENT_QUOTES);
     $msg = $message !== '' ? '<p style="margin:0 0 1rem; color:var(--white); line-height:1.55;">' . htmlspecialchars($message) . '</p>' : '';
     return '
-<div class="glass-card" style="border:2px solid rgba(37,211,102,0.45); border-radius:20px; padding:1.6rem 1.5rem; margin-bottom:1.5rem; text-align:left;">
+<div class="glass-card" style="border:2px solid rgba(37,211,102,0.45); border-radius:12px; padding:1.6rem 1.5rem; margin-bottom:1.5rem; text-align:left;">
     <div style="display:flex; align-items:center; gap:0.8rem; margin-bottom:0.9rem;">
         <div style="width:46px; height:46px; border-radius:50%; background:rgba(37,211,102,0.18); display:flex; align-items:center; justify-content:center; font-size:1.5rem;">✅</div>
         <div>
@@ -22,7 +22,7 @@ function inscription_login_card_html(string $email, string $message = ''): strin
         </div>
     </div>
     ' . $msg . '
-    <div style="background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.35); border-radius:14px; padding:1rem 1.1rem;">
+    <div style="background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.35); border-radius:10px; padding:1rem 1.1rem;">
         <div style="color:var(--gold); font-weight:800; margin-bottom:0.3rem;">🔑 Suivez votre compte</div>
         <p style="margin:0 0 0.9rem; color:var(--text-muted); font-size:0.88rem; line-height:1.5;">Connectez-vous avec votre adresse e-mail et votre mot de passe pour suivre la validation de votre compte. En attendant, vous pouvez modifier vos informations depuis votre profil.</p>
         <form action="login.php" method="POST" style="margin:0;">

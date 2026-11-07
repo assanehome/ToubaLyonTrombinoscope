@@ -44,12 +44,16 @@
     var toastEl = null, toastTimer = null;
     function toast(type, texte) {
         if (!texte) { return; }
+        // dans un cadre intégré : la notification s'affiche dans la page principale (visible à l'écran)
+        if (window.parent !== window && document.body && document.body.classList.contains('embed')) {
+            try { window.parent.postMessage({ type: 'soft-toast', t: type, m: texte }, location.origin); return; } catch (e) { /* ignoré */ }
+        }
         if (!toastEl) {
             toastEl = document.createElement('div');
             toastEl.setAttribute('role', 'status');
             toastEl.setAttribute('aria-live', 'polite');
             toastEl.style.cssText = 'position:fixed; left:50%; bottom:1.2rem; transform:translateX(-50%) translateY(24px); max-width:min(92vw,560px); '
-                + 'opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:10070; padding:0.75rem 1.2rem; border-radius:16px; '
+                + 'opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:10070; padding:0.75rem 1.2rem; border-radius:12px; '
                 + 'font-weight:700; font-size:0.92rem; line-height:1.4; color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.5); cursor:pointer; text-align:center;';
             toastEl.addEventListener('click', function () { toastEl.style.opacity = '0'; toastEl.style.pointerEvents = 'none'; });
             document.body.appendChild(toastEl);
@@ -296,6 +300,12 @@
             boutons.forEach(function (b, i) { b.disabled = avant[i]; b.style.opacity = ''; });
         });
     }
+
+    window.addEventListener('message', function (e) {
+        if (e.origin !== location.origin) { return; }
+        var d = e.data || {};
+        if (d.type === 'soft-toast') { toast(d.t, d.m); }
+    });
 
     window.softSubmit = softSubmit;
     window.__soft = { morphEnfants: morphEnfants, extraireMessage: extraireMessage, toast: toast };

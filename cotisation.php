@@ -108,24 +108,24 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
     <link rel="stylesheet" href="style.css">
     <style>
         .co-wrap { max-width: 760px; margin: 2rem auto; }
-        .co-hero { border-radius: 20px; padding: 1.6rem; margin-bottom: 1.3rem; border: 2px solid rgba(212,175,55,0.5); background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%); }
+        .co-hero { border-radius: 12px; padding: 1.6rem; margin-bottom: 1.3rem; border: 2px solid rgba(212,175,55,0.5); background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%); }
         .co-montant { font-size: 2rem; font-weight: 800; color: var(--accent); line-height: 1.1; }
-        .co-badge { display:inline-block; font-size: 0.78rem; font-weight: 700; border-radius: 50px; padding: 0.25rem 0.8rem; }
+        .co-badge { display:inline-block; font-size: 0.78rem; font-weight: 700; border-radius: 12px; padding: 0.25rem 0.8rem; }
         .co-badge-ok { background: rgba(37,211,102,0.15); color: #7bd8a6; border: 1px solid rgba(37,211,102,0.4); }
         .co-badge-att { background: rgba(255,193,7,0.15); color: #ffd873; border: 1px solid rgba(255,193,7,0.4); }
         .co-badge-retard { background: rgba(191,33,33,0.16); color: #fca5a5; border: 1px solid rgba(191,33,33,0.5); }
-        .co-retard-alerte { border-radius:16px; padding:1.1rem 1.35rem; margin-bottom:1.3rem; border:1px solid rgba(191,33,33,0.55); background:linear-gradient(160deg, rgba(191,33,33,0.16), rgba(255,255,255,0.03)); }
+        .co-retard-alerte { border-radius:12px; padding:1.1rem 1.35rem; margin-bottom:1.3rem; border:1px solid rgba(191,33,33,0.55); background:linear-gradient(160deg, rgba(191,33,33,0.16), rgba(255,255,255,0.03)); }
         .co-retard-detail > summary { cursor:pointer; list-style:none; color:#fca5a5; font-weight:700; font-size:0.86rem; display:inline-flex; align-items:center; gap:0.4rem; user-select:none; padding:0.15rem 0; }
         .co-retard-detail > summary::-webkit-details-marker { display:none; }
         .co-chevron { transition:transform 0.25s ease; display:inline-block; }
         .co-retard-detail[open] > summary .co-chevron { transform:rotate(90deg); }
         @keyframes coRetardIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
         .co-retard-detail[open] .co-retard-list > * { animation:coRetardIn 0.35s cubic-bezier(0.22,1,0.36,1) both; }
-        .co-retard-ligne { display:flex; justify-content:space-between; gap:0.6rem; padding:0.5rem 0.75rem; border:1px solid rgba(191,33,33,0.35); border-radius:10px; background:rgba(191,33,33,0.06); }
+        .co-retard-ligne { display:flex; justify-content:space-between; gap:0.6rem; padding:0.5rem 0.75rem; border:1px solid rgba(191,33,33,0.35); border-radius:8px; background:rgba(191,33,33,0.06); }
         @media (prefers-reduced-motion: reduce){ .co-retard-detail[open] .co-retard-list > * { animation:none !important; } }
         .co-hist-card.co-hist-retard { border-color:rgba(191,33,33,0.5); background:rgba(191,33,33,0.06); }
         .co-badge-info { background: rgba(45,140,255,0.15); color: #8ec5ff; border: 1px solid rgba(45,140,255,0.4); }
-        .co-pay-btn { display:inline-flex; align-items:center; justify-content:center; gap:0.6rem; width:100%; background: linear-gradient(135deg,#635bff,#8b5cf6); color:#fff; font-weight:800; font-size:1.05rem; border:0; border-radius:14px; padding:1rem 1.4rem; cursor:pointer; box-shadow:0 10px 26px rgba(99,91,255,0.4); }
+        .co-pay-btn { display:inline-flex; align-items:center; justify-content:center; gap:0.6rem; width:100%; background: linear-gradient(135deg,#635bff,#8b5cf6); color:#fff; font-weight:800; font-size:1.05rem; border:0; border-radius:10px; padding:1rem 1.4rem; cursor:pointer; box-shadow:0 10px 26px rgba(99,91,255,0.4); }
         .co-hist { display:flex; flex-direction:column; gap:0.55rem; }
         .co-hist-card { display:flex; align-items:center; justify-content:space-between; gap:0.7rem; flex-wrap:wrap; padding:0.75rem 0.95rem; }
         .co-hist-mois { color:var(--white); font-weight:700; font-size:0.95rem; }
@@ -140,8 +140,8 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
             <div class="admin-content">
                 <h1 class="admin-page-title">💶 Ma cotisation</h1>
 
-                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin:1rem 0;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin:1rem 0;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <div class="co-wrap">
                     <?php if ($nbRetard > 0): ?>
@@ -203,7 +203,7 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
                             </div>
                         <?php elseif ($modeEff === 'virement'): ?>
                             <?php if ((int) date('j') <= 15): ?>
-                            <div style="margin-top:0.9rem; padding:0.9rem 1.1rem; border-radius:12px; border:1px solid rgba(37,211,102,0.45); background:rgba(37,211,102,0.1);">
+                            <div style="margin-top:0.9rem; padding:0.9rem 1.1rem; border-radius:10px; border:1px solid rgba(37,211,102,0.45); background:rgba(37,211,102,0.1);">
                                 <div style="color:#fff; font-weight:800;">🎉 Félicitations et merci !</div>
                                 <div style="color:var(--text-muted); font-size:0.86rem; margin-top:0.2rem;">Votre cotisation est assurée par <strong style="color:#7bd8a6;">virement automatique</strong>. Jërëjëf pour votre engagement et votre régularité. 🤲</div>
                             </div>

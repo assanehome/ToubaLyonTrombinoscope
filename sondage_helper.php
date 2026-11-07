@@ -117,7 +117,7 @@ function sondage_css(): string
     return <<<'CSS'
 <style>
     .sd-wrap { max-width: 860px; margin: 1.5rem auto; }
-    .sd-card { border-radius: 18px; padding: 1.2rem 1.4rem; margin-bottom: 1.2rem; }
+    .sd-card { border-radius: 12px; padding: 1.2rem 1.4rem; margin-bottom: 1.2rem; }
     .sd-q { color: var(--white); font-size: 1.12rem; font-weight: 800; margin: 0 0 0.3rem; line-height: 1.35; }
     .sd-meta { color: var(--text-muted); font-size: 0.8rem; display: flex; flex-wrap: wrap; gap: 0.35rem 0.8rem; margin-bottom: 0.6rem; }
     .sd-desc { color: var(--white); font-size: 0.92rem; line-height: 1.5; margin: 0.3rem 0 0.8rem; white-space: pre-line; }
@@ -125,7 +125,7 @@ function sondage_css(): string
     .sd-badge.ok { color: #7bd8a6; border-color: rgba(37,211,102,0.4); background: rgba(37,211,102,0.1); }
     .sd-badge.gold { color: var(--gold); border-color: rgba(212,175,55,0.45); background: rgba(212,175,55,0.1); }
     .sd-badge.off { color: #fca5a5; border-color: rgba(191,33,33,0.4); background: rgba(191,33,33,0.1); }
-    .sd-opt { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 0.9rem; margin-bottom: 0.5rem; border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(255,255,255,0.03); cursor: pointer; color: var(--white); font-size: 0.95rem; min-height: 52px; transition: border-color .15s, background .15s; }
+    .sd-opt { display: flex; align-items: center; gap: 0.7rem; padding: 0.8rem 0.9rem; margin-bottom: 0.5rem; border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(255,255,255,0.03); cursor: pointer; color: var(--white); font-size: 0.95rem; min-height: 52px; transition: border-color .15s, background .15s; }
     .sd-opt:hover { border-color: var(--accent); }
     .sd-opt:has(input:checked) { border-color: var(--accent); background: rgba(212,175,55,0.1); }
     .sd-opt input[type=radio] { width: 22px; height: 22px; accent-color: var(--accent); flex: 0 0 auto; margin: 0; }
@@ -137,7 +137,7 @@ function sondage_css(): string
     .sd-bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, rgba(212,175,55,0.55), var(--accent)); transition: width .5s; }
     .sd-top .sd-res-lib { color: var(--gold); font-weight: 800; }
     .sd-res-total { color: var(--text-muted); font-size: 0.82rem; margin-top: 0.3rem; }
-    .sd-note { color: var(--text-muted); font-size: 0.85rem; padding: 0.7rem 0.9rem; border: 1px dashed var(--glass-border); border-radius: 12px; }
+    .sd-note { color: var(--text-muted); font-size: 0.85rem; padding: 0.7rem 0.9rem; border: 1px dashed var(--glass-border); border-radius: 10px; }
     .sd-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.9rem; }
     .sd-votants { margin-top: 0.7rem; }
     .sd-votants summary { cursor: pointer; color: var(--text-muted); font-size: 0.85rem; }
@@ -160,7 +160,7 @@ function sondage_form_css(): string
         .sd-vis small { display: block; color: var(--text-muted); font-size: 0.78rem; margin-top: 0.15rem; }
         .sd-optrow { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center; }
         .sd-optrow input { flex: 1; min-width: 0; }
-        .sd-optrow button { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 12px; border: 1px solid rgba(191,33,33,0.4); background: rgba(191,33,33,0.12); color: #fca5a5; cursor: pointer; font-size: 1rem; }
+        .sd-optrow button { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 10px; border: 1px solid rgba(191,33,33,0.4); background: rgba(191,33,33,0.12); color: #fca5a5; cursor: pointer; font-size: 1rem; }
         .sd-checks { display: flex; flex-wrap: wrap; gap: 0.6rem; }
         .sd-checks .sd-opt { margin: 0; flex: 1 1 220px; }
         @media (max-width: 600px) { .sd-vis { grid-template-columns: 1fr; } }

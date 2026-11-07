@@ -119,7 +119,7 @@ if ($membreId > 0) {
     <style>
         .gd-wrap { max-width: 860px; margin: 0 auto; }
         .gd-hero {
-            border-radius: 24px;
+            border-radius: 12px;
             padding: 1.6rem 1.6rem 1.4rem;
             background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%);
             border: 2px solid rgba(212,175,55,0.5);
@@ -129,7 +129,7 @@ if ($membreId > 0) {
         .gd-hero .gd-date small { display: block; font-size: 0.85rem; font-weight: 400; color: var(--text-muted); margin-top: 0.2rem; }
         .gd-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem; }
         .gd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
-        .gd-item { border-radius: 14px; padding: 1rem 1.1rem; }
+        .gd-item { border-radius: 10px; padding: 1rem 1.1rem; }
         .gd-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .gd-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
         .gd-item .v a { color: var(--accent); }
@@ -175,7 +175,7 @@ if ($membreId > 0) {
             font-size: 1.25rem;
             letter-spacing: 0.01em;
             border: 0;
-            border-radius: 18px;
+            border-radius: 12px;
             padding: 1.2rem 1.4rem;
             text-decoration: none;
             box-shadow: 0 14px 34px rgba(45,140,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
@@ -189,7 +189,7 @@ if ($membreId > 0) {
         .gd-zoom-btn:hover { transform: translateY(-2px); filter: brightness(1.08); animation-play-state: paused; }
         .gd-zoom-btn:active { transform: translateY(1px) scale(0.99); }
         .gd-zoom-btn .zoom-ic {
-            width: 48px; height: 48px; border-radius: 12px; flex-shrink: 0;
+            width: 48px; height: 48px; border-radius: 10px; flex-shrink: 0;
             background: rgba(255,255,255,0.22);
             display: inline-flex; align-items: center; justify-content: center;
         }
@@ -214,8 +214,8 @@ if ($membreId > 0) {
                 <?php if ($__guAdmin): ?><a href="admin_guddi.php" class="gd-back btn btn-secondary btn-sm">← Retour au planning</a><?php endif; ?>
                 <h1 class="admin-page-title">💎 Détail Guddi Àjjuma</h1>
 
-                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <div class="gd-wrap">
                     <!-- En-tête -->

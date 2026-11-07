@@ -26,7 +26,7 @@ if (empty($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true
     <link rel="stylesheet" href="style.css">
     <style>
         .garde-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
-        .garde-carte { max-width: 460px; width: 100%; text-align: center; padding: 2.25rem 1.75rem; border-radius: 20px; }
+        .garde-carte { max-width: 460px; width: 100%; text-align: center; padding: 2.25rem 1.75rem; border-radius: 12px; }
         .garde-icone { font-size: 2.6rem; line-height: 1; margin-bottom: 0.9rem; }
         .garde-carte h1 { color: #fff; font-size: 1.35rem; margin: 0 0 0.6rem; }
         .garde-carte p { color: var(--text-muted); font-size: 0.93rem; line-height: 1.6; margin: 0 0 1.5rem; }

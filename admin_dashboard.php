@@ -215,32 +215,32 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
     <link rel="stylesheet" href="style.css">
     <style>
         .adh-filters-adv { display:flex; flex-wrap:wrap; gap:0.6rem; margin:0 0 1rem; align-items:center; }
-        .adh-filters-adv input, .adh-select { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:10px; color:var(--white); font-size:0.85rem; padding:0.5rem 0.75rem; color-scheme:dark; }
-        .adh-filters-adv input { flex:1 1 220px; min-width:180px; border-radius:50px; }
+        .adh-filters-adv input, .adh-select { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:8px; color:var(--white); font-size:0.85rem; padding:0.5rem 0.75rem; color-scheme:dark; }
+        .adh-filters-adv input { flex:1 1 220px; min-width:180px; border-radius:12px; }
         .adh-select { flex:1 1 150px; min-width:140px; }
         .adh-select option { background-color:#0c241a; color:#fff; }
         .adh-filters-adv input:focus, .adh-select:focus { outline:none; border-color:var(--accent); }
-        #adh-reset { background:transparent; border:1px solid var(--glass-border); color:var(--text-muted); border-radius:50px; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
+        #adh-reset { background:transparent; border:1px solid var(--glass-border); color:var(--text-muted); border-radius:12px; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
         #adh-reset:hover { border-color:var(--danger); color:var(--danger); }
         .adh-count { font-size:0.82rem; color:var(--text-muted); margin-left:auto; }
-        .adh-toggle { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:50px; padding:0.45rem 1rem; font-size:0.85rem; font-weight:600; cursor:pointer; margin-bottom:1rem; display:inline-flex; align-items:center; gap:0.4rem; }
+        .adh-toggle { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:12px; padding:0.45rem 1rem; font-size:0.85rem; font-weight:600; cursor:pointer; margin-bottom:1rem; display:inline-flex; align-items:center; gap:0.4rem; }
         .adh-toggle:hover { border-color:var(--accent); }
         .adh-toggle .chev { transition:transform 0.2s ease; }
         .adh-toggle.open .chev { transform:rotate(180deg); }
         .adh-filters-adv.is-hidden { display:none; }
         /* Indicateurs compacts (moins de place) */
         .stats-grid { gap:0.6rem !important; margin-bottom:1rem !important; grid-template-columns:repeat(3, 1fr) !important; }
-        .stats-grid .stat-card { padding:0.75rem 0.9rem !important; border-radius:12px !important; display:flex; flex-direction:column; gap:0.15rem; }
+        .stats-grid .stat-card { padding:0.75rem 0.9rem !important; border-radius:10px !important; display:flex; flex-direction:column; gap:0.15rem; }
         .stats-grid .stat-value { font-size:1.7rem !important; line-height:1.1 !important; }
         .stats-grid .stat-title { font-size:0.72rem !important; }
         @media (max-width:520px){ .stats-grid { grid-template-columns:repeat(3, 1fr) !important; } .stats-grid .stat-value { font-size:1.4rem !important; } .stats-grid .stat-title { font-size:0.62rem !important; } .stats-grid .stat-card { padding:0.55rem 0.5rem !important; } }
         /* Accès rapides (boutons vers Actualités / Planning) */
         .dash-quick { display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
-        .dash-quick-btn { display:inline-flex; align-items:center; gap:0.5rem; text-decoration:none; font-weight:700; font-size:0.9rem; color:#08150f; background:linear-gradient(135deg,#d4af37,#e8c766); border:1px solid transparent; border-radius:12px; padding:0.7rem 1.15rem; transition:transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; box-shadow:0 4px 14px rgba(212,175,55,0.28); }
+        .dash-quick-btn { display:inline-flex; align-items:center; gap:0.5rem; text-decoration:none; font-weight:700; font-size:0.9rem; color:#08150f; background:linear-gradient(135deg,#d4af37,#e8c766); border:1px solid transparent; border-radius:10px; padding:0.7rem 1.15rem; transition:transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; box-shadow:0 4px 14px rgba(212,175,55,0.28); }
         .dash-quick-btn:hover { transform:translateY(-2px); filter:brightness(1.05); box-shadow:0 8px 20px rgba(212,175,55,0.4); }
         @media (max-width:520px){ .dash-quick { flex-direction:column; } .dash-quick-btn { width:100%; justify-content:center; } }
         .dash-chips { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.85rem; }
-        .dash-chip { background:rgba(255,255,255,0.05); color:var(--white); border:1px solid var(--glass-border); border-radius:50px; padding:0.45rem 1.1rem; font-size:0.85rem; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
+        .dash-chip { background:rgba(255,255,255,0.05); color:var(--white); border:1px solid var(--glass-border); border-radius:12px; padding:0.45rem 1.1rem; font-size:0.85rem; font-weight:600; cursor:pointer; transition:all 0.2s ease; }
         .dash-chip:hover { border-color:var(--accent); }
         .dash-chip.active { background:var(--accent); color:var(--secondary); border-color:var(--accent); }
         .photo-ph { display:inline-flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#d4af37,#b8902f); color:#0c241a; font-weight:800; text-transform:uppercase; }
@@ -251,7 +251,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             .table-responsive { overflow:visible; }
             .admin-table thead { display:none; }
             .admin-table, .admin-table tbody, .admin-table tr, .admin-table td { display:block; width:100%; }
-            .admin-table tr { border:1px solid var(--glass-border); border-radius:14px; margin-bottom:0.85rem; padding:0.85rem 1rem; background:rgba(255,255,255,0.03); }
+            .admin-table tr { border:1px solid var(--glass-border); border-radius:10px; margin-bottom:0.85rem; padding:0.85rem 1rem; background:rgba(255,255,255,0.03); }
             .admin-table td { border:none !important; padding:0.3rem 0; }
             .table-actions { display:flex; flex-direction:column; align-items:stretch; gap:0.5rem; margin-top:0.4rem; }
             .table-actions .btn, .table-actions a, .table-actions button { width:100%; justify-content:center; display:flex; }
@@ -259,7 +259,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
         /* ── Fiche membre (popup moderne, responsive) — identique à index ── */
         #member-modal { position:fixed; inset:0; overflow:hidden; align-items:center; justify-content:center; }
         .mi-card { position:fixed; left:50%; top:50%; width:calc(100vw - 28px); max-width:380px; max-height:86vh; display:flex; flex-direction:column;
-            background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:18px; overflow:hidden;
+            background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:12px; overflow:hidden;
             box-shadow:0 30px 80px rgba(0,0,0,0.55); z-index:2001;
             transform:translate(-50%, -46%) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
         #member-modal.active .mi-card { transform:translate(-50%, -50%) scale(1); opacity:1; }
@@ -575,7 +575,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                 <div id="modal-pw" style="display:none; width:100%;">
                     <label for="modal-pw-input" style="display:block; color:var(--text-muted); font-size:0.78rem; font-weight:700; margin-bottom:0.35rem;">🔒 Confirmez avec votre mot de passe</label>
                     <div style="position:relative;">
-                        <input type="password" id="modal-pw-input" autocomplete="current-password" placeholder="Votre mot de passe" style="width:100%; box-sizing:border-box; padding:0.65rem 3rem 0.65rem 0.85rem; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); border-radius:12px; color:var(--white); font-size:0.95rem;">
+                        <input type="password" id="modal-pw-input" autocomplete="current-password" placeholder="Votre mot de passe" style="width:100%; box-sizing:border-box; padding:0.65rem 3rem 0.65rem 0.85rem; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); border-radius:10px; color:var(--white); font-size:0.95rem;">
                         <button type="button" id="modal-pw-eye" aria-label="Afficher le mot de passe" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); width:2.2rem; height:2.2rem; border:0; background:none; cursor:pointer; font-size:1.1rem;">👁️</button>
                     </div>
                     <div id="modal-pw-msg" style="color:#fca5a5; font-size:0.8rem; margin-top:0.3rem; min-height:1em;"></div>
@@ -601,7 +601,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                 <h2 id="detail-fullname" style="font-size: 1.6rem; color: var(--white); margin-bottom: 0.25rem;">Prenom Nom</h2>
                 <span id="detail-civilite" class="badge badge-approved" style="font-size: 0.8rem; margin-bottom: 0.5rem; display: inline-block;">Goor Yalla</span>
                 
-                <div style="width: 100%; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border); border-radius: 12px; padding: 1rem; text-align: left; display: flex; flex-direction: column; gap: 0.75rem;">
+                <div style="width: 100%; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border); border-radius: 10px; padding: 1rem; text-align: left; display: flex; flex-direction: column; gap: 0.75rem;">
                     <div>
                         <span style="color: var(--text-muted); font-size: 0.8rem; display: block;">Adresse Email</span>
                         <strong id="detail-email" style="color: var(--white); font-size: 0.95rem;">email@example.com</strong>
@@ -628,18 +628,18 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
 
     <!-- Popup : écrire un message à un membre (information à compléter, photo non conforme…) -->
     <style>
-        #msg-modal .msgm-card { max-width: 520px; width: calc(100vw - 24px); border-radius: 22px; padding: 0; overflow: hidden; background: linear-gradient(180deg, rgba(20,40,32,0.98), rgba(10,26,20,0.98)); border: 1px solid rgba(212,175,55,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.55); }
+        #msg-modal .msgm-card { max-width: 520px; width: calc(100vw - 24px); border-radius: 12px; padding: 0; overflow: hidden; background: linear-gradient(180deg, rgba(20,40,32,0.98), rgba(10,26,20,0.98)); border: 1px solid rgba(212,175,55,0.35); box-shadow: 0 24px 60px rgba(0,0,0,0.55); }
         #msg-modal .msgm-head { display: flex; align-items: center; gap: 0.8rem; padding: 1.1rem 1.3rem; background: linear-gradient(135deg, rgba(212,175,55,0.18), rgba(212,175,55,0.04)); border-bottom: 1px solid rgba(255,255,255,0.08); }
-        #msg-modal .msgm-ic { width: 42px; height: 42px; border-radius: 14px; background: rgba(212,175,55,0.2); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
+        #msg-modal .msgm-ic { width: 42px; height: 42px; border-radius: 10px; background: rgba(212,175,55,0.2); display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0; }
         #msg-modal .msgm-head h3 { margin: 0; color: var(--white); font-size: 1.05rem; line-height: 1.2; }
         #msg-modal .msgm-head small { color: var(--text-muted); font-size: 0.78rem; }
         #msg-modal .msgm-body { padding: 1.1rem 1.3rem 0.4rem; }
         #msg-modal .msgm-label { display: block; color: var(--text-muted); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.4rem; }
         #msg-modal .msgm-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
-        #msg-modal .msgm-chip { border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: var(--white); border-radius: 50px; padding: 0.38rem 0.85rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+        #msg-modal .msgm-chip { border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.05); color: var(--white); border-radius: 12px; padding: 0.38rem 0.85rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
         #msg-modal .msgm-chip:hover { border-color: rgba(212,175,55,0.6); }
         #msg-modal .msgm-chip.active { background: rgba(212,175,55,0.2); border-color: var(--gold); color: var(--gold); }
-        #msg-modal .msgm-input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 12px; color: var(--white); padding: 0.65rem 0.85rem; font-size: 0.92rem; font-family: inherit; }
+        #msg-modal .msgm-input { width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; color: var(--white); padding: 0.65rem 0.85rem; font-size: 0.92rem; font-family: inherit; }
         #msg-modal .msgm-input:focus { outline: none; border-color: var(--gold); }
         #msg-modal textarea.msgm-input { resize: vertical; min-height: 110px; line-height: 1.5; }
         #msg-modal .msgm-field { margin-bottom: 0.9rem; }

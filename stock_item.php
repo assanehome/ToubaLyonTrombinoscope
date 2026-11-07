@@ -113,20 +113,20 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
         .si-wrap { max-width: 900px; margin: 2rem auto; }
         .si-top { display: grid; grid-template-columns: 260px 1fr; gap: 1.5rem; }
         @media (max-width: 640px) { .si-top { grid-template-columns: 1fr; } }
-        .si-cover { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 16px; background: #081c15; }
-        .si-cover-ph { width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: var(--gold); background: rgba(212,175,55,0.08); border-radius: 16px; }
+        .si-cover { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 12px; background: #081c15; }
+        .si-cover-ph { width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: var(--gold); background: rgba(212,175,55,0.08); border-radius: 12px; }
         .si-rows { display: flex; flex-direction: column; }
         .si-row { display: flex; justify-content: space-between; gap: 1rem; padding: 0.6rem 0; border-bottom: 1px solid rgba(255,255,255,0.07); }
         .si-row:last-child { border-bottom: none; }
         .si-row .k { color: var(--text-muted); font-size: 0.85rem; }
         .si-row .v { color: #fff; font-weight: 600; text-align: right; }
-        .si-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; border-radius: 50px; padding: 2px 10px; }
+        .si-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; border-radius: 12px; padding: 2px 10px; }
         .si-album { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.85rem; }
-        .si-ph-card { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--glass-border); }
+        .si-ph-card { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--glass-border); }
         .si-ph-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; }
         .si-ph-actions { display: flex; gap: 0.3rem; padding: 0.4rem; }
         .si-ph-actions .btn { padding: 0.25rem 0.5rem; font-size: 0.7rem; flex: 1; justify-content: center; }
-        .si-cover-tag { position: absolute; top: 6px; left: 6px; background: rgba(212,175,55,0.9); color: #0c241a; font-size: 0.62rem; font-weight: 800; padding: 2px 8px; border-radius: 50px; }
+        .si-cover-tag { position: absolute; top: 6px; left: 6px; background: rgba(212,175,55,0.9); color: #0c241a; font-size: 0.62rem; font-weight: 800; padding: 2px 8px; border-radius: 12px; }
     </style>
 </head>
 <body>
@@ -137,12 +137,12 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
             <div class="dashboard-main">
 
         <div class="si-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.1rem 1.75rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.1rem 1.75rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>📦 <strong class="gold-text"><?php echo htmlspecialchars($item['nom']); ?></strong> — <?php echo htmlspecialchars($comNom); ?></span>
                 <a href="commission_stock.php?id=<?php echo $cid; ?>" class="btn btn-secondary btn-sm">← Retour au stock</a>
             </div>
 
-            <div class="glass-card" style="border-radius:18px; padding:1.5rem; margin-bottom:1.5rem;">
+            <div class="glass-card" style="border-radius:12px; padding:1.5rem; margin-bottom:1.5rem;">
                 <div class="si-top">
                     <div>
                         <?php if (!empty($item['photo'])): ?>
@@ -163,7 +163,7 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
             </div>
 
             <!-- Album photos -->
-            <div class="glass-card" style="border-radius:18px; padding:1.5rem; margin-bottom:1.5rem;">
+            <div class="glass-card" style="border-radius:12px; padding:1.5rem; margin-bottom:1.5rem;">
                 <h3 class="gold-text" style="font-size:1.1rem; font-weight:700; margin:0 0 1rem;">🖼️ Album photos (<?php echo count($album); ?>)</h3>
 
                 <form action="stock_item.php" method="POST" enctype="multipart/form-data" style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1.25rem;">
@@ -227,7 +227,7 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
 
     <!-- Lightbox : zoom photo (pas de nouvelle page) -->
     <div id="zoom-modal" onclick="closeZoom()" style="display:none; position:fixed; inset:0; z-index:4000; background:rgba(0,0,0,0.9); align-items:center; justify-content:center; padding:1rem; cursor:zoom-out;">
-        <img id="zoom-img" src="" alt="" style="max-width:96vw; max-height:92vh; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <img id="zoom-img" src="" alt="" style="max-width:96vw; max-height:92vh; border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
     </div>
 
     <!-- Popup de confirmation moderne (réutilisable) -->

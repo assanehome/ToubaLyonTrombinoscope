@@ -247,10 +247,10 @@ foreach ($membresListe as $mm) { $membresIndex[(int) $mm['id']] = trim(($mm['pre
         .ac-wrap { max-width: 980px; margin: 2rem auto; }
         details.glass-card { padding: 0.9rem 1.1rem; }
         details.glass-card > summary { padding: 0.25rem 0; line-height: 1.3; }
-        .ac-card { border-radius: 16px; padding: 1.1rem 1.2rem; display: flex; flex-direction: column; gap: 0.7rem; margin-bottom: 1rem; }
+        .ac-card { border-radius: 12px; padding: 1.1rem 1.2rem; display: flex; flex-direction: column; gap: 0.7rem; margin-bottom: 1rem; }
         .ac-title { font-size: 1.05rem; font-weight: 700; color: var(--white); }
         .ac-meta { color: var(--text-muted); font-size: 0.8rem; }
-        .ac-body { white-space: pre-wrap; color: var(--text-muted); font-size: 0.9rem; line-height: 1.55; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.8rem; }
+        .ac-body { white-space: pre-wrap; color: var(--text-muted); font-size: 0.9rem; line-height: 1.55; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.8rem; }
         .ac-badge { font-size: 0.72rem; padding: 0.2rem 0.55rem; border-radius: 6px; }
         .ac-badge-pub { background: rgba(37,211,102,0.15); color: #7bd8a6; border: 1px solid rgba(37,211,102,0.3); }
         .ac-badge-dr { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--glass-border); }
@@ -262,11 +262,11 @@ foreach ($membresListe as $mm) { $membresIndex[(int) $mm['id']] = trim(($mm['pre
         .ac-form textarea.form-input { min-height: 140px; resize: vertical; }
         /* Menu déroulant d'autocomplétion des mentions @ */
         .ac-mention-box { position: relative; }
-        .ac-mention-list { position: absolute; z-index: 50; left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #0c241a; border: 1px solid var(--glass-border); border-radius: 10px; margin-top: 2px; display: none; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+        .ac-mention-list { position: absolute; z-index: 50; left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #0c241a; border: 1px solid var(--glass-border); border-radius: 8px; margin-top: 2px; display: none; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
         .ac-mention-item { padding: 0.55rem 0.9rem; cursor: pointer; color: #fff; font-size: 0.9rem; }
         .ac-mention-item:hover, .ac-mention-item.active { background: rgba(212,175,55,0.18); color: var(--accent); }
         .ac-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
-        .ac-chip { background: rgba(212,175,55,0.15); color: var(--accent); border: 1px solid rgba(212,175,55,0.4); border-radius: 50px; padding: 0.15rem 0.6rem; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.35rem; }
+        .ac-chip { background: rgba(212,175,55,0.15); color: var(--accent); border: 1px solid rgba(212,175,55,0.4); border-radius: 12px; padding: 0.15rem 0.6rem; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 0.35rem; }
         .ac-chip button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 0.9rem; line-height: 1; padding: 0; }
         @media (max-width: 600px) {
             .ac-actions form, .ac-actions > * { width: 100%; }
@@ -287,8 +287,8 @@ foreach ($membresListe as $mm) { $membresIndex[(int) $mm['id']] = trim(($mm['pre
                     Préparez un message d'actualité, publiez-le, puis diffusez-le aux membres (notification, WhatsApp, e-mail). Mentionnez un membre avec <strong>@</strong>.
                 </p>
 
-                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <button type="button" class="btn btn-primary" id="ac-new-btn" style="margin-bottom:1.2rem;">➕ Nouvelle actualité</button>
 

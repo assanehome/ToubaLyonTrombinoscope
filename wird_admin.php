@@ -271,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $perLabelsMail = ['semaine' => 'chaque semaine (hebdomadaire)', 'quinzaine' => 'toutes les deux semaines', 'mois' => 'chaque mois (mensuelle)'];
                 $periodHtml = '';
                 if ($sessionPer !== 'ponctuelle') {
-                    $periodHtml = '<p style="background:#eef6f1;border:1px solid #2d6a4f;border-radius:10px;padding:10px 14px;color:#1b4332;font-size:14px;">'
+                    $periodHtml = '<p style="background:#eef6f1;border:1px solid #2d6a4f;border-radius:8px;padding:10px 14px;color:#1b4332;font-size:14px;">'
                         . '🔁 <strong>Lecture périodique</strong> : ' . htmlspecialchars($perLabelsMail[$sessionPer] ?? $sessionPer) . '.<br>'
                         . ($sessionRealloc === 1
                             ? '👥 Vos Juz vous sont <strong>réattribués automatiquement à chaque période</strong> — merci de les relire et valider à chaque fois.'
@@ -314,7 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 . '<h2 style="color:#1b4332;">Assalamu aleykum ' . htmlspecialchars($destinataire) . ' 🙏</h2>'
                                 . '<p style="color:#333;">Dans le cadre de la lecture collective du Coran '
                                 . '<strong>' . htmlspecialchars($sessionTitre) . '</strong>, vous avez réservé les Juz suivants :</p>'
-                                . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:10px;padding:12px 16px;font-size:18px;font-weight:bold;color:#1b4332;text-align:center;">Juz ' . $listeJuz . '</p>'
+                                . '<p style="background:#f6f3e8;border:1px solid #d4af37;border-radius:8px;padding:12px 16px;font-size:18px;font-weight:bold;color:#1b4332;text-align:center;">Juz ' . $listeJuz . '</p>'
                                 . $periodHtml
                                 . '<p style="color:#333;">Pensez à valider votre lecture pour faire avancer le Khatm. 🤲</p>'
                                 . dahira_email_button($lienBase, 'Valider mes Juz')
@@ -403,11 +403,11 @@ if ($__isCulteManager) {
     <link rel="stylesheet" href="style.css">
     <style>
         .wird-wrap { max-width: 900px; margin: 2rem auto; }
-        .wird-card { border-radius: 16px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; transition: var(--transition); }
+        .wird-card { border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; transition: var(--transition); }
         .wird-card:hover { border-color: rgba(212,175,55,0.35); }
         .wird-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
         .wird-head h3 { margin: 0; color: var(--white); font-size: 1.15rem; }
-        .wird-prog { height: 8px; border-radius: 50px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 0.75rem 0; }
+        .wird-prog { height: 8px; border-radius: 12px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 0.75rem 0; }
         .wird-prog > i { display: block; height: 100%; background: linear-gradient(90deg,#2d6a4f,#7bd8a6); }
         .wird-meta { color: var(--text-muted); font-size: 0.85rem; }
         .wird-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.85rem; }
@@ -418,11 +418,11 @@ if ($__isCulteManager) {
         .wird-section-head { display: flex; align-items: center; gap: 0.7rem; margin: 1.6rem 0 0.9rem; }
         .wird-section-head:first-of-type { margin-top: 0.5rem; }
         .wird-section-head h2 { margin: 0; font-size: 1.1rem; color: var(--white); font-weight: 700; }
-        .wird-section-head .wird-section-count { font-size: 0.72rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg,#d4af37,#f1d279); border-radius: 50px; padding: 2px 10px; }
+        .wird-section-head .wird-section-count { font-size: 0.72rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg,#d4af37,#f1d279); border-radius: 12px; padding: 2px 10px; }
         .wird-section-head .wird-caret { margin-left: auto; color: var(--text-muted); font-size: 0.9rem; cursor: pointer; }
         /* ── Grille d'indicateurs ── */
         .wird-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.6rem; margin: 0.85rem 0 0.35rem; }
-        .wird-stat { background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.55rem 0.7rem; text-align: center; }
+        .wird-stat { background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.7rem; text-align: center; }
         .wird-stat .v { font-size: 1.25rem; font-weight: 800; color: var(--white); line-height: 1.1; }
         .wird-stat .v.gold { color: var(--gold); }
         .wird-stat .v.green { color: #7bd8a6; }
@@ -468,7 +468,7 @@ if ($__isCulteManager) {
             <div class="dashboard-main">
 
         <div class="wird-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>📖 Lecture du Coran — <strong class="gold-text"><?php echo count($sessions); ?></strong> session(s)</span>
                 <a href="<?php echo $__isAdmin ? 'admin_dashboard.php' : 'index.php'; ?>" class="btn btn-secondary btn-sm">← Retour</a>
             </div>
@@ -709,7 +709,7 @@ if ($__isCulteManager) {
                     <?php else: ?>
                         <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.85rem;">
                         <?php foreach ($delegues as $dg): ?>
-                            <form action="wird_admin.php" method="POST" style="margin:0; display:flex; align-items:center; justify-content:space-between; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.4rem 0.75rem;" data-confirm="Retirer le droit de création de sessions à <?php echo htmlspecialchars(trim($dg['prenom'] . ' ' . $dg['nom']), ENT_QUOTES); ?> ?" data-confirm-danger="1">
+                            <form action="wird_admin.php" method="POST" style="margin:0; display:flex; align-items:center; justify-content:space-between; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:8px; padding:0.4rem 0.75rem;" data-confirm="Retirer le droit de création de sessions à <?php echo htmlspecialchars(trim($dg['prenom'] . ' ' . $dg['nom']), ENT_QUOTES); ?> ?" data-confirm-danger="1">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="remove_delegue">
                                 <input type="hidden" name="membre_id" value="<?php echo (int) $dg['id']; ?>">

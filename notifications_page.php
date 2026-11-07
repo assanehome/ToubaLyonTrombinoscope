@@ -92,7 +92,7 @@ function notif_date_fr($iso)
             display: flex; align-items: flex-start; gap: 0.8rem;
             background: rgba(255,255,255,0.03);
             border: 1px solid var(--glass-border);
-            border-radius: 14px;
+            border-radius: 10px;
             padding: 0.95rem 1rem;
             transition: border-color 0.2s ease, background 0.2s ease;
         }

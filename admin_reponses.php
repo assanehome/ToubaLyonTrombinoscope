@@ -121,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         . '<p style="margin:0 0 14px;">Assalamu aleykum <strong>' . htmlspecialchars($target['prenom'] . ' ' . $target['nom']) . '</strong>,</p>'
                         . '<p style="margin:0 0 16px;">Dans le cadre de votre <strong>intégration au Dahira Touba Lyon (MUBAWWA-A-ASIDQIN)</strong>, '
                         . htmlspecialchars($senderName) . ' souhaite vous transmettre le message suivant :</p>'
-                        . '<div style="white-space:pre-wrap;background:#f6f7f6;border-left:4px solid #1b4332;border-radius:10px;padding:14px 18px;margin:0 0 18px;">' . nl2br(htmlspecialchars($body)) . '</div>'
+                        . '<div style="white-space:pre-wrap;background:#f6f7f6;border-left:4px solid #1b4332;border-radius:8px;padding:14px 18px;margin:0 0 18px;">' . nl2br(htmlspecialchars($body)) . '</div>'
                         . '<p style="margin:0 0 6px;">Pour toute question, vous pouvez répondre à cet e-mail ou vous rapprocher de votre intégrateur ou du secrétariat.</p>'
                         . '<p style="margin:18px 0 0;font-size:14px;color:#555;">Bien à vous,<br><strong style="color:#1b4332;">' . htmlspecialchars($senderName) . '</strong><br>' . htmlspecialchars($senderRole) . ' — Dahira Touba Lyon</p>',
                         'Suivi intégration'
@@ -388,18 +388,18 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
     <link rel="stylesheet" href="style.css">
     <style>
         .rep-search { margin:1.5rem 0 0.85rem; }
-        .rep-search input { width:100%; padding:0.7rem 1.1rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:50px; color:var(--white); font-size:0.95rem; }
+        .rep-search input { width:100%; padding:0.7rem 1.1rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:12px; color:var(--white); font-size:0.95rem; }
         .rep-search input:focus { outline:none; border-color:var(--accent); }
-        .adh-toggle { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:50px; padding:0.45rem 1rem; font-size:0.85rem; font-weight:600; cursor:pointer; margin-bottom:0.85rem; display:inline-flex; align-items:center; gap:0.4rem; }
+        .adh-toggle { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:12px; padding:0.45rem 1rem; font-size:0.85rem; font-weight:600; cursor:pointer; margin-bottom:0.85rem; display:inline-flex; align-items:center; gap:0.4rem; }
         .adh-toggle:hover { border-color:var(--accent); }
         .adh-toggle .chev { transition:transform 0.2s ease; }
         .adh-toggle.open .chev { transform:rotate(180deg); }
         .adh-filters-adv { display:flex; flex-wrap:wrap; gap:0.6rem; margin:0 0 1rem; align-items:center; }
         .adh-filters-adv.is-hidden { display:none; }
-        .adh-select { flex:1 1 150px; min-width:140px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:10px; color:var(--white); font-size:0.85rem; padding:0.5rem 0.75rem; color-scheme:dark; }
+        .adh-select { flex:1 1 150px; min-width:140px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:8px; color:var(--white); font-size:0.85rem; padding:0.5rem 0.75rem; color-scheme:dark; }
         .adh-select option { background-color:#0c241a; color:#fff; }
         .adh-select:focus { outline:none; border-color:var(--accent); }
-        #adh-reset { background:transparent; border:1px solid var(--glass-border); color:var(--text-muted); border-radius:50px; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
+        #adh-reset { background:transparent; border:1px solid var(--glass-border); color:var(--text-muted); border-radius:12px; padding:0.5rem 1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
         #adh-reset:hover { border-color:var(--danger); color:var(--danger); }
         .adh-count { font-size:0.82rem; color:var(--text-muted); margin-left:auto; }
         @media (max-width:600px){ .adh-select { flex:1 1 100%; } }
@@ -436,13 +436,13 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
         .rep-assign { flex:1 1 150px; background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.3); border-radius:8px; padding:0.4rem 0.65rem; font-size:0.82rem; }
         .rep-assign .lbl { color:var(--gold); font-size:0.68rem; text-transform:uppercase; display:block; }
         .rep-save { flex:0 0 auto; display:flex; gap:0.5rem; align-items:flex-end; }
-        .rep-badge-valide { display:inline-block; margin-left:0.4rem; background:rgba(45,106,79,0.25); color:#b7e4c7; border:1px solid rgba(45,106,79,0.5); border-radius:50px; padding:0.05rem 0.55rem; font-size:0.68rem; font-weight:700; }
+        .rep-badge-valide { display:inline-block; margin-left:0.4rem; background:rgba(45,106,79,0.25); color:#b7e4c7; border:1px solid rgba(45,106,79,0.5); border-radius:12px; padding:0.05rem 0.55rem; font-size:0.68rem; font-weight:700; }
         .rep-lock-note { font-size:0.8rem; color:#b7e4c7; font-weight:600; display:inline-flex; align-items:center; }
         .rep-card.rep-locked .rep-edit { opacity:0.75; }
         .rep-card.rep-locked select[disabled], .rep-card.rep-locked textarea[disabled] { opacity:0.7; cursor:not-allowed; }
         .rep-group-title { display:flex; align-items:center; gap:0.6rem; margin:1.5rem 0 0.75rem; font-size:0.9rem; font-weight:700; color:var(--gold); text-transform:uppercase; letter-spacing:0.03em; }
         .rep-group-title--valide { color:#b7e4c7; }
-        .rep-group-count { background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.35); border-radius:50px; padding:0.05rem 0.6rem; font-size:0.75rem; }
+        .rep-group-count { background:rgba(212,175,55,0.15); color:var(--gold); border:1px solid rgba(212,175,55,0.35); border-radius:12px; padding:0.05rem 0.6rem; font-size:0.75rem; }
         .rep-group-title--valide .rep-group-count { background:rgba(45,106,79,0.25); color:#b7e4c7; border-color:rgba(45,106,79,0.5); }
         .rep-group[data-group="pending"] .rep-card { border-left:3px solid rgba(251,188,4,0.5); }
         .rep-group[data-group="approved"] .rep-card { border-left:3px solid rgba(45,106,79,0.5); }
@@ -474,27 +474,27 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
         }
         /* ── Modale e-mail (UI moderne) ── */
         .mailx-overlay { align-items:center; justify-content:center; }
-        .mailx-card { width:100%; max-width:520px; background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:22px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,0.55); transform:translateY(14px) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
+        .mailx-card { width:100%; max-width:520px; background:linear-gradient(180deg,#123528 0%, #0c241a 100%); border:1px solid rgba(212,175,55,0.25); border-radius:12px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,0.55); transform:translateY(14px) scale(0.98); opacity:0; transition:transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s ease; }
         .modal-overlay.active .mailx-card { transform:translateY(0) scale(1); opacity:1; }
         .mailx-header { display:flex; align-items:center; gap:0.9rem; padding:1.4rem 1.5rem; background:linear-gradient(135deg,#1b4332 0%, #2d6a4f 100%); border-bottom:1px solid rgba(212,175,55,0.25); position:relative; }
-        .mailx-header-icon { width:44px; height:44px; border-radius:14px; background:rgba(212,175,55,0.18); color:#f2d574; display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1px solid rgba(212,175,55,0.35); }
+        .mailx-header-icon { width:44px; height:44px; border-radius:10px; background:rgba(212,175,55,0.18); color:#f2d574; display:flex; align-items:center; justify-content:center; flex-shrink:0; border:1px solid rgba(212,175,55,0.35); }
         .mailx-title { font-size:1.15rem; font-weight:700; color:#fff; margin:0; }
         .mailx-subtitle { font-size:0.8rem; color:#b7d4c5; margin:0.1rem 0 0; }
         .mailx-close { position:absolute; top:0.85rem; right:1rem; background:rgba(255,255,255,0.1); border:none; color:#fff; width:30px; height:30px; border-radius:50%; font-size:1.2rem; line-height:1; cursor:pointer; transition:background .2s ease; }
         .mailx-close:hover { background:rgba(255,255,255,0.25); }
         .mailx-body { padding:1.4rem 1.5rem 0.5rem; }
-        .mailx-recipient { display:flex; align-items:center; gap:0.6rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:12px; padding:0.55rem 0.75rem; margin-bottom:1.1rem; }
+        .mailx-recipient { display:flex; align-items:center; gap:0.6rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:10px; padding:0.55rem 0.75rem; margin-bottom:1.1rem; }
         .mailx-recipient-label { font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; }
         .mailx-avatar { width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#d4af37,#b8902f); color:#0c241a; font-weight:800; font-size:0.8rem; display:flex; align-items:center; justify-content:center; text-transform:uppercase; flex-shrink:0; }
         .mailx-recipient-name { color:#fff; font-weight:600; font-size:0.95rem; }
         .mailx-field { margin-bottom:1.1rem; }
         .mailx-field label { display:block; font-size:0.75rem; color:#f2d574; font-weight:600; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.4rem; }
-        .mailx-field input, .mailx-field textarea { width:100%; padding:0.8rem 1rem; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:12px; color:#fff; font-size:0.95rem; font-family:inherit; transition:border-color .2s ease, box-shadow .2s ease; }
+        .mailx-field input, .mailx-field textarea { width:100%; padding:0.8rem 1rem; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:10px; color:#fff; font-size:0.95rem; font-family:inherit; transition:border-color .2s ease, box-shadow .2s ease; }
         .mailx-field textarea { resize:vertical; min-height:120px; line-height:1.5; }
         .mailx-field input:focus, .mailx-field textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(212,175,55,0.15); }
         .mailx-hint { display:block; font-size:0.72rem; color:var(--text-muted); margin-top:0.4rem; }
         .mailx-footer { display:flex; justify-content:flex-end; gap:0.6rem; padding:0.6rem 1.5rem 1.4rem; }
-        .mailx-btn { display:inline-flex; align-items:center; gap:0.45rem; padding:0.7rem 1.4rem; border-radius:12px; font-size:0.9rem; font-weight:700; cursor:pointer; border:1px solid transparent; transition:transform .15s ease, background .2s ease, box-shadow .2s ease; }
+        .mailx-btn { display:inline-flex; align-items:center; gap:0.45rem; padding:0.7rem 1.4rem; border-radius:10px; font-size:0.9rem; font-weight:700; cursor:pointer; border:1px solid transparent; transition:transform .15s ease, background .2s ease, box-shadow .2s ease; }
         .mailx-btn:active { transform:scale(0.97); }
         .mailx-btn-ghost { background:transparent; border-color:var(--glass-border); color:var(--text-muted); }
         .mailx-btn-ghost:hover { color:#fff; border-color:rgba(255,255,255,0.3); }
@@ -575,13 +575,13 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
     <?php if ($canAll): ?>
     <!-- Gérer les intégrateurs : donner / retirer le rôle (immédiat) -->
     <div id="role-modal" style="display:none; position:fixed; inset:0; z-index:3200; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; padding:1rem;">
-        <div style="width:100%; max-width:560px; max-height:88vh; display:flex; flex-direction:column; background:linear-gradient(180deg,#123528,#0c241a); border:1px solid rgba(212,175,55,0.25); border-radius:18px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,0.55);">
+        <div style="width:100%; max-width:560px; max-height:88vh; display:flex; flex-direction:column; background:linear-gradient(180deg,#123528,#0c241a); border:1px solid rgba(212,175,55,0.25); border-radius:12px; overflow:hidden; box-shadow:0 30px 80px rgba(0,0,0,0.55);">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:1rem 1.25rem; background:linear-gradient(135deg,#1b4332,#2d6a4f);">
                 <h3 style="margin:0; color:#fff; font-size:1.05rem;">👤 Gérer les intégrateurs</h3>
                 <button type="button" onclick="closeRoleModal()" style="background:rgba(255,255,255,0.15); color:#fff; border:0; width:28px; height:28px; border-radius:50%; font-size:1.1rem; line-height:1; cursor:pointer;">&times;</button>
             </div>
             <div style="padding:0.75rem 1rem;">
-                <input type="text" id="role-search" placeholder="🔍 Rechercher un membre…" style="width:100%; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:50px; color:#fff; font-size:0.85rem; padding:0.55rem 1rem;">
+                <input type="text" id="role-search" placeholder="🔍 Rechercher un membre…" style="width:100%; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); border-radius:12px; color:#fff; font-size:0.85rem; padding:0.55rem 1rem;">
             </div>
             <div id="role-list" style="flex:1; overflow-y:auto; padding:0 0.75rem 1rem; display:flex; flex-direction:column; gap:0.35rem;"></div>
             <div style="display:flex; align-items:center; justify-content:space-between; padding:0.85rem 1.25rem; border-top:1px solid var(--glass-border);">
@@ -605,11 +605,11 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
             var av = m.photo
                 ? '<img src="uploads/' + encodeURIComponent(m.photo) + '" alt="" style="width:34px;height:34px;border-radius:50%;object-fit:cover;flex-shrink:0;">'
                 : '<span style="width:34px;height:34px;border-radius:50%;background:rgba(212,175,55,0.15);color:var(--accent);border:1px solid rgba(212,175,55,0.35);display:inline-flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;flex-shrink:0;">' + roleEsc(m.ini) + '</span>';
-            var badge = m.integ ? ' <span style="font-size:0.68rem;color:var(--accent);border:1px solid rgba(212,175,55,0.4);border-radius:50px;padding:1px 7px;white-space:nowrap;">🧭 Intégrateur</span>' : '';
+            var badge = m.integ ? ' <span style="font-size:0.68rem;color:var(--accent);border:1px solid rgba(212,175,55,0.4);border-radius:12px;padding:1px 7px;white-space:nowrap;">🧭 Intégrateur</span>' : '';
             var btn = m.integ
                 ? '<button type="button" class="btn btn-secondary btn-sm" style="color:var(--warning);border-color:var(--warning);flex-shrink:0;" onclick="toggleRole(' + m.id + ',false)">Retirer</button>'
                 : '<button type="button" class="btn btn-primary btn-sm" style="flex-shrink:0;" onclick="toggleRole(' + m.id + ',true)">Donner le rôle</button>';
-            return '<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0.5rem;border:1px solid var(--glass-border);border-radius:12px;background:rgba(255,255,255,0.03);">' + av + '<span style="flex:1;min-width:0;color:#fff;font-size:0.88rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + roleEsc(m.name) + badge + '</span>' + btn + '</div>';
+            return '<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0.5rem;border:1px solid var(--glass-border);border-radius:10px;background:rgba(255,255,255,0.03);">' + av + '<span style="flex:1;min-width:0;color:#fff;font-size:0.88rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + roleEsc(m.name) + badge + '</span>' + btn + '</div>';
         }
         function roleRender(){
             var term = roleNorm(document.getElementById('role-search').value);
@@ -643,7 +643,7 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
     <?php endif; ?>
 
     <?php if (!empty($success) || !empty($error)): ?>
-    <div id="rep-toast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:1.5rem; z-index:200; background:<?php echo !empty($success) ? 'var(--primary)' : 'var(--danger)'; ?>; color:#fff; padding:0.75rem 1.5rem; border-radius:50px; box-shadow:0 6px 20px rgba(0,0,0,0.45); font-weight:600; font-size:0.9rem; border:1px solid rgba(255,255,255,0.15);">
+    <div id="rep-toast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:1.5rem; z-index:200; background:<?php echo !empty($success) ? 'var(--primary)' : 'var(--danger)'; ?>; color:#fff; padding:0.75rem 1.5rem; border-radius:12px; box-shadow:0 6px 20px rgba(0,0,0,0.45); font-weight:600; font-size:0.9rem; border:1px solid rgba(255,255,255,0.15);">
         <?php echo htmlspecialchars(!empty($success) ? '✓ ' . $success : $error); ?>
     </div>
     <script>

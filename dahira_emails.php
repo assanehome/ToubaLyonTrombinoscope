@@ -50,14 +50,14 @@ function dahira_charte_html_block() {
 /** Bouton d'action (compatible clients mail). */
 function dahira_email_button($url, $label, $color = '#1b4332') {
     return '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto;">'
-        . '<tr><td align="center" style="border-radius:10px;background:' . $color . ';box-shadow:0 4px 12px rgba(27,67,50,0.25);">'
-        . '<a href="' . $url . '" target="_blank" style="display:inline-block;padding:14px 34px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:10px;">'
+        . '<tr><td align="center" style="border-radius:8px;background:' . $color . ';box-shadow:0 4px 12px rgba(27,67,50,0.25);">'
+        . '<a href="' . $url . '" target="_blank" style="display:inline-block;padding:14px 34px;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:8px;">'
         . $label . '</a></td></tr></table>';
 }
 
 /** Tableau d'identifiants (clé / valeur) mis en forme. */
 function dahira_email_credentials($rows) {
-    $html = '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:separate;border-spacing:0;margin:20px 0;border:1px solid #e6e6e6;border-radius:12px;overflow:hidden;">';
+    $html = '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:separate;border-spacing:0;margin:20px 0;border:1px solid #e6e6e6;border-radius:10px;overflow:hidden;">';
     $i = 0;
     foreach ($rows as $label => $value) {
         $bg = ($i % 2 === 0) ? '#faf8f2' : '#ffffff';
@@ -73,20 +73,20 @@ function dahira_email_credentials($rows) {
 
 /** Encart d'alerte (ex. « pensez à changer votre mot de passe »). */
 function dahira_email_notice($text, $accent = '#c2410c', $bg = '#fff7ed') {
-    return '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:20px 0;border-radius:10px;background:' . $bg . ';border-left:4px solid ' . $accent . ';">'
+    return '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:20px 0;border-radius:8px;background:' . $bg . ';border-left:4px solid ' . $accent . ';">'
         . '<tr><td style="padding:14px 18px;font-family:Arial,sans-serif;font-size:14px;color:#7c2d12;line-height:1.5;">' . $text . '</td></tr></table>';
 }
 
 /** Enveloppe HTML commune (design carte moderne, compatible clients mail). */
 function dahira_email_wrap($inner, $badge = '') {
     $badgeHtml = $badge !== ''
-        ? '<div style="display:inline-block;margin-top:12px;padding:4px 14px;border-radius:50px;background:rgba(212,175,55,0.18);color:#d4af37;font-family:Arial,sans-serif;font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">' . htmlspecialchars($badge) . '</div>'
+        ? '<div style="display:inline-block;margin-top:12px;padding:4px 14px;border-radius:12px;background:rgba(212,175,55,0.18);color:#d4af37;font-family:Arial,sans-serif;font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">' . htmlspecialchars($badge) . '</div>'
         : '';
     return
         '<div style="margin:0;padding:0;background:#eef1ee;">'
         . '<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#eef1ee;padding:24px 12px;">'
         . '<tr><td align="center">'
-        . '<table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border-radius:18px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.08);">'
+        . '<table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.08);">'
         // Bandeau en-tête
         . '<tr><td style="background:#1b4332;background-image:linear-gradient(135deg,#1b4332 0%,#2d6a4f 100%);padding:34px 32px 30px;text-align:center;border-top:4px solid #d4af37;">'
         . '<div style="font-family:Arial,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;letter-spacing:0.5px;">Dahira Touba Lyon</div>'

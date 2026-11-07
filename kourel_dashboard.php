@@ -348,7 +348,7 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
     if ($rAnn) {
         $knom = repetition_kourel_nom($pdo, (int) $r['kourel_id']);
         $waLink = 'https://wa.me/?text=' . rawurlencode(repetition_message_annulation($r, $knom));
-        $h = '<div style="border:1px solid rgba(191,33,33,0.4); border-radius:12px; padding:0.7rem 0.9rem; background:rgba(191,33,33,0.06);">';
+        $h = '<div style="border:1px solid rgba(191,33,33,0.4); border-radius:10px; padding:0.7rem 0.9rem; background:rgba(191,33,33,0.06);">';
         $h .= '<div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">';
         $h .= '<div style="color:#fff; font-weight:700;">🎼 ' . htmlspecialchars($r['titre']) . '</div>';
         $h .= '<span class="badge" style="background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.45);">🚫 Annulée</span>';
@@ -364,7 +364,7 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
     $estSerie = ($r['periodicite'] ?? 'ponctuelle') !== 'ponctuelle';
     $canPublish = $estSerie ? !repetition_precedente_non_cloturee($pdo, $r) : true;
     $nextToPublish = $estSerie ? repetition_prochaine_a_publier($pdo, $r) : null;
-    $h = '<div style="border:1px solid var(--glass-border); border-radius:12px; padding:0.7rem 0.9rem; background:rgba(255,255,255,0.03);">';
+    $h = '<div style="border:1px solid var(--glass-border); border-radius:10px; padding:0.7rem 0.9rem; background:rgba(255,255,255,0.03);">';
     $h .= '<div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">';
     $h .= '<div style="color:#fff; font-weight:700;">' . ($showTitle ? '🎼 ' . htmlspecialchars($r['titre']) : '🗓️ ' . $rDateFr) . '</div>';
     $h .= '<div style="display:flex; gap:0.3rem; flex-wrap:wrap;">';
@@ -484,13 +484,13 @@ $membersJs = array_map(function ($m) {
     <link rel="stylesheet" href="style.css">
     <style>
         .kourel-wrap { max-width: 960px; margin: 2rem auto; }
-        .kourel-card { margin-bottom: 1.25rem; border-radius: 18px; padding: 1.25rem 1.5rem; }
+        .kourel-card { margin-bottom: 1.25rem; border-radius: 12px; padding: 1.25rem 1.5rem; }
         .kourel-card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
         .kourel-card-head h3 { margin: 0; color: var(--white); font-size: 1.2rem; }
         .kourel-card-head .k-desc { color: var(--text-muted); font-size: 0.85rem; margin: 0.2rem 0 0; }
         .com-sub { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gold); font-weight: 700; margin: 0.5rem 0 0.5rem; }
         .km-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
-        .km-chip { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 50px; padding: 0.25rem 0.7rem 0.25rem 0.3rem; }
+        .km-chip { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.25rem 0.7rem 0.25rem 0.3rem; }
         .km-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .km-avatar--ph { background: rgba(212,175,55,0.15); color: var(--gold); font-size: 0.72rem; font-weight: 700; border: 1px solid rgba(212,175,55,0.35); }
         .km-chip .km-name { font-size: 0.85rem; color: var(--white); font-weight: 600; }
@@ -502,9 +502,9 @@ $membersJs = array_map(function ($m) {
             .km-actions .btn, .km-actions span.btn { width: 100%; justify-content: center; text-align: center; }
         }
         .com-filters { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
-        .com-filters input { flex: 1 1 240px; border-radius: 50px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 1rem; }
+        .com-filters input { flex: 1 1 240px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 1rem; }
         .com-filters input:focus { outline: none; border-color: var(--accent); }
-        .com-dd { flex: 1 1 200px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 0.9rem; color-scheme: dark; }
+        .com-dd { flex: 1 1 200px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--white); font-size: 0.9rem; padding: 0.6rem 0.9rem; color-scheme: dark; }
         .com-dd option { background-color: #0c241a; color: #fff; }
         .com-dd:focus { outline: none; border-color: var(--accent); }
         .com-count { font-size: 0.82rem; color: var(--text-muted); margin-left: auto; }
@@ -514,7 +514,7 @@ $membersJs = array_map(function ($m) {
         /* ── Sélecteur à deux listes ── */
         #members-modal { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; padding: 1rem; }
         #members-modal.active { display: flex; }
-        .tl-card { width: 100%; max-width: 820px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.25); border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
+        .tl-card { width: 100%; max-width: 820px; max-height: 90vh; display: flex; flex-direction: column; background: linear-gradient(180deg,#123528,#0c241a); border: 1px solid rgba(212,175,55,0.25); border-radius: 12px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
         .tl-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; background: linear-gradient(135deg,#1b4332,#2d6a4f); flex-shrink: 0; }
         .tl-head h3 { margin: 0; color: #fff; font-size: 1.05rem; }
         .tl-x { background: rgba(255,255,255,0.15); color: #fff; border: 0; width: 28px; height: 28px; border-radius: 50%; font-size: 1.1rem; line-height: 1; cursor: pointer; flex-shrink: 0; }
@@ -523,10 +523,10 @@ $membersJs = array_map(function ($m) {
         .tl-col + .tl-col { border-left: 1px solid var(--glass-border); }
         .tl-col-head { padding: 0.75rem 1rem 0.5rem; flex-shrink: 0; }
         .tl-col-head .tl-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--gold); font-weight: 700; }
-        .tl-col-head input { width: 100%; margin-top: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 50px; color: #fff; font-size: 0.85rem; padding: 0.45rem 0.9rem; }
+        .tl-col-head input { width: 100%; margin-top: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 12px; color: #fff; font-size: 0.85rem; padding: 0.45rem 0.9rem; }
         .tl-col-head input:focus { outline: none; border-color: var(--accent); }
         .tl-list { flex: 1; overflow-y: auto; padding: 0.5rem 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.35rem; }
-        .tl-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(255,255,255,0.03); }
+        .tl-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(255,255,255,0.03); }
         .tl-av { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .tl-av--ph { background: rgba(212,175,55,0.15); color: var(--gold); font-size: 0.72rem; font-weight: 700; border: 1px solid rgba(212,175,55,0.35); }
         .tl-name { flex: 1; color: #fff; font-size: 0.88rem; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -540,23 +540,23 @@ $membersJs = array_map(function ($m) {
         .tl-count { font-size: 0.8rem; color: var(--text-muted); }
         @media (max-width: 600px) { .tl-cols { flex-direction: column; } .tl-col + .tl-col { border-left: 0; border-top: 1px solid var(--glass-border); } .tl-list { max-height: 30vh; } }
         /* ── Avancement des Khassidas ── */
-        .kav-ligne { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.55rem 0.75rem; }
+        .kav-ligne { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.75rem; }
         .kav-nom { flex: 1 1 11rem; min-width: 0; }
         .kav-nom strong { color: var(--white); font-size: 0.88rem; }
         .kav-melodie { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.1rem; }
-        .kav-statut { border-radius: 50px; border: 1px solid; font-size: 0.78rem; font-weight: 700; padding: 0.3rem 0.6rem; cursor: pointer; color-scheme: dark; }
+        .kav-statut { border-radius: 12px; border: 1px solid; font-size: 0.78rem; font-weight: 700; padding: 0.3rem 0.6rem; cursor: pointer; color-scheme: dark; }
         .kav-message { flex: 1 1 100%; border-top: 1px dashed var(--glass-border); padding-top: 0.5rem; }
         .kav-message > summary { cursor: pointer; color: var(--gold); font-weight: 700; font-size: 0.8rem; list-style: none; }
         .kav-message > summary::-webkit-details-marker { display: none; }
         /* Réglages du Kurel : un groupe replié, discret */
-        .kourel-params { border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.6rem 0.9rem; margin-top: 0.5rem; }
+        .kourel-params { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.6rem 0.9rem; margin-top: 0.5rem; }
         .kourel-params > summary { cursor: pointer; color: var(--gold); font-weight: 700; font-size: 0.85rem; list-style: none; }
         .kourel-params > summary::-webkit-details-marker { display: none; }
         .kourel-params[open] > summary { margin-bottom: 0.5rem; }
         /* Un cadre autour des formulaires de saisie */
-        .kourel-cadre { border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); }
+        .kourel-cadre { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); }
         /* La Khassida travaillée, sur la répétition */
-        .krep-av { max-width: 100%; border-radius: 50px; border: 1px solid rgba(212,175,55,0.4); background: rgba(212,175,55,0.10); color: var(--gold); font-size: 0.78rem; font-weight: 600; padding: 0.22rem 0.5rem; cursor: pointer; color-scheme: dark; }
+        .krep-av { max-width: 100%; border-radius: 12px; border: 1px solid rgba(212,175,55,0.4); background: rgba(212,175,55,0.10); color: var(--gold); font-size: 0.78rem; font-weight: 600; padding: 0.22rem 0.5rem; cursor: pointer; color-scheme: dark; }
         .krep-av option { background-color: #0c241a; color: #fff; font-weight: 600; }
         .krep-av:focus { outline: none; border-color: var(--accent); }
         .kav-statut option { background-color: #0c241a; color: #fff; font-weight: 600; }
@@ -571,7 +571,7 @@ $membersJs = array_map(function ($m) {
             <div class="dashboard-main">
 
         <div class="kourel-wrap">
-            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>🎵 Espace Kurels — <strong class="gold-text"><?php echo count($kourels); ?></strong> Kurel(s)</span>
                 <?php if ($__isAdmin): ?>
                     <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
@@ -693,7 +693,7 @@ $membersJs = array_map(function ($m) {
                                             $autres = [];
                                             foreach ($periodes as $i => $p) { if ($i !== $idxProchain) { $autres[] = $p; } }
                                         ?>
-                                        <div style="border:1px solid rgba(212,175,55,0.35); border-radius:14px; padding:0.8rem 0.9rem; background:rgba(212,175,55,0.05);">
+                                        <div style="border:1px solid rgba(212,175,55,0.35); border-radius:10px; padding:0.8rem 0.9rem; background:rgba(212,175,55,0.05);">
                                             <div style="display:flex; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                                                 <div style="color:var(--gold); font-weight:800;">🔁 <?php echo htmlspecialchars($first['titre']); ?></div>
                                                 <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center;">
@@ -734,7 +734,7 @@ $membersJs = array_map(function ($m) {
                                 </div>
                             </details>
                             <?php endif; ?>
-                            <details style="border:1px solid var(--glass-border); border-radius:12px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
+                            <details style="border:1px solid var(--glass-border); border-radius:10px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Créer une répétition</summary>
                                 <form method="POST" class="repetition-create-form kourel-cadre" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
@@ -889,7 +889,7 @@ $membersJs = array_map(function ($m) {
 
             <!-- Listes de référence, en bas de page : on les consulte rarement.
                  Les deux boutons du haut y mènent et les ouvrent. -->
-            <details id="liste-khassidas" data-zone="khassidas" class="glass-card com-reu-group" style="margin-bottom:1rem; padding:1rem 1.25rem; border-radius:16px;">
+            <details id="liste-khassidas" data-zone="khassidas" class="glass-card com-reu-group" style="margin-bottom:1rem; padding:1rem 1.25rem; border-radius:12px;">
                 <summary style="cursor:pointer; color:var(--gold); font-weight:800; font-size:1rem; list-style:none; display:flex; align-items:center; gap:0.5rem;">📜 Khassidas <span data-compteur="khassidas-titre" style="color:var(--text-muted); font-weight:600;">(<?php echo count($khassidasList); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
                 <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.9rem;">
                     <?php if (empty($khassidasList)): ?><p class="km-empty">Aucune Khassida pour le moment.</p><?php else: foreach ($khassidasList as $kx): ?>
@@ -908,7 +908,7 @@ $membersJs = array_map(function ($m) {
                 </form>
             </details>
 
-            <details id="liste-melodies" data-zone="melodies" class="glass-card com-reu-group" style="margin-bottom:1.5rem; padding:1rem 1.25rem; border-radius:16px;">
+            <details id="liste-melodies" data-zone="melodies" class="glass-card com-reu-group" style="margin-bottom:1.5rem; padding:1rem 1.25rem; border-radius:12px;">
                 <summary style="cursor:pointer; color:var(--gold); font-weight:800; font-size:1rem; list-style:none; display:flex; align-items:center; gap:0.5rem;">🎶 Types de mélodie <span data-compteur="melodies-titre" style="color:var(--text-muted); font-weight:600;">(<?php echo count($melodiesList); ?>)</span> <span class="com-reu-chevron" style="transition:transform 0.2s;">▸</span></summary>
                 <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.9rem;">
                     <?php if (empty($melodiesList)): ?><p class="km-empty">Aucune mélodie pour le moment.</p><?php else: foreach ($melodiesList as $ml): ?>
@@ -976,7 +976,7 @@ $membersJs = array_map(function ($m) {
                 t = document.createElement('div');
                 t.id = 'zone-message';
                 t.style.cssText = 'position:fixed; left:50%; bottom:1.25rem; transform:translateX(-50%);'
-                    + ' z-index:4000; max-width:min(92vw, 30rem); padding:0.7rem 1.1rem; border-radius:12px;'
+                    + ' z-index:4000; max-width:min(92vw, 30rem); padding:0.7rem 1.1rem; border-radius:10px;'
                     + ' font-size:0.88rem; line-height:1.45; text-align:center; box-shadow:0 8px 24px rgba(0,0,0,0.35);'
                     + ' opacity:0; transition:opacity 0.2s;';
                 document.body.appendChild(t);

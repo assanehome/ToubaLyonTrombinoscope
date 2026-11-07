@@ -201,7 +201,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         .cot-stats-4 { grid-template-columns:repeat(4,1fr); }
         @media (max-width:600px){ .cot-stats-4 { grid-template-columns:repeat(2,1fr); } }
         /* Filtre Année / Mois : une ligne pleine largeur chacun sur mobile */
-        .cot-filtre-mois-form { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; border:1.5px solid rgba(212,175,55,0.3); border-radius:14px; padding:0.9rem 1.1rem; background:rgba(255,255,255,0.02); }
+        .cot-filtre-mois-form { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; border:1.5px solid rgba(212,175,55,0.3); border-radius:10px; padding:0.9rem 1.1rem; background:rgba(255,255,255,0.02); }
         .cot-filtre-groupe { display:flex; align-items:center; gap:0.5rem; }
         @media (max-width:600px){
             .cot-filtre-groupe { flex-basis:100%; width:100%; }
@@ -219,7 +219,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         table.cot-table th { background:rgba(255,255,255,0.04); color:var(--white); position:sticky; top:0; }
         table.cot-table td { color:var(--text-muted); }
         table.cot-table select { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.3rem 0.4rem; font-size:0.8rem; color-scheme:dark; }
-        .cot-badge { font-size:0.72rem; padding:0.15rem 0.5rem; border-radius:50px; white-space:nowrap; }
+        .cot-badge { font-size:0.72rem; padding:0.15rem 0.5rem; border-radius:12px; white-space:nowrap; }
         .cot-ok { background:rgba(37,211,102,0.15); color:#7bd8a6; border:1px solid rgba(37,211,102,0.4); }
         .cot-att { background:rgba(255,193,7,0.15); color:#ffd873; border:1px solid rgba(255,193,7,0.4); }
         .cot-retard { background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.5); }
@@ -230,7 +230,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         .cot-contact { display:flex; gap:0.35rem; }
         .cot-contact-btn {
             display:inline-flex; align-items:center; justify-content:center;
-            width:34px; height:34px; border-radius:10px; font-size:1.05rem; line-height:1;
+            width:34px; height:34px; border-radius:8px; font-size:1.05rem; line-height:1;
             background:rgba(255,255,255,0.05); border:1px solid var(--glass-border);
             color:var(--white); text-decoration:none; cursor:pointer; transition:var(--transition);
         }
@@ -246,7 +246,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         @media (prefers-reduced-motion: reduce){ .cot-bilan-annee[open] .cot-stats .cot-stat { animation:none !important; } }
         /* Liste des membres en cartes (compatible mobile) */
         .cot-list { display:flex; flex-direction:column; gap:0.6rem; }
-        .cot-card { display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap; border:1px solid var(--glass-border); border-radius:12px; padding:0.7rem 0.85rem; background:rgba(255,255,255,0.02); }
+        .cot-card { display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap; border:1px solid var(--glass-border); border-radius:10px; padding:0.7rem 0.85rem; background:rgba(255,255,255,0.02); }
         .cot-card .cot-name { display:flex; align-items:center; gap:0.55rem; flex:1 1 200px; min-width:0; color:var(--white); font-weight:700; font-size:0.9rem; }
         .cot-card .cot-name span { min-width:0; word-break:break-word; }
         .cot-av { width:38px; height:38px; border-radius:50%; object-fit:cover; border:2px solid var(--accent); flex-shrink:0; }
@@ -272,8 +272,8 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
             <div class="admin-content">
                 <h1 class="admin-page-title">💶 Cotisations</h1>
 
-                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin:1rem 0;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin:1rem 0;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <div class="cot-wrap">
                     <!-- Bilan annuel (indicateur année, agrégé sur tous les mois écoulés de l'année) -->
@@ -357,7 +357,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                             $vDatePrevue = $v['jour'] !== null ? sprintf('%02d/%s', $v['jour'], substr($periode, 5, 2)) : null;
                             $vActionUrl = 'admin_cotisations.php?periode=' . htmlspecialchars($periode);
                         ?>
-                            <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:12px; padding:0.55rem 0.8rem;">
+                            <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.55rem 0.8rem;">
                                 <div style="flex:1; min-width:150px;">
                                     <div style="color:var(--white); font-weight:600;"><?php echo htmlspecialchars($vNom); ?></div>
                                     <div style="color:var(--text-muted); font-size:0.78rem;"><?php echo $vDatePrevue !== null ? '📅 Prévu le ' . htmlspecialchars($vDatePrevue) : '📅 Date non définie'; ?></div>
@@ -400,8 +400,8 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                             <span id="cot-count" style="color:var(--text-muted); font-size:0.82rem;"></span>
                         </div>
                         <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.8rem;">
-                            <input type="text" id="cot-search" placeholder="🔍 Rechercher un membre…" style="flex:1 1 240px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:50px; padding:0.5rem 1rem; font-size:0.9rem;">
-                            <select id="cot-filtre" style="flex:0 1 220px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:10px; padding:0.5rem 0.8rem; font-size:0.9rem; color-scheme:dark;">
+                            <input type="text" id="cot-search" placeholder="🔍 Rechercher un membre…" style="flex:1 1 240px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:12px; padding:0.5rem 1rem; font-size:0.9rem;">
+                            <select id="cot-filtre" style="flex:0 1 220px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.5rem 0.8rem; font-size:0.9rem; color-scheme:dark;">
                                 <option value="all">Tous les statuts</option>
                                 <option value="paye">✅ Réglées</option>
                                 <option value="attente">⏳ En attente</option>

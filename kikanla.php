@@ -80,7 +80,7 @@ try {
             backdrop-filter: blur(14px);
             -webkit-backdrop-filter: blur(14px);
             border: 1px solid var(--glass-border);
-            border-radius: 20px;
+            border-radius: 12px;
         }
         .player-info {
             display: flex;
@@ -97,7 +97,7 @@ try {
             color: var(--white);
             font-weight: 800;
             padding: 0.5rem 1.25rem;
-            border-radius: 50px;
+            border-radius: 12px;
             font-size: 1rem;
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 4px 12px rgba(27, 67, 50, 0.3);
@@ -119,14 +119,14 @@ try {
             align-items: center;
             background: var(--glass);
             border: 1px solid var(--glass-border);
-            border-radius: 24px;
+            border-radius: 12px;
             padding: 1.5rem;
             height: fit-content;
         }
         .game-photo-container {
             width: 100%;
             aspect-ratio: 1/1;
-            border-radius: 18px;
+            border-radius: 12px;
             overflow: hidden;
             border: 2px solid var(--glass-border);
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
@@ -143,7 +143,7 @@ try {
         .game-choices-card {
             background: var(--glass);
             border: 1px solid var(--glass-border);
-            border-radius: 24px;
+            border-radius: 12px;
             padding: 2.5rem;
             display: flex;
             flex-direction: column;
@@ -170,7 +170,7 @@ try {
         .choice-btn {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--glass-border);
-            border-radius: 16px;
+            border-radius: 12px;
             padding: 1.25rem 2rem;
             color: var(--white);
             font-size: 1.1rem;
@@ -201,7 +201,7 @@ try {
             text-decoration: line-through;
         }
         .game-feedback-box {
-            border-radius: 18px;
+            border-radius: 12px;
             padding: 1.5rem;
             margin-top: 2rem;
             text-align: center;
@@ -291,7 +291,7 @@ try {
                 min-width: 90px !important;
                 max-width: 100px !important;
                 padding: 0.75rem 0.25rem !important;
-                border-radius: 12px !important;
+                border-radius: 10px !important;
             }
             .top-player-card span {
                 font-size: 0.75rem !important;
@@ -306,7 +306,7 @@ try {
             /* Visual podium of Top 3 (Lobby) */
             .podium-card {
                 padding: 0.75rem 0.25rem !important;
-                border-radius: 12px !important;
+                border-radius: 10px !important;
             }
             .podium-photo-wrap {
                 width: 52px !important;
@@ -411,7 +411,7 @@ try {
                                         $scale = 'scale(1)';
                                     }
                                 ?>
-                                    <div class="podium-card" style="background: <?php echo $cardBg; ?>; border: <?php echo $cardBorder; ?>; border-radius: 18px; padding: 1rem 0.4rem; text-align: center; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: <?php echo $shadow; ?>; transform: <?php echo $scale; ?>; transition: var(--transition);">
+                                    <div class="podium-card" style="background: <?php echo $cardBg; ?>; border: <?php echo $cardBorder; ?>; border-radius: 12px; padding: 1rem 0.4rem; text-align: center; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: <?php echo $shadow; ?>; transform: <?php echo $scale; ?>; transition: var(--transition);">
                                         <span style="position: absolute; top: -14px; font-size: 1.25rem; z-index: 2;"><?php echo $medal; ?></span>
                                         <div class="<?php echo ($rankIdx === 1) ? 'podium-photo-wrap-1' : 'podium-photo-wrap'; ?>" style="width: <?php echo $photoSize; ?>; height: <?php echo $photoSize; ?>; border-radius: 50%; overflow: hidden; border: 2.5px solid rgba(255, 255, 255, 0.15); margin-bottom: 0.6rem; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">
                                             <img src="uploads/<?php echo $pPhoto; ?>" alt="Photo de <?php echo htmlspecialchars($pName); ?>" style="width: 100%; height: 100%; object-fit: cover;">
@@ -431,7 +431,7 @@ try {
                         </div>
                     <?php endif; ?>
                     
-                    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 1.25rem; border-radius: 16px; margin-bottom: 1rem; text-align: left;">
+                    <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 1.25rem; border-radius: 12px; margin-bottom: 1rem; text-align: left;">
                         <h4 style="color: var(--gold); font-size: 1.05rem; margin-bottom: 0.5rem; font-weight: 700;">Règles du jeu :</h4>
                         <ul style="color: var(--text-muted); padding-left: 1.25rem; font-size: 0.95rem; line-height: 1.5;">
                              <li style="margin-bottom: 0.35rem;">10 questions par session.</li>
@@ -482,7 +482,7 @@ try {
                                 $medal = '🥉';
                             }
                         ?>
-                            <div class="top-player-card glass-card" style="flex: 1; min-width: 120px; max-width: 140px; padding: 1.25rem 0.75rem; text-align: center; border-radius: 20px; border-color: <?php echo $borderColor; ?>; box-shadow: <?php echo $boxShadow; ?>; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                            <div class="top-player-card glass-card" style="flex: 1; min-width: 120px; max-width: 140px; padding: 1.25rem 0.75rem; text-align: center; border-radius: 12px; border-color: <?php echo $borderColor; ?>; box-shadow: <?php echo $boxShadow; ?>; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;">
                                 <span class="rank-badge-podium" style="position: absolute; top: -12px; font-size: 1.3rem; z-index: 2;">
                                     <?php echo $medal; ?>
                                 </span>

@@ -31,7 +31,7 @@
         max-height: 88vh;
         width: auto;
         height: auto;
-        border-radius: 16px;
+        border-radius: 12px;
         border: 2px solid rgba(212, 175, 55, 0.5);
         box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
         background: #0c241a;

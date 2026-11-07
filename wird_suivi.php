@@ -312,15 +312,15 @@ function wsuivi_badge($s)
     <link rel="stylesheet" href="style.css">
     <style>
         .ws-wrap { max-width: 900px; margin: 2rem auto; }
-        .ws-prog { height: 10px; border-radius: 50px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 0.4rem 0 0.6rem; }
+        .ws-prog { height: 10px; border-radius: 12px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 0.4rem 0 0.6rem; }
         .ws-prog > i { display: block; height: 100%; background: linear-gradient(90deg,#2d6a4f,#7bd8a6); }
         .ws-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
-        .ws-stat { border-radius: 14px; padding: 0.85rem 1rem; text-align: center; }
+        .ws-stat { border-radius: 10px; padding: 0.85rem 1rem; text-align: center; }
         .ws-stat .n { font-size: 1.5rem; font-weight: 800; color: var(--white); line-height: 1.1; }
         .ws-stat .l { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 0.2rem; }
         /* Liste des participants en cartes (divs, plus de tableau) */
         .ws-list { display: flex; flex-direction: column; gap: 0.5rem; }
-        .ws-row { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.55rem 0.9rem; background: rgba(255,255,255,0.02); }
+        .ws-row { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.9rem; background: rgba(255,255,255,0.02); }
         .ws-row-juz { font-weight: 800; color: var(--gold); min-width: 54px; }
         .ws-row-part { flex: 1 1 150px; min-width: 130px; }
         .ws-nom { color: #fff; font-weight: 600; }
@@ -370,7 +370,7 @@ function wsuivi_badge($s)
         }
         /* Calendrier de la série (périodes) */
         .ws-cal { display: flex; flex-direction: column; gap: 0.6rem; }
-        .ws-cal-row { border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.7rem 0.9rem; background: rgba(255,255,255,0.03); }
+        .ws-cal-row { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.7rem 0.9rem; background: rgba(255,255,255,0.03); }
         .ws-cal-row.current { border-color: rgba(212,175,55,0.6); background: rgba(212,175,55,0.07); }
         .ws-cal-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
         .ws-cal-week { font-weight: 800; color: var(--white); font-size: 0.95rem; }
@@ -388,7 +388,7 @@ function wsuivi_badge($s)
             <div class="dashboard-main">
 
         <div class="ws-wrap">
-            <div class="admin-welcome-banner glass-card ws-head" style="margin-bottom:1.25rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:20px; flex-wrap:wrap; gap:1rem;">
+            <div class="admin-welcome-banner glass-card ws-head" style="margin-bottom:1.25rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <?php require_once __DIR__ . '/wird_period_helper.php'; $wsPeriode = wird_period_label($pdo, $session); ?>
                 <span class="ws-head-info">📊 Suivi — <strong class="gold-text"><?php echo htmlspecialchars($session['titre']); ?></strong><?php if ($wsPeriode !== ''): ?> <span class="ws-head-per" style="color:#7dd3fc; font-weight:600; font-size:0.9rem;">🗓️ <?php echo htmlspecialchars($wsPeriode); ?></span><?php endif; ?></span>
                 <a href="wird_admin.php" class="btn btn-secondary btn-sm">← Sessions</a>
@@ -405,7 +405,7 @@ function wsuivi_badge($s)
             </div>
 
             <!-- Diffusion : lancer / annuler le lancement / clôturer -->
-            <div class="glass-card ws-diffusion" style="border-radius:16px; padding:1rem 1.25rem; margin-bottom:1.25rem; display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+            <div class="glass-card ws-diffusion" style="border-radius:12px; padding:1rem 1.25rem; margin-bottom:1.25rem; display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
                 <span style="color:#fff; font-weight:600;">Diffusion :</span>
                 <?php if ($curLance): ?>
                     <span class="badge" style="background:rgba(45,106,79,0.25); color:#7bd8a6; border:1px solid rgba(45,106,79,0.5);">🚀 Lancée — visible des membres</span>
@@ -441,7 +441,7 @@ function wsuivi_badge($s)
                 </div>
             </div>
 
-            <div class="glass-card" style="border-radius:16px; padding:1.25rem 1.5rem; margin-bottom:1.25rem;">
+            <div class="glass-card" style="border-radius:12px; padding:1.25rem 1.5rem; margin-bottom:1.25rem;">
                 <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem;">
                     <strong style="color:#fff;"><?php echo $nbLues; ?>/30 lues</strong>
                     <span style="color:var(--text-muted); font-size:0.9rem;"><?php echo $nbRes; ?> réservées · <?php echo 30 - $nbLues - $nbRes; ?> libres · <?php echo $pct; ?>%</span>
@@ -473,11 +473,11 @@ function wsuivi_badge($s)
                 </div>
             </div>
 
-            <div class="glass-card" style="border-radius:16px; padding:1.25rem 1.5rem;">
+            <div class="glass-card" style="border-radius:12px; padding:1.25rem 1.5rem;">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.8rem;">
                     <div style="display:flex; gap:0.5rem; flex-wrap:wrap; flex:1 1 auto;">
-                        <input type="text" id="ws-search" placeholder="🔍 Rechercher un membre…" style="flex:1 1 200px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:50px; padding:0.5rem 1rem; font-size:0.9rem;">
-                        <select id="ws-filtre" style="flex:0 1 200px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:10px; padding:0.5rem 0.8rem; font-size:0.9rem; color-scheme:dark;">
+                        <input type="text" id="ws-search" placeholder="🔍 Rechercher un membre…" style="flex:1 1 200px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:12px; padding:0.5rem 1rem; font-size:0.9rem;">
+                        <select id="ws-filtre" style="flex:0 1 200px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.5rem 0.8rem; font-size:0.9rem; color-scheme:dark;">
                             <option value="all">Tous les statuts</option>
                             <option value="libre">⚪ Libre</option>
                             <option value="reservee">🟡 Réservé</option>
@@ -546,7 +546,7 @@ function wsuivi_badge($s)
             </div>
 
             <?php if (!empty($seriePeriods) && count($seriePeriods) > 1): ?>
-            <div class="glass-card" style="border-radius:16px; padding:1.25rem 1.5rem; margin-top:1.25rem;">
+            <div class="glass-card" style="border-radius:12px; padding:1.25rem 1.5rem; margin-top:1.25rem;">
                 <strong style="color:var(--gold); font-size:1.05rem; display:block; margin-bottom:0.9rem;">🗓️ Calendrier de la série — <?php echo count($seriePeriods); ?> période(s)</strong>
                 <div class="ws-cal">
                 <?php $ci = 0; foreach ($seriePeriods as $sp): $ci++;
@@ -592,7 +592,7 @@ function wsuivi_badge($s)
 
             <?php // Les actions de la session ferment la page : on lit d'abord les Juz,
                   // et la clôture se trouve auprès des autres décisions. ?>
-            <div class="glass-card ws-actionsbar" style="border-radius:16px; padding:1.1rem 1.25rem; margin-top:1.25rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+            <div class="glass-card ws-actionsbar" style="border-radius:12px; padding:1.1rem 1.25rem; margin-top:1.25rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
                 <span style="color:var(--gold); font-weight:700; width:100%; margin-bottom:0.15rem;">Actions de la session</span>
                 <?php if ($nextPerId): ?>
                     <a href="wird_suivi.php?s=<?php echo (int)$nextPerId; ?>" class="btn btn-sm" style="background:rgba(125,211,252,0.15); border:1px solid rgba(125,211,252,0.5); color:#7dd3fc; font-weight:700;">🔁 Période suivante</a>
@@ -663,7 +663,7 @@ function wsuivi_badge($s)
                 $kamilGest = array_map('intval', $qg->fetchAll(PDO::FETCH_COLUMN));
             } catch (Exception $e) {}
         ?>
-        <div class="glass-card" style="border-radius:16px; padding:1rem 1.25rem; margin-top:1.25rem;">
+        <div class="glass-card" style="border-radius:12px; padding:1rem 1.25rem; margin-top:1.25rem;">
             <h3 class="gold-text" style="font-size:1rem; margin:0 0 0.4rem;">👥 Gestionnaires de ce Kamil</h3>
             <p style="color:var(--text-muted); font-size:0.82rem; margin:0 0 0.75rem;">Les membres cochés (commission Culte) peuvent suivre ce Kamil, envoyer les rappels et gérer les parties<?php echo !empty($session['serie_id']) ? ' — pour toute la série périodique' : ''; ?>.</p>
             <?php if (empty($culteMembres)): ?>
@@ -675,7 +675,7 @@ function wsuivi_badge($s)
                 <input type="hidden" name="session_id" value="<?php echo $sid; ?>">
                 <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:0.4rem; margin-bottom:0.85rem;">
                     <?php foreach ($culteMembres as $cmb): ?>
-                    <label style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.4rem 0.7rem; cursor:pointer;">
+                    <label style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:8px; padding:0.4rem 0.7rem; cursor:pointer;">
                         <input type="checkbox" name="membre_ids[]" value="<?php echo (int) $cmb['id']; ?>"<?php echo in_array((int) $cmb['id'], $kamilGest, true) ? ' checked' : ''; ?>>
                         <?php echo htmlspecialchars(trim($cmb['prenom'] . ' ' . $cmb['nom'])); ?>
                     </label>

@@ -188,7 +188,7 @@ function guddi_email(string $date, string $heure, string $theme, string $present
     if (trim($presentateur) !== '') { $facts[] = ['Présentateur', htmlspecialchars(trim($presentateur))]; }
     if (trim($livre) !== '') { $facts[] = ['📖 Livre à étudier', htmlspecialchars(trim($livre))]; }
     if (!empty($facts)) {
-        $inner .= '<table style="margin:18px 0;border-collapse:separate;border-spacing:0;width:100%;border:1px solid #e6e6e6;border-radius:12px;overflow:hidden;">';
+        $inner .= '<table style="margin:18px 0;border-collapse:separate;border-spacing:0;width:100%;border:1px solid #e6e6e6;border-radius:10px;overflow:hidden;">';
         foreach ($facts as $f) {
             $inner .= '<tr><td style="background:#f6f3e8;padding:10px 14px;font-weight:700;color:#1b4332;border-bottom:1px solid #e6e6e6;">' . $f[0] . '</td>'
                 . '<td style="padding:10px 14px;color:#333;border-bottom:1px solid #e6e6e6;">' . $f[1] . '</td></tr>';
@@ -204,7 +204,7 @@ function guddi_email(string $date, string $heure, string $theme, string $present
     // Détails complémentaires (texte simple) saisis pour la séance.
     $detailsSafe = guddi_details_texte($detailsHtml);
     if ($detailsSafe !== '') {
-        $inner .= '<div style="margin:18px 0;padding:14px 16px;background:#f6f3e8;border:1px solid #e6e6e6;border-radius:12px;color:#333;line-height:1.5;">'
+        $inner .= '<div style="margin:18px 0;padding:14px 16px;background:#f6f3e8;border:1px solid #e6e6e6;border-radius:10px;color:#333;line-height:1.5;">'
             . $detailsSafe . '</div>';
     }
     $inner .= '<p style="color:#333;margin-top:18px;">Sëriñ Muntaxaa MBÀKKE yàlla na fi yàgg Lool te wér.<br>'
@@ -249,7 +249,7 @@ function guddi_email_annulation(string $date): string
         . '<p style="color:#333;">Àssalaamu hanlaykum,</p>'
         . '<p style="color:#333;">Le <strong>Guddi Àjjuma</strong> de ce '
         . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> est annulé.</p>'
-        . '<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;color:#991b1b;">Ñungi leen di tuubal bu baax.</p>'
+        . '<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;color:#991b1b;">Ñungi leen di tuubal bu baax.</p>'
         . '<p style="color:#333;">Sëriñ Muntaxaa MBÀKKE yàlla na fi yàgg Lool te wér. 🤲</p>'
         . '<p style="color:#888;font-size:12px;">— Commission Culte, Touba Lyon</p>'
         . '</div>';

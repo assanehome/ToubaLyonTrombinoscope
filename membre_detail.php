@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_
                     . '<p style="margin:0 0 14px;">Assalamu aleykum <strong>' . htmlspecialchars($nomComplet) . '</strong>,</p>'
                     . '<p style="margin:0 0 16px;">Vous avez reçu un message de <strong>' . htmlspecialchars($expediteur) . '</strong> '
                     . 'via le trombinoscope du Dahira Touba Lyon :</p>'
-                    . '<div style="white-space:pre-wrap;background:#f6f7f6;border-left:4px solid #1b4332;border-radius:10px;padding:14px 18px;margin:0 0 18px;">' . nl2br(htmlspecialchars($body)) . '</div>'
+                    . '<div style="white-space:pre-wrap;background:#f6f7f6;border-left:4px solid #1b4332;border-radius:8px;padding:14px 18px;margin:0 0 18px;">' . nl2br(htmlspecialchars($body)) . '</div>'
                     . '<p style="margin:0;color:#888;font-size:13px;">Vous pouvez répondre directement par e-mail. — Dahira Touba Lyon (Mubawwa-A-Sidqin)</p>',
                     'Message du trombinoscope'
                 );
@@ -147,7 +147,7 @@ try {
     <style>
         .md-wrap { max-width: 860px; margin: 0 auto; }
         .md-hero {
-            border-radius: 24px;
+            border-radius: 12px;
             padding: 1.6rem 1.6rem 1.4rem;
             background: linear-gradient(160deg, rgba(212,175,55,0.14) 0%, rgba(255,255,255,0.03) 100%);
             border: 2px solid rgba(212,175,55,0.5);
@@ -171,7 +171,7 @@ try {
             position: relative;
             max-width: 320px;
             margin: 0 auto 0.9rem;
-            border-radius: 20px;
+            border-radius: 12px;
             overflow: hidden;
             aspect-ratio: 3 / 4;
             border: 1px solid var(--glass-border);
@@ -209,7 +209,7 @@ try {
         .md-name { font-size: 1.2rem; font-weight: 700; color: var(--white); margin: 0; text-transform: capitalize; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
         .md-civ { margin-top: 0.1rem; }
         .md-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
-        .md-item { border-radius: 14px; padding: 1rem 1.1rem; }
+        .md-item { border-radius: 10px; padding: 1rem 1.1rem; }
         .md-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .md-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
         .md-item .v a { color: var(--accent); }
@@ -222,7 +222,7 @@ try {
             border: 1px solid rgba(45,106,79,0.4);
             color: var(--white);
             font-size: 0.8rem; font-weight: 600;
-            padding: 0.35rem 0.8rem; border-radius: 50px;
+            padding: 0.35rem 0.8rem; border-radius: 12px;
         }
         .md-chip--resp {
             background: rgba(212,175,55,0.16);
@@ -249,8 +249,8 @@ try {
                 <a href="<?php echo $__mdAdmin ? 'admin_dashboard.php#trombi' : 'trombinoscope.php'; ?>" class="md-back btn btn-secondary btn-sm">← Retour au trombinoscope</a>
                 <h1 class="admin-page-title">🖼️ Fiche membre</h1>
 
-                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
-                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+                <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
+                <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <div class="md-wrap">
                     <!-- En-tête -->
