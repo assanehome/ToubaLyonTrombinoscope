@@ -162,7 +162,8 @@ unset($_SESSION['wird_flash']);
         .w-stats { color: var(--text-muted); font-size: 0.85rem; text-align: center; }
         .w-name { display: flex; gap: 0.5rem; max-width: 420px; margin: 1rem auto 0; }
         .w-name input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 12px; color: #fff; padding: 0.55rem 1rem; font-size: 0.9rem; }
-        .w-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 0.7rem; margin-top: 1.25rem; }
+        .w-grid { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-top: 1.25rem; }
+        .w-grid > * { flex: 1 1 130px; min-width: 0; max-width: calc(130px * 1.6); }
         .w-part { border-radius: 10px; padding: 0.85rem; text-align: center; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.03); }
         .w-part.libre { border-style: dashed; }
         .w-part.lue { border-color: rgba(45,106,79,0.6); background: rgba(45,106,79,0.14); }
@@ -200,7 +201,7 @@ unset($_SESSION['wird_flash']);
         .w-msg { max-width: 520px; margin: 0 auto 1rem; padding: 0.7rem 1rem; border-radius: 10px; font-size: 0.9rem; text-align: center; }
         /* ── Mobile : un Juz par ligne, photo à gauche, corps compact à droite ── */
         @media (max-width: 600px) {
-            .w-grid { grid-template-columns: 1fr; gap: 0.7rem; }
+            .w-grid > * { flex-basis: 100%; max-width: none; }
             .w-part { display: flex; align-items: flex-start; text-align: left; gap: 0.7rem; padding: 0.85rem 1rem; }
             .w-part br { display: none; }
             /* Photo (enfant direct) à gauche */

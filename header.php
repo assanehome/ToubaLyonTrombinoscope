@@ -887,3 +887,5 @@ $trobaCsrf = csrf_token();
 <script src="soft-submit.js?v=<?php echo (int) @filemtime(__DIR__ . '/soft-submit.js'); ?>" defer></script>
 <?php /* Listes déroulantes modernes avec recherche — sur toutes les pages qui incluent l'en-tête */ ?>
 <script src="modern-select.js?v=<?php echo (int) @filemtime(__DIR__ . '/modern-select.js'); ?>" defer></script>
+<?php /* Protection des photos (pas de clic droit, de glisser ni d'ouverture seule) — sur toutes les pages qui incluent l'en-tête */ ?>
+<script src="photo-protect.js?v=<?php echo (int) @filemtime(__DIR__ . '/photo-protect.js'); ?>" defer></script>

@@ -3,7 +3,7 @@
  * Touba Lyon 2026 - Retour de paiement Stripe (cotisation)
  *
  * Vérifie la session Stripe Checkout après paiement, marque la cotisation
- * réglée et envoie le remerciement, puis redirige vers « Ma cotisation ».
+ * réglée et envoie le remerciement, puis redirige vers « Mes cotisations ».
  */
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/cotisation_helper.php';

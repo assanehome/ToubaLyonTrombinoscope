@@ -211,7 +211,8 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
     <link rel="stylesheet" href="style.css">
     <style>
         .stock-wrap { max-width: 980px; margin: 2rem auto; }
-        .stock-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+        .stock-grid { display: flex; flex-wrap: wrap; gap: 1rem; }
+        .stock-grid > * { flex: 1 1 240px; min-width: 0; max-width: calc(240px * 1.6); }
         .stock-card { border-radius: 12px; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
         .stock-photo { width: 100%; aspect-ratio: 4/3; object-fit: cover; background: #081c15; display: block; }
         .stock-photo-ph { width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; font-size: 2.4rem; color: var(--gold); background: rgba(212,175,55,0.08); }
@@ -244,7 +245,8 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
             #stock-add-section .form-group, .stock-modal-body .form-group { min-width: 0 !important; flex-basis: auto !important; }
         }
         /* indicateurs */
-        .stk-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+        .stk-stats { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem; }
+        .stk-stats > * { flex: 1 1 120px; min-width: 0; }
         .stk-stat { border-radius: 10px; padding: 0.85rem 1rem; text-align: center; }
         .stk-stat .n { font-size: 1.5rem; font-weight: 800; color: var(--white); line-height: 1.1; }
         .stk-stat .l { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 0.2rem; }
@@ -484,9 +486,9 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
 
                 <!-- Vue liste -->
                 <div id="stock-list-view" style="display:none;">
-                    <table class="stk-list">
-                        <thead><tr><th>Photo</th><th>Nom</th><th>Statut</th><th>Lieu</th><th>Qté</th><th>Date</th><th>Prix</th><th>Actions</th></tr></thead>
-                        <tbody>
+                    <div class="dlist">
+                        
+                        
                             <?php foreach ($items as $it): ?>
                                 <?php
                                     $liJson = htmlspecialchars(json_encode([
@@ -499,25 +501,25 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
                                     $liAnnee = '';
                                     if (!empty($it['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $it['date_achat'], $m2)) { $liDate = $m2[2] . '/' . $m2[1]; $liAnnee = $m2[1]; }
                                 ?>
-                                <tr class="stk-filterable" data-search="<?php echo $liSearch; ?>" data-statut="<?php echo htmlspecialchars($it['statut'], ENT_QUOTES); ?>" data-lieu="<?php echo htmlspecialchars($it['lieu'] ?? '', ENT_QUOTES); ?>" data-annee="<?php echo htmlspecialchars($liAnnee, ENT_QUOTES); ?>" data-prix="<?php echo $it['prix_achat'] !== null ? (float)$it['prix_achat'] : ''; ?>" data-qte="<?php echo (int)$it['quantite']; ?>">
-                                    <td><?php if (!empty($it['photo'])): ?><img src="uploads/<?php echo htmlspecialchars($it['photo']); ?>" alt="" class="li-photo"><?php else: ?><span style="font-size:1.4rem;">📦</span><?php endif; ?></td>
-                                    <td style="font-weight:600;"><?php echo htmlspecialchars($it['nom']); ?></td>
-                                    <td><span class="stock-badge" style="<?php echo stock_status_style($it['statut']); ?>"><?php echo htmlspecialchars($it['statut']); ?></span></td>
-                                    <td><?php echo !empty($it['lieu']) ? '📍 ' . htmlspecialchars($it['lieu']) : '—'; ?></td>
-                                    <td><strong><?php echo (int)$it['quantite']; ?></strong></td>
-                                    <td><?php echo $liDate !== '' ? htmlspecialchars($liDate) : '—'; ?></td>
-                                    <td><?php echo ($it['prix_achat'] !== null) ? htmlspecialchars(number_format((float)$it['prix_achat'], 2, ',', ' ')) . ' €' : '—'; ?></td>
-                                    <td>
+                                <div class="drow stk-filterable" data-search="<?php echo $liSearch; ?>" data-statut="<?php echo htmlspecialchars($it['statut'], ENT_QUOTES); ?>" data-lieu="<?php echo htmlspecialchars($it['lieu'] ?? '', ENT_QUOTES); ?>" data-annee="<?php echo htmlspecialchars($liAnnee, ENT_QUOTES); ?>" data-prix="<?php echo $it['prix_achat'] !== null ? (float)$it['prix_achat'] : ''; ?>" data-qte="<?php echo (int)$it['quantite']; ?>">
+                                    <div class="dcell"><?php if (!empty($it['photo'])): ?><img src="uploads/<?php echo htmlspecialchars($it['photo']); ?>" alt="" class="li-photo"><?php else: ?><span style="font-size:1.4rem;">📦</span><?php endif; ?></div>
+                                    <div class="dcell dgrow" style="font-weight:600;"><?php echo htmlspecialchars($it['nom']); ?></div>
+                                    <div class="dcell"><span class="stock-badge" style="<?php echo stock_status_style($it['statut']); ?>"><?php echo htmlspecialchars($it['statut']); ?></span></div>
+                                    <div class="dcell"><?php echo !empty($it['lieu']) ? '📍 ' . htmlspecialchars($it['lieu']) : '—'; ?></div>
+                                    <div class="dcell"><strong><?php echo (int)$it['quantite']; ?></strong></div>
+                                    <div class="dcell"><?php echo $liDate !== '' ? htmlspecialchars($liDate) : '—'; ?></div>
+                                    <div class="dcell"><?php echo ($it['prix_achat'] !== null) ? htmlspecialchars(number_format((float)$it['prix_achat'], 2, ',', ' ')) . ' €' : '—'; ?></div>
+                                    <div class="dcell">
                                         <div class="li-actions">
                                             <a href="stock_item.php?id=<?php echo (int)$it['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">👁️</a>
                                             <button type="button" class="btn btn-secondary btn-sm" onclick='openStockEdit(<?php echo $liJson; ?>)'>✏️</button>
                                             <button type="button" class="btn btn-danger btn-sm" onclick="confirmDeleteItem(<?php echo (int)$it['id']; ?>, <?php echo htmlspecialchars(json_encode($it['nom']), ENT_QUOTES); ?>)">🗑️</button>
                                         </div>
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
                             <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                        
+                    </div>
                 </div>
 
                 <div class="empty-state" id="stock-noresult" style="display:none;"><div class="empty-state-icon">🔍</div><p>Aucun article ne correspond à votre recherche.</p></div>

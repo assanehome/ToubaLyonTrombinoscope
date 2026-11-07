@@ -855,6 +855,20 @@ try {
     // Confirmation de l'exécution par le demandeur (la demande disparaît alors de son accueil)
     try { $pdo->query("SELECT confirme_le FROM logistique_demandes LIMIT 1"); } catch (Exception $e) { $pdo->exec("ALTER TABLE logistique_demandes ADD COLUMN confirme_le DATETIME NULL DEFAULT NULL"); }
 
+    // Modifications de profil soumises à validation par un administrateur (une demande en attente par membre)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS membre_modifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        membre_id INT NOT NULL,
+        donnees MEDIUMTEXT NOT NULL,
+        photo_path VARCHAR(255) NULL DEFAULT NULL,
+        statut VARCHAR(10) NOT NULL DEFAULT 'attente',
+        motif VARCHAR(255) NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        traite_le DATETIME NULL DEFAULT NULL,
+        INDEX idx_membre (membre_id),
+        INDEX idx_statut (statut)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
     // Responsables des fonctions « Guddi Àjjuma » et « Lecture Coran » : seuls eux (et l'administrateur) y ont accès
     $pdo->exec("CREATE TABLE IF NOT EXISTS fonction_responsables (
         fonction VARCHAR(20) NOT NULL,

@@ -229,11 +229,13 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
         .adh-toggle.open .chev { transform:rotate(180deg); }
         .adh-filters-adv.is-hidden { display:none; }
         /* Indicateurs compacts (moins de place) */
-        .stats-grid { gap:0.6rem !important; margin-bottom:1rem !important; grid-template-columns:repeat(3, 1fr) !important; }
+        .stats-grid { gap:0.6rem !important; margin-bottom:1rem !important; }
+        .stats-grid > * { flex:1 1 calc(33.333% - 0.6rem) !important; min-width:0 !important; max-width:none !important; }
         .stats-grid .stat-card { padding:0.75rem 0.9rem !important; border-radius:10px !important; display:flex; flex-direction:column; gap:0.15rem; }
         .stats-grid .stat-value { font-size:1.7rem !important; line-height:1.1 !important; }
         .stats-grid .stat-title { font-size:0.72rem !important; }
-        @media (max-width:520px){ .stats-grid { grid-template-columns:repeat(3, 1fr) !important; } .stats-grid .stat-value { font-size:1.4rem !important; } .stats-grid .stat-title { font-size:0.62rem !important; } .stats-grid .stat-card { padding:0.55rem 0.5rem !important; } }
+        @media (max-width:520px){ .stats-grid { }
+        .stats-grid > * { flex:1 1 calc(33.333% - 0.6rem) !important; min-width:0 !important; max-width:none !important; } .stats-grid .stat-value { font-size:1.4rem !important; } .stats-grid .stat-title { font-size:0.62rem !important; } .stats-grid .stat-card { padding:0.55rem 0.5rem !important; } }
         /* Accès rapides (boutons vers Actualités / Planning) */
         .dash-quick { display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:1.1rem; }
         .dash-quick-btn { display:inline-flex; align-items:center; gap:0.5rem; text-decoration:none; font-weight:700; font-size:0.9rem; color:#08150f; background:linear-gradient(135deg,#d4af37,#e8c766); border:1px solid transparent; border-radius:10px; padding:0.7rem 1.15rem; transition:transform 0.12s ease, box-shadow 0.2s ease, filter 0.2s ease; box-shadow:0 4px 14px rgba(212,175,55,0.28); }
@@ -380,23 +382,17 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                 </div>
             <?php else: ?>
                 <div class="table-responsive">
-                    <table class="admin-table admin-table--compact">
-                        <thead>
-                            <tr>
-                                <th>Photo</th>
-                                <th>Membre</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                    <div class="dlist">
+                        
+                        
                             <?php foreach ($pendingMembers as $m): ?>
-                                <tr class="filterable"<?php echo member_filter_attrs($m); ?>>
-                                    <td><?php echo member_photo_html($m); ?></td>
-                                    <td>
+                                <div class="drow filterable"<?php echo member_filter_attrs($m); ?>>
+                                    <div class="dcell"><?php echo member_photo_html($m); ?></div>
+                                    <div class="dcell dgrow">
                                         <div style="font-weight:600;"><span style="text-transform:capitalize;"><?php echo htmlspecialchars($m['prenom']); ?></span> <span style="text-transform:uppercase;"><?php echo htmlspecialchars($m['nom']); ?></span></div>
                                         <div style="font-size:0.8rem; color:var(--text-muted); word-break:break-all;"><?php echo htmlspecialchars($m['email']); ?></div>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell">
                                         <div class="table-actions">
                                             <?php
                                                 $actionFullName = $m['prenom'] . ' ' . $m['nom'];
@@ -406,11 +402,11 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                                             <button onclick="handleAction('approve', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-primary btn-sm" style="background: var(--success); box-shadow: none;">✓ Valider</button>
                                             <button onclick="handleAction('delete', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-danger btn-sm">Rejeter</button>
                                         </div>
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
                             <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                        
+                    </div>
                 </div>
             <?php endif; ?>
         </section>
@@ -443,23 +439,17 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             <?php else: ?>
                 <!-- Table List View -->
                 <div id="validated-table-view" class="table-responsive">
-                    <table class="admin-table admin-table--compact">
-                        <thead>
-                            <tr>
-                                <th>Photo</th>
-                                <th>Membre</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                    <div class="dlist">
+                        
+                        
                             <?php foreach ($approvedMembers as $m): ?>
-                                <tr class="filterable"<?php echo member_filter_attrs($m); ?>>
-                                    <td><?php echo member_photo_html($m); ?></td>
-                                    <td>
+                                <div class="drow filterable"<?php echo member_filter_attrs($m); ?>>
+                                    <div class="dcell"><?php echo member_photo_html($m); ?></div>
+                                    <div class="dcell dgrow">
                                         <div style="font-weight:600;"><span style="text-transform:capitalize;"><?php echo htmlspecialchars($m['prenom']); ?></span> <span style="text-transform:uppercase;"><?php echo htmlspecialchars($m['nom']); ?></span></div>
                                         <div style="font-size:0.8rem; color:var(--text-muted); word-break:break-all;"><?php echo htmlspecialchars($m['email']); ?></div>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell">
                                         <div class="table-actions">
                                             <?php
                                                 $actionFullName = $m['prenom'] . ' ' . $m['nom'];
@@ -469,11 +459,11 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                                             <button onclick="handleAction('suspend', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-secondary btn-sm" style="color: var(--warning); border-color: var(--warning);">Passer en attente</button>
                                             <button onclick="handleAction('delete', <?php echo $m['id']; ?>, '<?php echo addslashes(htmlspecialchars($actionFullName)); ?>', '<?php echo htmlspecialchars($m['photo_path']); ?>')" class="btn btn-danger btn-sm">Supprimer</button>
                                         </div>
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
                             <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                        
+                    </div>
                 </div>
 
                 <!-- Visual Dahira - Mubawwa-A-Sidqin Card Grid View -->

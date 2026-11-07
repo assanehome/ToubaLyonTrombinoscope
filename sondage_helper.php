@@ -142,9 +142,14 @@ function sondage_css(): string
     .sd-votants { margin-top: 0.7rem; }
     .sd-votants summary { cursor: pointer; color: var(--text-muted); font-size: 0.85rem; }
     .sd-votants p { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--white); }
-    .sd-grp > summary { cursor: pointer; list-style: none; font-weight: 800; color: var(--white); font-size: 1.05rem; padding: 0.2rem 0; display: flex; align-items: center; gap: 0.5rem; }
+    .sd-grp { margin-bottom: 1.1rem; border: 1px solid rgba(212,175,55,0.38); border-radius: 12px; background: rgba(255,255,255,0.03); padding: 0 1rem 1rem; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+    .sd-grp:not([open]) { padding-bottom: 0; }
+    .sd-grp > summary { cursor: pointer; list-style: none; margin: 0 -1rem; padding: 0.85rem 1rem; font-weight: 800; color: var(--gold); font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; transition: background .15s; }
     .sd-grp > summary::-webkit-details-marker { display: none; }
-    .sd-grp { margin-bottom: 1.1rem; }
+    .sd-grp > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
+    .sd-grp > summary:hover { background: rgba(212,175,55,0.08); }
+    .sd-grp[open] > summary::after { transform: rotate(90deg); }
+    .sd-grp[open] > summary { background: rgba(212,175,55,0.1); border-bottom: 1px solid rgba(212,175,55,0.3); margin-bottom: 0.9rem; }
     @media (max-width: 600px) { .sd-card { padding: 1rem; } .sd-q { font-size: 1.05rem; } }
 </style>
 CSS;
@@ -155,7 +160,8 @@ function sondage_form_css(): string
 {
     return <<<'CSS'
 <style>
-        .sd-vis { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+        .sd-vis { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+        .sd-vis > * { flex: 1 1 220px; min-width: 0; }
         .sd-vis .sd-opt { margin: 0; align-items: flex-start; }
         .sd-vis small { display: block; color: var(--text-muted); font-size: 0.78rem; margin-top: 0.15rem; }
         .sd-optrow { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center; }
@@ -163,8 +169,7 @@ function sondage_form_css(): string
         .sd-optrow button { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 10px; border: 1px solid rgba(191,33,33,0.4); background: rgba(191,33,33,0.12); color: #fca5a5; cursor: pointer; font-size: 1rem; }
         .sd-checks { display: flex; flex-wrap: wrap; gap: 0.6rem; }
         .sd-checks .sd-opt { margin: 0; flex: 1 1 220px; }
-        @media (max-width: 600px) { .sd-vis { grid-template-columns: 1fr; } }
-</style>
+    </style>
 CSS;
 }
 

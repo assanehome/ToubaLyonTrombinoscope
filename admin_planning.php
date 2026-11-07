@@ -451,7 +451,8 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
     <link rel="stylesheet" href="style.css">
     <style>
         .pl-wrap { max-width: 980px; margin: 2rem auto; }
-        .pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+        .pl-grid { display: flex; flex-wrap: wrap; gap: 1rem; }
+        .pl-grid > * { flex: 1 1 280px; min-width: 0; max-width: calc(280px * 1.6); }
         .pl-card { border-radius: 12px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
         .pl-date { font-size: 1.05rem; font-weight: 700; color: var(--white); }
         .pl-date small { color: var(--text-muted); font-weight: 400; font-size: 0.78rem; }
@@ -464,7 +465,8 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
         .pl-badge-annul { background: rgba(191,33,33,0.15); color: #fca5a5; border: 1px solid rgba(191,33,33,0.4); }
         details.pl-details summary { cursor: pointer; color: var(--text-muted); font-size: 0.8rem; }
         details.pl-details pre { white-space: pre-wrap; font-family: inherit; font-size: 0.83rem; color: var(--white); background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.9rem; margin-top: 0.5rem; }
-        .pl-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.8rem; }
+        .pl-params { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+        .pl-params > * { flex: 1 1 180px; min-width: 0; }
         .pl-params .form-group { margin: 0; }
         /* Panneaux repliables de cette page : padding réduit, hauteur compacte */
         details.glass-card { padding: 0.9rem 1.1rem; }
@@ -533,7 +535,7 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                             <?php endforeach; ?>
                         </div>
                         <?php endif; ?>
-                        <div class="pl-stats" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.75rem;">
+                        <div class="pl-stats" style="display:flex; flex-wrap:wrap; --fx-min:140px; gap:0.75rem;">
                             <?php
                             $cartes = [
                                 ['key' => 'a_venir', 'label' => '🕌 À venir', 'color' => 'var(--accent)'],
@@ -771,22 +773,22 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
                         <?php echo csrf_field(); ?>
                         <input type="hidden" name="action" value="save_params">
                         <div class="pl-params">
-                            <div class="form-group" style="grid-column:1 / -1;">
+                            <div class="form-group" style="flex: 1 1 100%;">
                                 <label class="form-label">🏷️ Type d'événement par défaut</label>
                                 <select name="type_defaut" class="form-input"><?php echo dahira_type_options_html($typeDefaut); ?></select>
                                 <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Dahira, AG, Gamou, Magal, Ngan ou Déplacement. Ce type est proposé à la création d'un événement et repris dans les messages et notifications.</p>
                             </div>
-                            <div class="form-group" style="grid-column:1 / -1;"><label class="form-label">Lieu du Dahira</label><textarea name="lieu" class="form-input" rows="3" placeholder="1 rue du 35 régiment d'aviation,&#10;69500 Bron"><?php echo htmlspecialchars($lieu); ?></textarea><p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Vous pouvez saisir le lieu sur plusieurs lignes.</p></div>
+                            <div class="form-group" style="flex: 1 1 100%;"><label class="form-label">Lieu du Dahira</label><textarea name="lieu" class="form-input" rows="3" placeholder="1 rue du 35 régiment d'aviation,&#10;69500 Bron"><?php echo htmlspecialchars($lieu); ?></textarea><p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Vous pouvez saisir le lieu sur plusieurs lignes.</p></div>
                             <?php if (empty($creneaux)) { $creneaux = []; for ($ch = 6; $ch <= 23; $ch++) { foreach (['00', '30'] as $cm) { $creneaux[] = sprintf('%02dh%s', $ch, $cm); } } } ?>
                             <div class="form-group"><label class="form-label">Heure de début</label><select name="debut" class="form-input"><option value="">— Heure —</option><?php $hv = trim((string) $debut); if ($hv !== '' && !in_array($hv, $creneaux, true)) { echo '<option value="' . htmlspecialchars($hv, ENT_QUOTES) . '" selected>' . htmlspecialchars($hv) . '</option>'; } foreach ($creneaux as $cr) { echo '<option value="' . $cr . '"' . ($hv === $cr ? ' selected' : '') . '>' . $cr . '</option>'; } ?></select></div>
                             <div class="form-group"><label class="form-label">Heure de fin</label><select name="fin" class="form-input"><option value="">— Heure —</option><?php $hv = trim((string) $fin); if ($hv !== '' && !in_array($hv, $creneaux, true)) { echo '<option value="' . htmlspecialchars($hv, ENT_QUOTES) . '" selected>' . htmlspecialchars($hv) . '</option>'; } foreach ($creneaux as $cr) { echo '<option value="' . $cr . '"' . ($hv === $cr ? ' selected' : '') . '>' . $cr . '</option>'; } ?></select></div>
-                            <div class="form-group" style="grid-column:1 / -1;">
+                            <div class="form-group" style="flex: 1 1 100%;">
                                 <label class="form-label">🗓️ Programme par défaut (modèle réutilisable)</label>
                                 <textarea name="programme_defaut" class="form-input" rows="5" placeholder="17h00 | 19h15  DURUS&#10;19h15 | 20h15  Prestation Xassidas&#10;20h15 | 20h30  Gammu"><?php echo htmlspecialchars($programmeDefaut); ?></textarea>
                                 <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Ce modèle peut être chargé d'un clic dans « Prochain Dahira » via le bouton « Charger le programme par défaut ».</p>
                             </div>
-                            <div class="form-group" style="grid-column:1 / -1;"><label class="form-label">Lien du groupe WhatsApp (facultatif)</label><input type="url" name="groupe_wa" class="form-input" value="<?php echo htmlspecialchars($groupeWa); ?>" placeholder="https://chat.whatsapp.com/…"></div>
-                            <div class="form-group" style="grid-column:1 / -1;">
+                            <div class="form-group" style="flex: 1 1 100%;"><label class="form-label">Lien du groupe WhatsApp (facultatif)</label><input type="url" name="groupe_wa" class="form-input" value="<?php echo htmlspecialchars($groupeWa); ?>" placeholder="https://chat.whatsapp.com/…"></div>
+                            <div class="form-group" style="flex: 1 1 100%;">
                                 <label class="form-label">✍️ Bas de page (signature) des messages</label>
                                 <textarea name="signature" class="form-input" rows="2" placeholder="<?php echo htmlspecialchars(DAHIRA_SIGNATURE_DEFAUT); ?>"><?php echo htmlspecialchars($signature); ?></textarea>
                                 <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Ajouté automatiquement à la fin des messages WhatsApp et des e-mails d'annonce.</p>

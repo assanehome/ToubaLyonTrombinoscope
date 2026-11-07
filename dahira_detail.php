@@ -115,7 +115,8 @@ if ($membreId > 0) {
         .dh-hero .dh-date { font-size: 1.9rem; font-weight: 800; color: var(--accent); line-height: 1.2; }
         .dh-hero .dh-date small { display: block; font-size: 0.85rem; font-weight: 400; color: var(--text-muted); margin-top: 0.2rem; }
         .dh-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem; }
-        .dh-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
+        .dh-grid { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-bottom: 1.4rem; }
+        .dh-grid > * { flex: 1 1 220px; min-width: 0; }
         .dh-item { border-radius: 10px; padding: 1rem 1.1rem; }
         .dh-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .dh-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
@@ -204,7 +205,7 @@ if ($membreId > 0) {
                     </div>
 
                     <!-- Indicateur de participation (basé sur les présences validées) -->
-                    <div class="dh-anim dh-anim-2" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1.4rem;">
+                    <div class="dh-anim dh-anim-2" style="display:flex; flex-wrap:wrap; --fx-min:140px; gap:0.75rem; margin-bottom:1.4rem;">
                         <div class="glass-card" style="padding:1rem; text-align:center;">
                             <div class="dh-stat-valeur" style="font-size:1.8rem; font-weight:700; color:var(--accent); line-height:1.2;"><?php echo (int)$nbPartIndicateur; ?></div>
                             <div style="color:var(--text-muted); font-size:0.82rem;">👥 Participants</div>
@@ -218,10 +219,10 @@ if ($membreId > 0) {
                         <?php if ($presenceFaite): ?>
                             <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Diadieuf</div>
                             <button type="button" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;" onclick="annulerPresence('dahira', <?php echo (int)$id; ?>, this)">↩️ Annuler ma présence</button>
-                        <?php elseif (dahira_presence_etat($date, $debut, $fin) === 'ouverte'): ?>
+                        <?php elseif (dahira_presence_etat($date, $debut, $fin, $cloture) === 'ouverte'): ?>
                             <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('dahira', <?php echo (int)$id; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
-                            <div style="color:var(--text-muted); font-size:0.85rem;"><?php echo htmlspecialchars(dahira_presence_message($date, $debut, $fin)); ?></div>
+                            <div style="color:var(--text-muted); font-size:0.85rem;"><?php echo htmlspecialchars(dahira_presence_message($date, $debut, $fin, $cloture)); ?></div>
                         <?php endif; ?>
                     </div>
                     <?php elseif ($membreId > 0 && !$publie): ?>

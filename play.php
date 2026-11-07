@@ -570,7 +570,7 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
                     </button>
                 </form>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div style="display: flex; flex-wrap: wrap; --fx-min: 240px; gap: 1rem; margin-bottom: 1rem;">
                     <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); padding: 1rem; border-radius: 12px;">
                         <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">Bonnes réponses</div>
                         <div style="color: var(--white); font-size: 1.5rem; font-weight: 800;"><?php echo (int)$_SESSION['game_round']['correct_answers']; ?> / 10</div>
@@ -722,5 +722,6 @@ if (isset($_SESSION['game_question']['submitted_id']) && $_SESSION['game_questio
         });
         <?php endif; ?>
     </script>
+    <script src="photo-protect.js" defer></script>
 </body>
 </html>

@@ -403,7 +403,7 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
         #adh-reset:hover { border-color:var(--danger); color:var(--danger); }
         .adh-count { font-size:0.82rem; color:var(--text-muted); margin-left:auto; }
         @media (max-width:600px){ .adh-select { flex:1 1 100%; } }
-        .rep-grid { display:grid; grid-template-columns:1fr; gap:0.85rem; }
+        .rep-grid { display:flex; flex-direction:column; gap:0.85rem; }
         .rep-card { padding:0.9rem 1.1rem; display:flex; flex-direction:column; gap:0.55rem; }
         .rep-head { display:flex; align-items:center; gap:0.75rem; }
         .rep-photo { width:42px; height:42px; border-radius:50%; overflow:hidden; border:2px solid var(--accent); flex-shrink:0; background:rgba(255,255,255,0.05); display:flex; align-items:center; justify-content:center; }
@@ -414,11 +414,12 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
         .rep-toggle:hover { border-color:var(--accent); color:var(--white); }
         .rep-toggle .chev { transition:transform 0.2s ease; }
         .rep-card.details-open .rep-toggle .chev { transform:rotate(180deg); }
-        .rep-info { display:none; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.25rem 1.25rem; font-size:0.8rem; }
-        .rep-card.details-open .rep-info { display:grid; }
+        .rep-info { display:none; flex-wrap:wrap; gap:0.25rem 1.25rem; font-size:0.8rem; }
+        .rep-info > * { flex:1 1 150px; min-width:0; }
+        .rep-card.details-open .rep-info { display:flex; }
         .rep-info .lbl { color:var(--text-muted); display:block; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.02em; }
         .rep-info .val { color:var(--white); word-break:break-word; }
-        .rep-info .full { grid-column:1 / -1; }
+        .rep-info .full { flex: 1 1 100%; }
         .rep-comment { background:rgba(255,0,0,0.08); border:1px solid rgba(255,0,0,0.35); border-radius:8px; padding:0.45rem 0.7rem; font-size:0.8rem; }
         .rep-comment .lbl { color:#ff9a9a; font-size:0.68rem; text-transform:uppercase; display:block; margin-bottom:0.1rem; }
         .rep-edit { border-top:1px dashed var(--glass-border); padding-top:0.7rem; display:flex; flex-wrap:wrap; align-items:flex-end; gap:0.6rem; }
@@ -446,10 +447,11 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
         .rep-group-title--valide .rep-group-count { background:rgba(45,106,79,0.25); color:#b7e4c7; border-color:rgba(45,106,79,0.5); }
         .rep-group[data-group="pending"] .rep-card { border-left:3px solid rgba(251,188,4,0.5); }
         .rep-group[data-group="approved"] .rep-card { border-left:3px solid rgba(45,106,79,0.5); }
-        .rep-readonly { border-top:1px dashed var(--glass-border); padding-top:0.7rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.4rem 1.25rem; font-size:0.82rem; }
+        .rep-readonly { border-top:1px dashed var(--glass-border); padding-top:0.7rem; display: flex; flex-wrap: wrap; gap:0.4rem 1.25rem; font-size:0.82rem; }
+        .rep-readonly > * { flex: 1 1 150px; min-width: 0; }
         .rep-readonly .lbl { color:var(--text-muted); display:block; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.02em; }
         .rep-readonly .val { color:var(--white); word-break:break-word; font-weight:600; }
-        .rep-readonly .full { grid-column:1 / -1; }
+        .rep-readonly .full { flex: 1 1 100%; }
         .rep-actions-row { display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap; margin-top:0.2rem; }
         .rep-actions-btns { display:flex; gap:0.5rem; flex-wrap:wrap; }
         .rep-btn-wa { background:#25D366; border:1px solid #25D366; color:#053b21; font-weight:700; box-shadow:none; }
@@ -459,8 +461,7 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
             .rep-card { padding:0.85rem 0.9rem; }
             .rep-edit { gap:0.8rem; }
             .rep-field, .rep-assign { flex:1 0 100%; }
-            .rep-info { grid-template-columns:1fr; }
-            .rep-readonly { grid-template-columns:1fr; }
+            .rep-info > *, .rep-readonly > * { flex-basis:100%; }
             .rep-save { flex:1 0 100%; flex-direction:column; align-items:stretch; gap:0.55rem; }
             .rep-save > .btn,
             .rep-save > .rep-btn-wa,

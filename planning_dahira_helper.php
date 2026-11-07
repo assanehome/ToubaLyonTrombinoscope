@@ -81,21 +81,21 @@ function dahira_presence_ouverte(string $date, string $heureDebut): bool
 }
 
 /**
- * État de la validation de présence, d'après la date et les heures RÉELLES de l'événement :
- * 'avenir' (pas encore commencé), 'ouverte' (de l'heure de début à l'heure de fin ; sans heure de fin,
- * jusqu'à la fin du jour de l'événement), 'terminee' (événement terminé).
+ * État de la validation de présence : 'avenir' (pas encore commencé), 'ouverte' (de l'heure de début
+ * jusqu'à la clôture de l'événement, sans limite à l'heure de fin) ou 'terminee' (événement clôturé).
+ * $heureFin est conservé pour compatibilité : il ne ferme plus la validation.
  */
-function dahira_presence_etat(string $date, string $heureDebut, ?string $heureFin = null): string
+function dahira_presence_etat(string $date, string $heureDebut, ?string $heureFin = null, bool $cloture = false): string
 {
-    $e = dahira_event_etat($date, $heureDebut, $heureFin);
-    return $e === 'encours' ? 'ouverte' : ($e === 'termine' ? 'terminee' : 'avenir');
+    if ($cloture) { return 'terminee'; }
+    return dahira_presence_ouverte($date, $heureDebut) ? 'ouverte' : 'avenir';
 }
 
 /** Message affiché quand la validation de présence n'est pas ouverte (pas encore, ou clôturée). */
-function dahira_presence_message(string $date, string $heureDebut, ?string $heureFin = null): string
+function dahira_presence_message(string $date, string $heureDebut, ?string $heureFin = null, bool $cloture = false): string
 {
-    if (dahira_presence_etat($date, $heureDebut, $heureFin) === 'terminee') {
-        return '🔒 La validation de présence est clôturée : l\'événement est terminé.';
+    if (dahira_presence_etat($date, $heureDebut, $heureFin, $cloture) === 'terminee') {
+        return '🔒 La validation de présence est clôturée : l\'événement est clôturé.';
     }
     return '🔔 La validation sera possible à partir de ' . trim($heureDebut) . ' le ' . date('d/m/Y', strtotime($date)) . '.';
 }
@@ -493,7 +493,8 @@ function dahira_presence_trombi_html(array $membres): string
     if (!$cssOut) {
         $cssOut = true;
         $h .= '<style>'
-            . '.pres-trombi{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:0.9rem;}'
+            . '.pres-trombi{display:flex;flex-wrap:wrap;gap:0.9rem;}'
+            . '.pres-trombi > *{flex:1 1 88px;min-width:0;max-width:140px;}'
             . '.pres-trombi .pt-card{text-align:center;}'
             . '.pres-trombi .pt-av,.pres-trombi .pt-ph{width:62px;height:62px;border-radius:50%;margin:0 auto 0.35rem;display:flex;align-items:center;justify-content:center;border:2px solid var(--accent);}'
             . '.pres-trombi .pt-av{object-fit:cover;}'

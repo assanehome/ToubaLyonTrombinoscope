@@ -896,10 +896,10 @@ try {
             $optDist = $mv === 'distance' ? ' selected' : '';
             $optPres = $mv === 'presentiel' ? ' selected' : '';
             $h .= '<div id="reu-edit-' . $rid . '" style="display:none; margin-top:0.5rem;">';
-            $h .= '<form method="POST" class="reunion-create-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:0.6rem;">' . $csrf;
+            $h .= '<form method="POST" class="reunion-create-form" style="display:flex; flex-wrap:wrap; --fx-min:150px; gap:0.6rem;">' . $csrf;
             $h .= '<input type="hidden" name="action" value="edit_reunion"><input type="hidden" name="reunion_id" value="' . $rid . '">';
-            $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Titre</label><input type="text" name="titre" class="form-input" required value="' . htmlspecialchars((string) $r['titre'], ENT_QUOTES) . '"></div>';
-            $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2">' . htmlspecialchars((string) ($r['description'] ?? '')) . '</textarea></div>';
+            $h .= '<div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Titre</label><input type="text" name="titre" class="form-input" required value="' . htmlspecialchars((string) $r['titre'], ENT_QUOTES) . '"></div>';
+            $h .= '<div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2">' . htmlspecialchars((string) ($r['description'] ?? '')) . '</textarea></div>';
             $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Date</label><input type="date" name="date_reunion" class="form-input" required min="' . date('Y-m-d') . '" value="' . htmlspecialchars((string) $r['date_reunion'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
             $curH = dahira_heure_hm((string) $r['heure']);
             $optsH = '<option value="">— Heure —</option>';
@@ -910,9 +910,9 @@ try {
             for ($hh = 7; $hh <= 23; $hh++) { foreach (['00', '30'] as $mm) { $hv = sprintf('%02d:%s', $hh, $mm); $optsHF .= '<option value="' . $hv . '"' . (($r['heure_fin'] ?? '') !== '' && $curHF === $hv ? ' selected' : '') . '>' . $hv . '</option>'; } }
             $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure de fin <span style="color:var(--danger)">*</span></label><select name="heure_fin" class="form-input modern-select" required>' . $optsHF . '</select></div>';
             $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Mode</label><select name="mode" class="form-input modern-select r-mode" required><option value="distance"' . $optDist . '>💻 À distance (Zoom)</option><option value="presentiel"' . $optPres . '>🏛️ Présentiel</option></select></div>';
-            $h .= '<div class="form-group r-lien" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
-            $h .= '<div class="form-group r-lieu" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
-            $h .= '<div style="grid-column:1/-1;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>';
+            $h .= '<div class="form-group r-lien" style="flex: 1 1 100%; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
+            $h .= '<div class="form-group r-lieu" style="flex: 1 1 100%; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
+            $h .= '<div style="flex: 1 1 100%;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>';
             $h .= '</form></div>';
         }
         $h .= '</div>'; // fin de la carte réunion
@@ -1018,12 +1018,13 @@ $membersJs = array_map(function ($m) {
         .tl-count { font-size: 0.8rem; color: var(--text-muted); }
         @media (max-width: 600px) { .tl-cols { flex-direction: column; } .tl-col + .tl-col { border-left: 0; border-top: 1px solid var(--glass-border); } .tl-list { max-height: 30vh; } }
         /* Wadial Magal dans une commission : groupes repliables et cartes bordées */
-        .mg-grp { border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(255,255,255,0.025); margin: 0.7rem 0; overflow: hidden; }
-        .mg-grp > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; color: var(--white); font-weight: 800; font-size: 0.92rem; }
+        .mg-grp { border: 1px solid rgba(212,175,55,0.38); border-radius: 12px; background: rgba(255,255,255,0.03); margin: 0.7rem 0; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+        .mg-grp > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.4rem; padding: 0.85rem 1rem; color: var(--gold); font-weight: 800; font-size: 0.95rem; transition: background .15s; }
         .mg-grp > summary::-webkit-details-marker { display: none; }
         .mg-grp > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
+        .mg-grp > summary:hover { background: rgba(212,175,55,0.08); }
         .mg-grp[open] > summary::after { transform: rotate(90deg); }
-        .mg-grp[open] > summary { border-bottom: 1px solid var(--glass-border); background: rgba(212,175,55,0.07); }
+        .mg-grp[open] > summary { border-bottom: 1px solid rgba(212,175,55,0.3); background: rgba(212,175,55,0.1); }
         .mg-n { color: var(--text-muted); font-weight: 600; font-size: 0.8rem; }
         .mg-body { padding: 0.8rem 1rem 1rem; }
         .mg-item { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.045); border: 1px solid rgba(212,175,55,0.35); border-left: 4px solid var(--text-muted); border-radius: 10px; padding: 0.65rem 0.9rem; margin-bottom: 0.55rem; box-shadow: 0 2px 8px rgba(0,0,0,0.18); }
@@ -1154,6 +1155,10 @@ $membersJs = array_map(function ($m) {
                         </details>
                         <?php if (!empty($c['stock_enabled'])): ?>
                         <div class="km-actions" style="margin-top:0.4rem;"><a href="commission_stock.php?id=<?php echo (int) $c['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:#7bd8a6; color:#7bd8a6;">📦 Stock</a></div>
+                        <?php endif; ?>
+                        <?php // Réalisations de la commission : types, réalisations, tableau de bord, rapport PDF ?>
+                        <?php if (com_can_manage((int) $c['id'], $__isAdmin, $__managedCommissions)): ?>
+                        <div class="km-actions" style="margin-top:0.4rem;"><a href="commission_realisations.php?id=<?php echo (int) $c['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">🏆 Réalisations</a></div>
                         <?php endif; ?>
 
                         <?php
@@ -1545,29 +1550,29 @@ $membersJs = array_map(function ($m) {
                             <?php endif; ?>
                             <details data-section="creer-reunion" class="com-reu-group" style="margin:0.5rem 0;">
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem; list-style:none; display:flex; align-items:center; gap:0.4rem;">➕ Créer une réunion</summary>
-                                <form method="POST" class="reunion-create-form" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
+                                <form method="POST" class="reunion-create-form" style="margin-top:0.8rem; display:flex; flex-wrap:wrap; --fx-min:160px; gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="create_reunion">
                                     <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required placeholder="Ex: Réunion mensuelle de la commission"></div>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"></textarea></div>
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required placeholder="Ex: Réunion mensuelle de la commission"></div>
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"></textarea></div>
                                     <div class="form-group r-fixe" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_debut" class="form-input" required min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
                                     <div class="form-group r-fixe" style="margin:0;"><label class="form-label">Heure de début <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
                                     <div class="form-group r-fixe" style="margin:0;"><label class="form-label">Heure de fin <span style="color:var(--danger)">*</span></label><select name="heure_fin" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Mode <span style="color:var(--danger)">*</span></label><select name="mode" class="form-input modern-select r-mode" required><option value="">— Choisir —</option><option value="distance">💻 À distance (Zoom)</option><option value="presentiel">🏛️ Présentiel</option></select></div>
-                                    <div class="form-group r-lien" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (réunion à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($comZoom[(int) $c['id']] ?? $reunionZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
-                                    <div class="form-group r-lieu" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">📍 Adresse (présentiel) <span style="color:var(--danger)">*</span></label><input type="text" name="lieu" class="form-input r-lieu-input" value="<?php echo htmlspecialchars($reunionLieuDefaut); ?>"><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec l'adresse du Dahira — modifiable.</p></div>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;">
+                                    <div class="form-group r-lien" style="flex: 1 1 100%; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (réunion à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($comZoom[(int) $c['id']] ?? $reunionZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
+                                    <div class="form-group r-lieu" style="flex: 1 1 100%; margin:0; display:none;"><label class="form-label">📍 Adresse (présentiel) <span style="color:var(--danger)">*</span></label><input type="text" name="lieu" class="form-input r-lieu-input" value="<?php echo htmlspecialchars($reunionLieuDefaut); ?>"><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec l'adresse du Dahira — modifiable.</p></div>
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;">
                                         <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;"><input type="checkbox" name="periodique" value="1" class="r-periodique"> 🔁 Réunion périodique</label>
                                     </div>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;">
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;">
                                         <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;"><input type="checkbox" name="sondage" value="1" class="r-sondage"> 📊 Sondage de date et d'horaire</label>
                                         <p style="color:var(--text-muted); font-size:0.75rem; margin:0.25rem 0 0;">Proposez plusieurs dates : les membres votent via un lien (partagé par WhatsApp), puis vous validez une date avant de publier la réunion.</p>
                                     </div>
-                                    <div class="r-sondage-fields" style="grid-column:1 / -1; display:none;">
+                                    <div class="r-sondage-fields" style="flex: 1 1 100%; display:none;">
                                         <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:0.4rem;">Dates proposées (2 propositions, ajoutez-en d'autres si besoin) — date, heure de début et heure de fin</div>
                                         <?php for ($so = 1; $so <= 2; $so++): ?>
-                                        <div class="r-sond-row" style="display:<?php echo $so <= 2 ? 'grid' : 'none'; ?>; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:0.5rem; margin-bottom:0.45rem;">
+                                        <div class="r-sond-row" style="display:<?php echo $so <= 2 ? 'flex' : 'none'; ?>; flex-wrap:wrap; --fx-min:130px; gap:0.5rem; margin-bottom:0.45rem;">
                                             <input type="date" name="opt_date[]" class="form-input" min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;" aria-label="Date proposée <?php echo $so; ?>">
                                             <select name="opt_heure[]" class="form-input" style="color-scheme:dark;" aria-label="Heure de début <?php echo $so; ?>"><option value="">— Début —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select>
                                             <select name="opt_fin[]" class="form-input" style="color-scheme:dark;" aria-label="Heure de fin <?php echo $so; ?>"><option value="">— Fin —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select>
@@ -1577,7 +1582,7 @@ $membersJs = array_map(function ($m) {
                                     </div>
                                     <div class="form-group r-per-fields" style="margin:0; display:none;"><label class="form-label">Périodicité</label><select name="periodicite" class="form-input modern-select"><option value="hebdomadaire">Hebdomadaire</option><option value="quinzaine">Une semaine sur deux</option><option value="mensuelle">Mensuelle</option></select></div>
                                     <div class="form-group r-per-fields" style="margin:0; display:none;"><label class="form-label">Date de fin</label><input type="date" name="date_fin" class="form-input" min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
-                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Créer la réunion</button></div>
+                                    <div style="flex: 1 1 100%;"><button type="submit" class="btn btn-primary btn-sm">💾 Créer la réunion</button></div>
                                 </form>
                             </details>
                             <?php echo $htmlCloturees ?? ''; ?>
@@ -1697,11 +1702,11 @@ $membersJs = array_map(function ($m) {
                                 <?php endforeach; ?>
 
                                 <?php if ($mgPeutAjouter): ?>
-                                <form method="POST" class="mg-add" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.5rem; align-items:end; margin:0.6rem 0 0;">
+                                <form method="POST" class="mg-add" style="display:flex; flex-wrap:wrap; --fx-min:170px; gap:0.5rem; align-items:end; margin:0.6rem 0 0;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="magal_add_tache">
                                     <input type="hidden" name="commission_id" value="<?php echo (int) $c['id']; ?>">
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">➕ Nouvelle tâche Wadial Magal</label><input type="text" name="titre" class="form-input" required maxlength="255" placeholder="Ex : Réserver la salle"></div>
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">➕ Nouvelle tâche Wadial Magal</label><input type="text" name="titre" class="form-input" required maxlength="255" placeholder="Ex : Réserver la salle"></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Responsable</label>
                                         <select name="assignee_id" class="form-input">
                                             <option value="0">— Non attribuée —</option>
@@ -1709,8 +1714,8 @@ $membersJs = array_map(function ($m) {
                                         </select>
                                     </div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Échéance</label><input type="date" name="echeance" class="form-input" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Détails (facultatif)</label><input type="text" name="description" class="form-input" placeholder="Précisions"></div>
-                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">➕ Ajouter la tâche</button></div>
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Détails (facultatif)</label><input type="text" name="description" class="form-input" placeholder="Précisions"></div>
+                                    <div style="flex: 1 1 100%;"><button type="submit" class="btn btn-primary btn-sm">➕ Ajouter la tâche</button></div>
                                 </form>
                                 <?php endif; ?>
 

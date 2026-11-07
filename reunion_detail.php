@@ -554,7 +554,8 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
         .gd-hero .gd-date { font-size: 1.6rem; font-weight: 800; color: var(--accent); line-height: 1.25; }
         .gd-hero .gd-date small { display: block; font-size: 0.85rem; font-weight: 400; color: var(--text-muted); margin-top: 0.25rem; }
         .gd-badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem; }
-        .gd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
+        .gd-grid { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-bottom: 1.4rem; }
+        .gd-grid > * { flex: 1 1 220px; min-width: 0; }
         .gd-item { border-radius: 10px; padding: 1rem 1.1rem; }
         .gd-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .gd-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }
@@ -754,11 +755,11 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                             };
                         ?>
                         <div id="reu-edit-detail" style="display:none; margin-top:1rem; padding-top:1rem; border-top:1px solid var(--glass-border);">
-                            <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:0.7rem; margin:0;">
+                            <form action="reunion_detail.php?id=<?php echo (int) $id; ?>" method="POST" style="display:flex; flex-wrap:wrap; --fx-min:170px; gap:0.7rem; margin:0;">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="edit_reunion_detail">
-                                <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required value="<?php echo htmlspecialchars($titre, ENT_QUOTES); ?>"></div>
-                                <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"><?php echo htmlspecialchars($description); ?></textarea></div>
+                                <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required value="<?php echo htmlspecialchars($titre, ENT_QUOTES); ?>"></div>
+                                <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"><?php echo htmlspecialchars($description); ?></textarea></div>
                                 <div class="form-group" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_reunion" class="form-input" required value="<?php echo htmlspecialchars($date, ENT_QUOTES); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
                                 <div class="form-group" style="margin:0;"><label class="form-label">Heure de début <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input" required style="color-scheme:dark;"><?php echo $optsEd(dahira_heure_hm($heure), '— Heure —'); ?></select></div>
                                 <div class="form-group" style="margin:0;"><label class="form-label">Heure de fin <span style="color:var(--danger)">*</span></label><select name="heure_fin" class="form-input" required style="color-scheme:dark;"><?php echo $optsEd($heureFin !== '' ? dahira_heure_hm($heureFin) : '', '— Heure —'); ?></select></div>
@@ -767,9 +768,9 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                                         <option value="distance"<?php echo $mode === 'distance' ? ' selected' : ''; ?>>💻 À distance (Zoom)</option>
                                         <option value="presentiel"<?php echo $mode === 'presentiel' ? ' selected' : ''; ?>>🏛️ Présentiel</option>
                                     </select></div>
-                                <div class="form-group" id="red-lien" style="grid-column:1 / -1; margin:0;<?php echo $mode === 'distance' ? '' : ' display:none;'; ?>"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input" value="<?php echo htmlspecialchars((string) ($reunion['lien'] ?? ''), ENT_QUOTES); ?>" placeholder="https://us06web.zoom.us/..."></div>
-                                <div class="form-group" id="red-lieu" style="grid-column:1 / -1; margin:0;<?php echo $mode === 'presentiel' ? '' : ' display:none;'; ?>"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input" value="<?php echo htmlspecialchars($lieu, ENT_QUOTES); ?>"></div>
-                                <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer la réunion</button></div>
+                                <div class="form-group" id="red-lien" style="flex: 1 1 100%; margin:0;<?php echo $mode === 'distance' ? '' : ' display:none;'; ?>"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input" value="<?php echo htmlspecialchars((string) ($reunion['lien'] ?? ''), ENT_QUOTES); ?>" placeholder="https://us06web.zoom.us/..."></div>
+                                <div class="form-group" id="red-lieu" style="flex: 1 1 100%; margin:0;<?php echo $mode === 'presentiel' ? '' : ' display:none;'; ?>"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input" value="<?php echo htmlspecialchars($lieu, ENT_QUOTES); ?>"></div>
+                                <div style="flex: 1 1 100%;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer la réunion</button></div>
                             </form>
                         </div>
                         <?php endif; ?>
@@ -789,7 +790,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                     <?php endif; ?>
 
                     <!-- Indicateur de participation -->
-                    <div class="gd-anim gd-anim-2" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.75rem; margin-bottom:1.4rem;">
+                    <div class="gd-anim gd-anim-2" style="display:flex; flex-wrap:wrap; --fx-min:140px; gap:0.75rem; margin-bottom:1.4rem;">
                         <div class="glass-card" style="padding:1rem; text-align:center;">
                             <div style="font-size:1.8rem; font-weight:700; color:var(--accent); line-height:1.2;"><?php echo (int) $nbPresences; ?></div>
                             <div style="color:var(--text-muted); font-size:0.82rem;">👥 Participants</div>
@@ -803,10 +804,10 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                         <?php if ($presenceFaite): ?>
                             <div style="color:#7bd8a6; font-weight:700; margin-bottom:0.6rem;">✅ Présence confirmée — Diadieuf</div>
                             <button type="button" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;" onclick="annulerPresence('reunion', <?php echo (int) $id; ?>, this)">↩️ Annuler ma présence</button>
-                        <?php elseif (dahira_presence_etat($date, $heure, $heureFin !== '' ? $heureFin : null) === 'ouverte'): ?>
+                        <?php elseif (dahira_presence_etat($date, $heure, $heureFin !== '' ? $heureFin : null, $cloture) === 'ouverte'): ?>
                             <button type="button" class="btn btn-primary btn-sm" style="width:100%;" onclick="validerPresence('reunion', <?php echo (int) $id; ?>, this)">✅ J'étais présent(e)</button>
                         <?php else: ?>
-                            <div style="color:var(--text-muted); font-size:0.85rem;"><?php echo htmlspecialchars(dahira_presence_message($date, $heure, $heureFin !== '' ? $heureFin : null)); ?></div>
+                            <div style="color:var(--text-muted); font-size:0.85rem;"><?php echo htmlspecialchars(dahira_presence_message($date, $heure, $heureFin !== '' ? $heureFin : null, $cloture)); ?></div>
                         <?php endif; ?>
                     </div>
                     <?php elseif ($membreId > 0 && !$publie): ?>
@@ -850,7 +851,7 @@ $retour = $__reAdmin ? 'commission_dashboard.php' : 'index.php';
                             <div class="v"><?php echo $nbPresences > 0 ? (int) $nbPresences : '—'; ?></div>
                         </div>
                         <?php if ($description !== ''): ?>
-                        <div class="glass-card gd-item" style="grid-column:1 / -1;">
+                        <div class="glass-card gd-item" style="flex: 1 1 100%;">
                             <div class="k">📝 Ordre du jour</div>
                             <div class="v"><?php echo nl2br(htmlspecialchars($description)); ?></div>
                         </div>

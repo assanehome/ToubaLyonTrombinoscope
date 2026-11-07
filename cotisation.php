@@ -1,6 +1,6 @@
 <?php
 /**
- * Touba Lyon 2026 - 💶 Ma cotisation (espace membre)
+ * Touba Lyon 2026 - 💶 Mes cotisations (espace membre)
  *
  * Affiche le statut de la cotisation du mois et permet de régler en ligne
  * (Stripe Checkout). Historique des cotisations réglées.
@@ -85,7 +85,10 @@ try {
 
 // Fusion : mois dus + mois déjà enregistrés, les plus récents en premier
 $periodesHistorique = array_values(array_unique(array_merge($moisDus, array_keys($lignesDb))));
-rsort($periodesHistorique);
+// Historique : mois passés, mois en cours, et mois réglés (même payés à l'avance) — pas les mois à venir non réglés
+$moisCourantH = cotisation_periode_courante();
+$periodesHistorique = array_values(array_filter($periodesHistorique, function ($p) use ($moisCourantH, $lignesDb) { return $p <= $moisCourantH || (($lignesDb[$p]['statut'] ?? '') === 'paye'); }));
+rsort($periodesHistorique); // du plus récent au plus ancien
 $periodesHistorique = array_slice($periodesHistorique, 0, 24);
 
 $historique = [];
@@ -104,7 +107,7 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💶 Ma cotisation — Touba Lyon</title>
+    <title>💶 Mes cotisations — Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
     <style>
         .co-wrap { max-width: 760px; margin: 2rem auto; }
@@ -138,7 +141,7 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
         <div class="dashboard-layout">
             <?php include __DIR__ . '/member_menu.php'; ?>
             <div class="admin-content">
-                <h1 class="admin-page-title">💶 Ma cotisation</h1>
+                <h1 class="admin-page-title">💶 Mes cotisations</h1>
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
                 <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>

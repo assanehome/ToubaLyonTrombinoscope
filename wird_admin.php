@@ -424,7 +424,8 @@ if ($__isCulteManager) {
         .wird-section-head .wird-section-count { font-size: 0.72rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg,#d4af37,#f1d279); border-radius: 12px; padding: 2px 10px; }
         .wird-section-head .wird-caret { margin-left: auto; color: var(--text-muted); font-size: 0.9rem; cursor: pointer; }
         /* ── Grille d'indicateurs ── */
-        .wird-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.6rem; margin: 0.85rem 0 0.35rem; }
+        .wird-stats { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.85rem 0 0.35rem; }
+        .wird-stats > * { flex: 1 1 120px; min-width: 0; }
         .wird-stat { background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.7rem; text-align: center; }
         .wird-stat .v { font-size: 1.25rem; font-weight: 800; color: var(--white); line-height: 1.1; }
         .wird-stat .v.gold { color: var(--gold); }

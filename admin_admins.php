@@ -150,24 +150,24 @@ try {
                     <div class="empty-state"><div class="empty-state-icon">👤</div><p>Aucun membre validé pour le moment.</p></div>
                 <?php else: ?>
                 <div class="table-responsive">
-                    <table class="admin-table admin-table--compact">
-                        <thead><tr><th>Membre</th><th>Rôle</th><th>Action</th></tr></thead>
-                        <tbody>
+                    <div class="dlist">
+                        
+                        
                             <?php foreach ($membres as $mm): ?>
                                 <?php $isAdm = ((int)$mm['is_admin'] === 1); ?>
-                                <tr data-search="<?php echo htmlspecialchars(mb_strtolower($mm['prenom'] . ' ' . $mm['nom'] . ' ' . $mm['email']), ENT_QUOTES); ?>" data-commission="<?php echo htmlspecialchars($mm['souhait_commission'] ?? '', ENT_QUOTES); ?>">
-                                    <td>
+                                <div class="drow" data-search="<?php echo htmlspecialchars(mb_strtolower($mm['prenom'] . ' ' . $mm['nom'] . ' ' . $mm['email']), ENT_QUOTES); ?>" data-commission="<?php echo htmlspecialchars($mm['souhait_commission'] ?? '', ENT_QUOTES); ?>">
+                                    <div class="dcell dgrow">
                                         <div style="font-weight:600;"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></div>
                                         <div style="font-size:0.8rem; color:var(--text-muted); word-break:break-all;"><?php echo htmlspecialchars($mm['email']); ?></div>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell">
                                         <?php if ($isAdm): ?>
                                             <span class="role-badge">🛡️ Administrateur</span>
                                         <?php else: ?>
                                             <span style="color:var(--text-muted);">—</span>
                                         <?php endif; ?>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell">
                                         <?php $mmNom = htmlspecialchars(addslashes($mm['prenom'] . ' ' . $mm['nom']), ENT_QUOTES); ?>
                                         <?php if ($isAdm): ?>
                                         <form action="admin_admins.php" method="POST" style="display:inline;" data-confirm="Retirer le rôle d'administrateur à <?php echo $mmNom; ?> ?" data-confirm-danger="1">
@@ -184,11 +184,11 @@ try {
                                             <button type="submit" class="btn btn-primary btn-sm">Donner le rôle</button>
                                         </form>
                                         <?php endif; ?>
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
                             <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                        
+                    </div>
                 </div>
                 <div class="empty-state" id="role-noresult" style="display:none;">
                     <div class="empty-state-icon">🔍</div><p>Aucun membre ne correspond à votre recherche.</p>
@@ -207,18 +207,18 @@ try {
                         Ce compte se connecte via l'espace admin avec son nom d'utilisateur. Il est <strong>conservé</strong> et ne peut pas être supprimé ici.
                     </p>
                     <div class="table-responsive">
-                        <table class="admin-table admin-table--compact">
-                            <thead><tr><th>Nom d'utilisateur</th><th>Email</th><th></th></tr></thead>
-                            <tbody>
+                        <div class="dlist">
+                            
+                            
                                 <?php foreach ($comptes as $c): ?>
-                                    <tr>
-                                        <td style="font-weight:600;"><?php echo htmlspecialchars($c['username']); ?></td>
-                                        <td style="color:var(--text-muted); word-break:break-all;"><?php echo htmlspecialchars($c['email'] ?? '—'); ?></td>
-                                        <td><?php if ((int)$c['id'] === $defaultAdminId): ?><span class="role-badge">⭐ Par défaut</span><?php endif; ?></td>
-                                    </tr>
+                                    <div class="drow">
+                                        <div class="dcell dgrow" style="font-weight:600;"><?php echo htmlspecialchars($c['username']); ?></div>
+                                        <div class="dcell" style="color:var(--text-muted); word-break:break-all;"><?php echo htmlspecialchars($c['email'] ?? '—'); ?></div>
+                                        <div class="dcell"><?php if ((int)$c['id'] === $defaultAdminId): ?><span class="role-badge">⭐ Par défaut</span><?php endif; ?></div>
+                                    </div>
                                 <?php endforeach; ?>
-                            </tbody>
-                        </table>
+                            
+                        </div>
                     </div>
                 </div>
             </section>
@@ -245,7 +245,7 @@ try {
         (function () {
             var roleInput = document.getElementById('role-search-input');
             var comSel = document.getElementById('role-commission');
-            var rows = Array.from(document.querySelectorAll('tr[data-search]'));
+            var rows = Array.from(document.querySelectorAll('.drow[data-search]'));
             var noResult = document.getElementById('role-noresult');
             var countEl = document.getElementById('role-count');
             function norm(s){ return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }

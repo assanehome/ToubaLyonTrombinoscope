@@ -560,14 +560,7 @@ try {
             .dash-actions .btn { width: 100%; }
         }
         /* Bascule vers le mode administration */
-        /* Groupe fermé par défaut ; la carte n'a plus son propre cadre à l'intérieur */
-        details.adm-grp { border: 1px solid rgba(212,175,55,0.5); border-radius: 12px; background: linear-gradient(135deg, rgba(212,175,55,0.12), rgba(255,255,255,0.02)); overflow: hidden; padding: 0; }
-        details.adm-grp > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.85rem 1.1rem; color: var(--gold); font-weight: 800; font-size: 0.95rem; transition: background .15s; }
-        details.adm-grp > summary::-webkit-details-marker { display: none; }
-        details.adm-grp > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
-        details.adm-grp[open] > summary::after { transform: rotate(90deg); }
-        details.adm-grp > summary:hover { background: rgba(212,175,55,0.08); }
-        details.adm-grp[open] > summary { border-bottom: 1px solid rgba(212,175,55,0.3); background: rgba(212,175,55,0.1); }
+        /* Groupe : CSS unique dans style.css (référence « Mode admin ») ; la carte n'a pas son propre cadre à l'intérieur */
         details.adm-grp .adm-card { margin: 0 !important; border: 0; border-radius: 0; box-shadow: none; background: transparent; padding: 1rem 1.1rem; }
         details.adm-grp .adm-card::before { display: none; }
         .adm-card { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 1rem 1.2rem; border-radius: 12px; border: 1px solid rgba(212,175,55,0.5);
@@ -695,10 +688,10 @@ try {
             .paie-group[open] .paie-inner > *:nth-child(3){ animation-delay:0.14s; }
             @media (prefers-reduced-motion: reduce){ .paie-group[open] .paie-inner > *, .paie-chip-retard { animation:none !important; } }
         </style>
-        <details class="glass-card paie-group" style="margin-bottom:1.25rem; padding:1rem 1.2rem;">
+        <details class="glass-card paie-group" style="margin-bottom:1.25rem;">
             <summary>
                 <span style="font-size:1.25rem;">💶</span>
-                <span style="color:#fff; font-weight:800; font-size:1rem;">Ma cotisation</span>
+                <span style="color:#fff; font-weight:800; font-size:1rem;">Mes cotisations</span>
                 <span style="display:flex; align-items:center; gap:0.5rem; margin-left:auto;">
                     <?php if ($paieRetard): ?>
                         <span class="paie-chip paie-chip-retard" style="background:rgba(191,33,33,0.18); color:#fca5a5; border:1px solid rgba(191,33,33,0.5);">🔴 <?php echo (int) $cotisationRetard; ?> mois en retard</span>
@@ -778,7 +771,7 @@ try {
                     $acEmoji = function_exists('actu_type_emoji') ? actu_type_emoji((string) ($ac['type'] ?? '')) : '📰';
                     $acDelay = 0.06 * $acI + 0.05; $acI++;
                 ?>
-                <details class="glass-card actu-item" style="padding:0.85rem 1.05rem; border:1px solid var(--glass-border); animation-delay:<?php echo number_format($acDelay, 2); ?>s;">
+                <details class="glass-card actu-item" style="animation-delay:<?php echo number_format($acDelay, 2); ?>s;">
                     <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem; color:#fff; font-weight:700;">
                         <span><?php echo $acEmoji; ?></span>
                         <span style="flex:1; min-width:0;"><?php echo htmlspecialchars((string) ($ac['titre'] ?? '')); ?></span>
@@ -875,7 +868,7 @@ try {
                     }
                 }
             ?>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+            <div style="display:flex; flex-wrap:wrap; --fx-min:260px; gap: 1rem;">
 
                 <?php if (!empty($prochainDahira)): ?>
                 <?php
@@ -985,7 +978,7 @@ try {
                 <div style="color: #fff; font-weight: 800; font-size: 1.05rem;">🚚 Demandes de logistique à traiter <span class="badge badge-approved"><?php echo (int) $logiNbATraiter; ?></span></div>
                 <a href="logistique_demandes.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Traiter les demandes →</a>
             </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+            <div style="display:flex; flex-wrap:wrap; --fx-min:260px; gap: 1rem;">
                 <?php foreach ($logiATraiter as $ld) { echo $logiCarte($ld, true); } ?>
             </div>
         </div>
@@ -998,7 +991,7 @@ try {
                 <div style="color: #fff; font-weight: 800; font-size: 1.05rem;">🚚 Mes demandes de logistique</div>
                 <a href="logistique_demande.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Voir / nouvelle demande →</a>
             </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+            <div style="display:flex; flex-wrap:wrap; --fx-min:260px; gap: 1rem;">
                 <?php foreach ($logiMesDemandes as $ld) { echo $logiCarte($ld, false, in_array($ld['statut'], ['executee', 'terminee'], true)); } ?>
             </div>
         </div>
@@ -1011,7 +1004,7 @@ try {
                 <div style="color: #fff; font-weight: 800; font-size: 1.05rem;">📊 Sondages en cours</div>
                 <a href="sondages.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Voir tous les sondages →</a>
             </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+            <div style="display:flex; flex-wrap:wrap; --fx-min:260px; gap: 1rem;">
                 <?php foreach ($sondagesEnCours as $sd): ?>
                 <div class="renc-card">
                     <div style="font-weight:800; color:#fff; line-height:1.35;">📊 <?php echo htmlspecialchars((string) $sd['question']); ?></div>
@@ -1032,7 +1025,7 @@ try {
         <?php if (!empty($mesReunions)): ?>
         <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
             <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">👥 Réunions de vos commissions</div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+            <div style="display:flex; flex-wrap:wrap; --fx-min:260px; gap: 1rem;">
                 <?php foreach ($mesReunions as $mr): ?>
                 <div class="renc-card">
                     <div style="font-weight:800; color:#fff;">📌 <?php echo htmlspecialchars($mr['titre']); ?></div>
@@ -1048,7 +1041,7 @@ try {
         <?php if (!empty($mesRepetitions)): ?>
         <div class="glass-card renc-wrap" style="margin-bottom: 1.5rem; padding: 1.4rem 1.5rem;">
             <div style="color: #fff; font-weight: 800; font-size: 1.05rem; margin-bottom: 0.9rem;">🎵 Répétitions de vos Kurels</div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+            <div style="display:flex; flex-wrap:wrap; --fx-min:260px; gap: 1rem;">
                 <?php foreach ($mesRepetitions as $mp): ?>
                 <div class="renc-card">
                     <div style="font-weight:800; color:#fff;">🎼 <?php echo htmlspecialchars($mp['titre']); ?></div>

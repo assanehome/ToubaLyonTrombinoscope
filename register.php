@@ -19,7 +19,7 @@ $prenom = '';
 $email = '';
 $adresse = $code_postal = $commune = $telephone = $statut = $secteur_activite = $profession = $annee_integration = $commentaires = '';
 $souhait_commission = '';
-$STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
+$STATUTS = ['Professionnel', 'Etudiant', 'Alternant', 'Indépendant'];
 try { $commissionsList = $pdo->query("SELECT nom FROM commissions ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $commissionsList = []; }
 try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }
 

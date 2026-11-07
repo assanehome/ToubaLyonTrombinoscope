@@ -294,7 +294,7 @@ foreach ($membresListe as $mm) { $membresIndex[(int) $mm['id']] = trim(($mm['pre
 
                 <div style="display:flex; flex-direction:column;">
                 <!-- Formulaire de rédaction -->
-                <details class="glass-card" style="margin-bottom:1.5rem; border:2px solid rgba(212,175,55,0.45);" id="ac-editor">
+                <details class="glass-card" style="margin-bottom:1.5rem;" id="ac-editor">
                     <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✍️ Nouvelle actualité <span class="ac-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
                     <form action="actualites.php" method="POST" class="ac-form" style="margin-top:1rem;" id="ac-form" enctype="multipart/form-data">
                         <?php echo csrf_field(); ?>

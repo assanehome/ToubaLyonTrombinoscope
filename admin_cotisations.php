@@ -71,6 +71,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = "Ce membre n'est plus en virement automatique.";
                     }
                 }
+            } elseif ($action === 'virement_annuler') {
+                $mid = (int) ($_POST['membre_id'] ?? 0);
+                $per = (string) ($_POST['periode'] ?? '');
+                if ($mid <= 0 || !preg_match('/^\d{4}-\d{2}$/', $per)) {
+                    $error = "Demande invalide.";
+                } elseif (cotisation_virement_annuler_reception($pdo, $mid, $per)) {
+                    $success = "Réception annulée : le virement de " . cotisation_libelle_mois($per) . " est de nouveau à confirmer.";
+                } else {
+                    $error = "Impossible d'annuler : aucune réception de virement enregistrée pour ce mois.";
+                }
             } elseif ($action === 'mark_paid') {
                 $mid = (int) ($_POST['membre_id'] ?? 0);
                 $per = (string) ($_POST['periode'] ?? '');
@@ -112,6 +122,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                 }
+            } elseif ($action === 'test_stripe') {
+                $diag = cotisation_stripe_diagnostic($pdo);
+                $txt = implode(' · ', $diag['lignes']);
+                if (!empty($diag['ok'])) { $success = '✅ Stripe : ' . $txt; }
+                else { $error = '❌ Stripe : ' . $txt; }
+            } elseif ($action === 'save_debut') {
+                // Début de la saison : tous les mois depuis celui-ci sont dus ; ceux non réglés sont « en retard »
+                $d = trim((string) ($_POST['debut'] ?? ''));
+                if (!preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $d, $mm)) {
+                    $error = "Mois de début invalide.";
+                } elseif ((int) $mm[1] < 2015) {
+                    $error = "Année de début trop ancienne.";
+                } elseif ($d > cotisation_periode_courante()) {
+                    $error = "Le début de saison ne peut pas être dans le futur.";
+                } else {
+                    dahira_set_param($pdo, 'cotisation_debut', $d);
+                    $success = "Début de saison enregistré : " . cotisation_libelle_mois($d) . ". Tous les mois écoulés depuis cette date sont dus ; ceux non réglés apparaissent « en retard » et peuvent être pointés mois par mois.";
+                }
             } else {
                 $error = "Action non reconnue.";
             }
@@ -124,15 +152,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Année sélectionnée (filtre au-dessus du mois : borne les mois du sélecteur)
 $anneesDispo = cotisation_annees($pdo);
+$periodeGet = (string) ($_GET['periode'] ?? '');
 $annee = (int) ($_GET['annee'] ?? 0);
 if (!in_array($annee, $anneesDispo, true)) {
-    $annee = (int) date('Y');
+    // Pas d'année valide : on prend celle de la période demandée, sinon l'année en cours
+    $anP = preg_match('/^\d{4}-\d{2}$/', $periodeGet) ? (int) substr($periodeGet, 0, 4) : 0;
+    $annee = in_array($anP, $anneesDispo, true) ? $anP : (int) date('Y');
     if (!in_array($annee, $anneesDispo, true)) { $annee = $anneesDispo[0] ?? (int) date('Y'); }
 }
 
 // Mois disponibles pour le sélecteur : tous les mois de l'année choisie
-// (année complète), bornés seulement au début de saison — pas de mois avant
-// août 2026, mais tous les mois à venir sont listés (préparation à l'avance).
+// (année complète), bornés seulement au début de saison (réglable dans les
+// paramètres pour déclarer des mois passés) ; tous les mois à venir sont listés.
 $debutMois = cotisation_debut($pdo);
 $moisCourantGlobal = cotisation_periode_courante();
 $moisOptions = [];
@@ -143,9 +174,13 @@ for ($m = 1; $m <= 12; $m++) {
 
 // Période sélectionnée : doit appartenir aux mois de l'année choisie, sinon
 // on retombe sur le mois courant (s'il y est) ou le plus récent de l'année.
-$periode = (string) ($_GET['periode'] ?? '');
+$periode = $periodeGet;
 if (!preg_match('/^\d{4}-\d{2}$/', $periode) || !in_array($periode, $moisOptions, true)) {
-    $periode = in_array($moisCourantGlobal, $moisOptions, true) ? $moisCourantGlobal : ($moisOptions[0] ?? $moisCourantGlobal);
+    // Période hors de l'année choisie : le même mois dans cette année, sinon le mois courant, sinon le premier
+    $memeMois = preg_match('/^\d{4}-\d{2}$/', $periodeGet) ? sprintf('%04d-%s', $annee, substr($periodeGet, 5, 2)) : '';
+    if ($memeMois !== '' && in_array($memeMois, $moisOptions, true)) { $periode = $memeMois; }
+    elseif (in_array($moisCourantGlobal, $moisOptions, true)) { $periode = $moisCourantGlobal; }
+    else { $periode = $moisOptions[0] ?? $moisCourantGlobal; }
 }
 $montant = cotisation_montant_periode($pdo, $periode);
 $montantAnnee = cotisation_montant_annee($pdo, $annee);
@@ -195,11 +230,9 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
     <script src="password-toggle.js" defer></script>
     <style>
         .cot-wrap { max-width: 1000px; margin: 2rem auto; }
-        .cot-stats { display:grid; grid-template-columns:repeat(5,1fr); gap:0.75rem; margin-bottom:1.4rem; }
-        @media (max-width:900px){ .cot-stats { grid-template-columns:repeat(3,1fr); } }
-        @media (max-width:600px){ .cot-stats { grid-template-columns:repeat(2,1fr); } }
-        .cot-stats-4 { grid-template-columns:repeat(4,1fr); }
-        @media (max-width:600px){ .cot-stats-4 { grid-template-columns:repeat(2,1fr); } }
+        .cot-stats { display:flex; flex-wrap:wrap; gap:0.75rem; margin-bottom:1.4rem; }
+        .cot-stats > * { flex:1 1 150px; min-width:0; }
+        .cot-stats-4 > * { flex-basis:200px; }
         /* Filtre Année / Mois : une ligne pleine largeur chacun sur mobile */
         .cot-filtre-mois-form { display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:1rem; border:1.5px solid rgba(212,175,55,0.3); border-radius:10px; padding:0.9rem 1.1rem; background:rgba(255,255,255,0.02); }
         .cot-filtre-groupe { display:flex; align-items:center; gap:0.5rem; }
@@ -246,10 +279,17 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         @media (prefers-reduced-motion: reduce){ .cot-bilan-annee[open] .cot-stats .cot-stat { animation:none !important; } }
         /* Liste des membres en cartes (compatible mobile) */
         .cot-list { display:flex; flex-direction:column; gap:0.6rem; }
-        .cot-card { display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap; border:1px solid var(--glass-border); border-radius:10px; padding:0.7rem 0.85rem; background:rgba(255,255,255,0.02); }
-        .cot-card .cot-name { display:flex; align-items:center; gap:0.55rem; flex:1 1 200px; min-width:0; color:var(--white); font-weight:700; font-size:0.9rem; }
+        /* Carte membre (div) : ligne 1 = identité + statut ; ligne 2 = mode, action, contacts */
+        .cot-card { display:flex; flex-wrap:wrap; align-items:center; gap:0.75rem 0.9rem; border:1px solid rgba(212,175,55,0.3); border-radius:14px; padding:0.9rem 1rem; background:linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015)); box-shadow:0 2px 10px rgba(0,0,0,0.14); transition:border-color .15s, transform .15s; }
+        .cot-card:hover { border-color:rgba(212,175,55,0.55); transform:translateY(-1px); }
+        .cot-card > .cot-name { order:1; }
+        .cot-card > .cot-cell:nth-child(3) { order:2; flex:0 0 auto; margin-left:auto; }
+        .cot-card > .cot-cell:nth-child(2) { order:3; }
+        .cot-card > .cot-act { order:4; flex:1 1 auto; }
+        .cot-card > .cot-contact { order:5; margin-left:auto; }
+        .cot-card .cot-name { display:flex; align-items:center; gap:0.7rem; flex:1 1 calc(100% - 210px); min-width:0; color:var(--white); font-weight:800; font-size:1rem; }
         .cot-card .cot-name span { min-width:0; word-break:break-word; }
-        .cot-av { width:38px; height:38px; border-radius:50%; object-fit:cover; border:2px solid var(--accent); flex-shrink:0; }
+        .cot-av { width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid var(--accent); flex-shrink:0; }
         .cot-av-ph { display:inline-flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#d4af37,#b8902f); color:#0c241a; font-weight:800; font-size:0.85rem; text-transform:uppercase; }
         .cot-cell { display:flex; align-items:center; gap:0.4rem; }
         .cot-card select { background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.35rem 0.5rem; font-size:0.82rem; color-scheme:dark; }
@@ -258,6 +298,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         @media (max-width:640px){
             .cot-card { flex-direction:column; align-items:stretch; }
             .cot-card .cot-name { flex-basis:auto; }
+            .cot-card > .cot-cell:nth-child(3), .cot-card > .cot-contact { margin-left:0; }
             .cot-card .cot-cell, .cot-card .cot-act { width:100%; }
             .cot-card .cot-cell form, .cot-card select, .cot-card .cot-act form, .cot-card .btn { width:100%; box-sizing:border-box; justify-content:center; }
             .cot-card .cot-contact { justify-content:center; }
@@ -355,7 +396,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                         <?php foreach ($virements as $v):
                             $vNom = trim($v['prenom'] . ' ' . $v['nom']);
                             $vDatePrevue = $v['jour'] !== null ? sprintf('%02d/%s', $v['jour'], substr($periode, 5, 2)) : null;
-                            $vActionUrl = 'admin_cotisations.php?periode=' . htmlspecialchars($periode);
+                            $vActionUrl = 'admin_cotisations.php?annee=' . (int) $annee . '&periode=' . htmlspecialchars($periode);
                         ?>
                             <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.55rem 0.8rem;">
                                 <div style="flex:1; min-width:150px;">
@@ -371,6 +412,13 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                 </form>
                                 <?php if ($v['recu']): ?>
                                     <span class="cot-badge cot-ok">✅ Reçu</span>
+                                    <form action="<?php echo $vActionUrl; ?>" method="POST" style="margin:0;" data-confirm="Annuler la réception du virement de <?php echo htmlspecialchars($vNom, ENT_QUOTES); ?> pour <?php echo htmlspecialchars(cotisation_libelle_mois($periode), ENT_QUOTES); ?> ? Il repassera à confirmer." data-confirm-danger="1">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="virement_annuler">
+                                        <input type="hidden" name="membre_id" value="<?php echo (int) $v['id']; ?>">
+                                        <input type="hidden" name="periode" value="<?php echo htmlspecialchars($periode); ?>">
+                                        <button type="submit" class="btn btn-secondary btn-sm" style="border-color:rgba(191,33,33,0.5); color:#fca5a5;">↩️ Annuler la réception</button>
+                                    </form>
                                 <?php else: ?>
                                     <form action="<?php echo $vActionUrl; ?>" method="POST" style="margin:0;" data-confirm="Confirmer que le virement de <?php echo htmlspecialchars($vNom, ENT_QUOTES); ?> pour <?php echo htmlspecialchars(cotisation_libelle_mois($periode), ENT_QUOTES); ?> a bien été reçu ?">
                                         <?php echo csrf_field(); ?>
@@ -394,7 +442,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                     <?php endif; ?>
 
                     <!-- Membres : mode + pointage -->
-                    <div class="glass-card" style="overflow-x:auto;">
+                    <div class="glass-card" style="overflow:visible;">
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.7rem;">
                             <div style="color:var(--white); font-weight:700;">👥 Membres — <?php echo htmlspecialchars(cotisation_libelle_mois($periode)); ?></div>
                             <span id="cot-count" style="color:var(--text-muted); font-size:0.82rem;"></span>
@@ -410,9 +458,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                 <option value="exempt">🎗️ Exempt</option>
                             </select>
                         </div>
-                        <details id="cot-membres-details" class="cot-membres-details">
-                            <summary style="color:var(--white); font-weight:600; font-size:0.9rem; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem; padding:0.3rem 0;">👁️ Afficher la liste des membres <span class="pl-chevron" style="color:var(--text-muted);">▸</span></summary>
-                        <div class="cot-list" style="margin-top:0.7rem;">
+                        <?php $cotGroupes = []; ?>
                             <?php foreach ($membres as $m):
                                 $mid = (int) $m['id'];
                                 $mmode = $modes[$mid] ?? 'mensuel'; // mode réellement configuré (affiché dans le sélecteur)
@@ -426,6 +472,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                 $cat = $mmodeEff === 'exempt' ? 'exempt' : ($paye ? 'paye' : ($mmodeEff === 'virement' ? 'virement' : ($enRetard ? 'retard' : 'attente')));
                                 $nomRow = mb_strtolower(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? '')));
                             ?>
+                            <?php ob_start(); ?>
                             <div class="cot-card cot-row<?php echo $enRetard ? ' cot-row-retard' : ''; ?>" data-cat="<?php echo $cat; ?>" data-search="<?php echo htmlspecialchars($nomRow, ENT_QUOTES); ?>">
                                 <?php
                                     $ph = trim((string) ($m['photo_path'] ?? ''));
@@ -436,7 +483,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                     <span><?php echo htmlspecialchars(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? ''))); ?></span>
                                 </div>
                                 <div class="cot-cell">
-                                    <form action="admin_cotisations.php?periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;">
+                                    <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;">
                                         <?php echo csrf_field(); ?>
                                         <input type="hidden" name="action" value="set_mode">
                                         <input type="hidden" name="membre_id" value="<?php echo $mid; ?>">
@@ -469,7 +516,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                         <span style="color:#7bd8a6; font-size:0.78rem;">🏦 Automatique</span>
                                     <?php elseif ($mmodeEff !== 'exempt'): ?>
                                         <?php if ($paye): ?>
-                                        <form action="admin_cotisations.php?periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;" data-confirm="Annuler ce pointage et le retirer de l'historique ?" data-confirm-danger="1">
+                                        <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;" data-confirm="Annuler ce pointage et le retirer de l'historique ?" data-confirm-danger="1">
                                             <?php echo csrf_field(); ?>
                                             <input type="hidden" name="action" value="unmark_paid">
                                             <input type="hidden" name="membre_id" value="<?php echo $mid; ?>">
@@ -477,7 +524,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                             <button type="submit" class="btn btn-secondary btn-sm" style="border-color:rgba(191,33,33,0.5); color:#fca5a5;">↩️ Annuler</button>
                                         </form>
                                         <?php else: ?>
-                                        <form action="admin_cotisations.php?periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0; display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" data-confirm="Valider le paiement de la cotisation de <?php echo htmlspecialchars(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? '')), ENT_QUOTES); ?> pour <?php echo htmlspecialchars(cotisation_libelle_mois($periode), ENT_QUOTES); ?> ?">
+                                        <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0; display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" data-confirm="Valider le paiement de la cotisation de <?php echo htmlspecialchars(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? '')), ENT_QUOTES); ?> pour <?php echo htmlspecialchars(cotisation_libelle_mois($periode), ENT_QUOTES); ?> ?">
                                             <?php echo csrf_field(); ?>
                                             <input type="hidden" name="action" value="mark_paid">
                                             <input type="hidden" name="membre_id" value="<?php echo $mid; ?>">
@@ -519,9 +566,20 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                     <?php endif; ?>
                                 </div>
                             </div>
-                            <?php endforeach; ?>
-                        </div>
+                            <?php $cotGroupes[$cat][] = ob_get_clean(); endforeach; ?>
+                        <?php
+                        $cotOrdre = ['retard' => '🔴 En retard', 'attente' => '⏳ En attente', 'virement' => '🏦 Virement à confirmer', 'paye' => '✅ Réglées', 'exempt' => '🎗️ Exempt'];
+                        foreach ($cotOrdre as $cotK => $cotLib):
+                            $cotLst = $cotGroupes[$cotK] ?? [];
+                            if (empty($cotLst)) { continue; }
+                        ?>
+                        <details id="cot-grp-<?php echo $cotK; ?>" class="glass-card cot-grp" style="margin-top:0.6rem;">
+                            <summary style="color:var(--white); font-weight:700; font-size:0.95rem; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;"><?php echo $cotLib; ?> <span class="cot-grp-n" style="color:var(--text-muted); font-weight:600; font-size:0.82rem;">(<?php echo count($cotLst); ?>)</span></summary>
+                            <div class="cot-list" style="margin-top:0.7rem;">
+                                <?php foreach ($cotLst as $cotHtml) { echo $cotHtml; } ?>
+                            </div>
                         </details>
+                        <?php endforeach; ?>
                     </div>
 
                     <!-- Réglages (en bas) -->
@@ -548,6 +606,22 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                             <div><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>
                             <div style="color:<?php echo $stripePret ? '#7bd8a6' : '#ffd873'; ?>; font-size:0.82rem;"><?php echo $stripePret ? '✅ Paiement en ligne configuré.' : '⚠️ Paiement en ligne non configuré (clés Stripe manquantes).'; ?></div>
                         </form>
+                        <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>&panel=params" method="POST" style="margin-top:0.8rem;">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="test_stripe">
+                            <button type="submit" class="btn btn-secondary btn-sm">🔌 Tester la connexion à Stripe</button>
+                            <small style="display:block; color:var(--text-muted); margin-top:0.35rem; line-height:1.5;">Vérifie le serveur (cURL, DNS) et la clé enregistrée, et affiche la cause exacte en cas de « Connexion Stripe impossible ».</small>
+                        </form>
+                        <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>&panel=params" method="POST" style="margin-top:1.4rem; padding-top:1rem; border-top:1px solid var(--glass-border); display:flex; flex-direction:column; gap:0.8rem; max-width:520px;" data-confirm="Enregistrer ce début de saison ? Tous les mois écoulés depuis cette date seront dus : les cotisations non réglées des membres en mode mensuel apparaîtront « en retard ».">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="save_debut">
+                            <div class="form-group">
+                                <label class="form-label">📆 Début de la saison de cotisation (premier mois dû)</label>
+                                <input type="month" name="debut" class="form-input" value="<?php echo htmlspecialchars($debutMois); ?>" max="<?php echo htmlspecialchars($moisCourantGlobal); ?>" required>
+                                <small style="color:var(--text-muted); display:block; margin-top:0.3rem; line-height:1.5;">Choisissez un mois passé pour déclarer les mois non payés : tous les mois écoulés depuis cette date sont dus et apparaissent « en retard » tant qu'ils ne sont pas pointés. Les années et mois précédents deviennent aussi disponibles dans les filtres. Actuellement : <strong><?php echo htmlspecialchars(cotisation_libelle_mois($debutMois)); ?></strong>.</small>
+                            </div>
+                            <div><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer le début de saison</button></div>
+                        </form>
                     </details>
                 </div>
             </div>
@@ -559,7 +633,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         <div class="modal-card glass-card" style="max-width:560px; width:calc(100vw - 28px);">
             <div class="modal-header"><h3 id="recap-mail-title" style="color:var(--accent);">📧 E-mail de relance</h3></div>
             <div class="modal-body" style="display:block; text-align:left;">
-                <form id="recap-mail-form" action="admin_cotisations.php?periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;">
+                <form id="recap-mail-form" action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;">
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="action" value="send_recap_mail">
                     <input type="hidden" name="membre_id" id="recap-mail-mid">
@@ -584,30 +658,36 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         (function () {
             var search = document.getElementById('cot-search');
             var filtre = document.getElementById('cot-filtre');
-            var details = document.getElementById('cot-membres-details');
             var rows = Array.prototype.slice.call(document.querySelectorAll('.cot-row'));
             var countEl = document.getElementById('cot-count');
             if (!rows.length) { return; }
-            // Taper une recherche ou choisir un statut réouvre automatiquement la liste
-            function reouvrir() { if (details && !details.open) { details.open = true; } }
             function norm(s) { return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }
             function apply() {
                 var term = norm(search ? search.value : '');
                 var cat = filtre ? filtre.value : 'all';
+                var filtrage = (term !== '' || cat !== 'all');
                 var n = 0;
                 rows.forEach(function (r) {
                     var rc = r.getAttribute('data-cat');
-                    // Le virement automatique est considéré comme réglé
                     var okCat = (cat === 'all') || (rc === cat);
                     var okTerm = !term || norm(r.getAttribute('data-search')).indexOf(term) !== -1;
                     var show = okCat && okTerm;
                     r.style.display = show ? '' : 'none';
                     if (show) { n++; }
                 });
+                // Groupes par statut : masqués s'ils n'ont aucun membre affiché, comptes mis à jour,
+                // ouverts automatiquement quand une recherche ou un statut est choisi
+                Array.prototype.forEach.call(document.querySelectorAll('.cot-grp'), function (g) {
+                    var vis = Array.prototype.filter.call(g.querySelectorAll('.cot-row'), function (r) { return r.style.display !== 'none'; }).length;
+                    g.style.display = vis ? '' : 'none';
+                    var c = g.querySelector('.cot-grp-n');
+                    if (c) { c.textContent = '(' + vis + ')'; }
+                    if (filtrage && vis && !g.open) { g.open = true; }
+                });
                 if (countEl) { countEl.textContent = n + ' membre(s)'; }
             }
-            if (search) { search.addEventListener('input', function () { if (search.value.trim() !== '') { reouvrir(); } apply(); }); }
-            if (filtre) { filtre.addEventListener('change', function () { if (filtre.value !== 'all') { reouvrir(); } apply(); }); }
+            if (search) { search.addEventListener('input', apply); }
+            if (filtre) { filtre.addEventListener('change', apply); }
             apply();
         })();
     </script>

@@ -4,7 +4,9 @@
  * Transforme TOUS les <select> simples de l'application (sauf data-native / .native-select / multiple)
  * en un dropdown stylé et animé, tout en conservant le <select> natif (caché) pour l'envoi du
  * formulaire et la validation HTML. Au-delà de 5 options, un champ de recherche (insensible aux
- * accents et à la casse) filtre la liste. Le panneau s'ouvre au-dessus de la page (jamais coupé par
+ * accents et à la casse) filtre la liste — sur téléphone, seulement dans les listes de membres
+ * (data-membres, ou champ membre_id, assignee_id, responsable_id…), dont chaque nom porte sa
+ * miniature photo (membres_photos.php). Le panneau s'ouvre au-dessus de la page (jamais coupé par
  * une carte ou un groupe) et passe au-dessus du trigger s'il manque de place en bas.
  * Accessible au clavier (flèches, Entrée, Échap) et au clic extérieur.
  * Les listes ajoutées ou modifiées après coup (JS, actions sans rechargement) sont prises en compte.
@@ -14,6 +16,44 @@
     window.__mselLoaded = true;
 
     var SEARCH_MIN = 6; // nombre d'options à partir duquel la recherche apparaît
+
+    // Téléphone (petit écran ou écran tactile) : la recherche, qui ouvre le
+    // clavier, n'est proposée que dans les listes de membres
+    function surMobile() {
+        try { return window.matchMedia('(max-width: 768px), (pointer: coarse)').matches; } catch (e) { return false; }
+    }
+    // Liste de membres : data-membres, ou un nom de champ qui désigne une personne
+    function estListeMembres(select) {
+        if (select.hasAttribute('data-pas-membres')) { return false; }
+        return select.hasAttribute('data-membres')
+            || /(^|_)(membre|membres|member|assignee|integrateur|responsable|presentateur|participant|player)(_|$|\[)/i.test(select.name || '');
+    }
+    // Photos des membres validés (membres_photos.php), chargées une seule fois par page
+    var photosMembres = null;
+    function chargerPhotos() {
+        if (!photosMembres) {
+            photosMembres = fetch('membres_photos.php', { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.ok ? r.json() : {}; })
+                .catch(function () { return {}; });
+        }
+        return photosMembres;
+    }
+    // Miniature : la photo, ou les initiales du nom sur une pastille
+    function miniature(texte, url) {
+        var el;
+        if (url) {
+            el = document.createElement('img');
+            el.src = url;
+            el.alt = '';
+            el.loading = 'lazy';
+        } else {
+            el = document.createElement('span');
+            var mots = (texte || '').trim().split(/\s+/);
+            el.textContent = ((mots[0] || '').charAt(0) + (mots.length > 1 ? mots[mots.length - 1].charAt(0) : '')).toUpperCase() || '?';
+        }
+        el.className = 'msel-photo' + (url ? '' : ' msel-photo-ini');
+        return el;
+    }
 
     function norm(s) {
         s = (s || '').toLowerCase();
@@ -87,6 +127,16 @@
         var optEls = [];
         var activeIndex = 0;
         var isOpen = false;
+        var membres = estListeMembres(select);
+        var photos = {};
+        if (membres) {
+            wrap.classList.add('msel-membres');
+            chargerPhotos().then(function (p) { photos = p || {}; buildOptions(); });
+        }
+        // Recherche : partout sur ordinateur, seulement dans les listes de membres sur téléphone
+        function avecRecherche() {
+            return optEls.length >= SEARCH_MIN && (membres || !surMobile());
+        }
 
         function buildOptions() {
             list.innerHTML = '';
@@ -102,13 +152,24 @@
                 var chk = document.createElement('span');
                 chk.className = 'msel-check';
                 chk.textContent = '✓';
-                o.appendChild(txt);
+                // Liste de membres : la miniature photo devant le nom
+                // (pas pour « — Choisir — » ni « Non attribuée », sans identifiant)
+                if (membres && /^\d+$/.test(opt.value) && opt.value !== '0') {
+                    txt.className = 'msel-txt';
+                    var gauche = document.createElement('span');
+                    gauche.className = 'msel-membre';
+                    gauche.appendChild(miniature(opt.textContent, photos[opt.value]));
+                    gauche.appendChild(txt);
+                    o.appendChild(gauche);
+                } else {
+                    o.appendChild(txt);
+                }
                 o.appendChild(chk);
                 o.addEventListener('click', function () { if (!opt.disabled) { choose(i); } });
                 list.appendChild(o);
                 optEls.push(o);
             });
-            searchBox.style.display = optEls.length >= SEARCH_MIN ? '' : 'none';
+            searchBox.style.display = avecRecherche() ? '' : 'none';
             syncLabel();
         }
         function syncLabel() {
@@ -181,7 +242,8 @@
             empty.style.display = 'none';
             activeIndex = select.selectedIndex < 0 ? 0 : select.selectedIndex;
             highlight();
-            if (optEls.length >= SEARCH_MIN) { try { search.focus({ preventScroll: true }); } catch (e) { search.focus(); } }
+            searchBox.style.display = avecRecherche() ? '' : 'none';
+            if (avecRecherche()) { try { search.focus({ preventScroll: true }); } catch (e) { search.focus(); } }
             document.addEventListener('click', outside, true);
             document.addEventListener('keydown', onKey, true);
             window.addEventListener('resize', position);

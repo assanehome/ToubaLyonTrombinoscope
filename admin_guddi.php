@@ -553,10 +553,11 @@ if ($commissionId > 0) {
             padding: 0.25rem 0;
             line-height: 1.3;
         }
-        .pl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+        .pl-grid { display: flex; flex-wrap: wrap; gap: 1rem; }
+        .pl-grid > * { flex: 1 1 280px; min-width: 0; max-width: calc(280px * 1.6); }
         /* Indicateurs : 3 par ligne sur PC, 2 sur mobile */
-        .pl-stats { grid-template-columns: repeat(3, 1fr); }
-        @media (max-width: 600px) { .pl-stats { grid-template-columns: repeat(2, 1fr); } }
+        .pl-stats > * { flex: 1 1 calc(33.333% - 0.75rem); min-width: 0; }
+        @media (max-width: 600px) { .pl-stats > * { flex-basis: calc(50% - 0.75rem); } }
         /* Boutons d'action du prochain Guddi : un par ligne, pleine largeur sur mobile */
         @media (max-width: 600px) {
             .gu-actions-bar { flex-direction: column; align-items: stretch; }
@@ -574,7 +575,8 @@ if ($commissionId > 0) {
         .pl-badge-annul { background: rgba(191,33,33,0.15); color: #fca5a5; border: 1px solid rgba(191,33,33,0.4); }
         details.pl-details summary { cursor: pointer; color: var(--text-muted); font-size: 0.8rem; }
         details.pl-details pre { white-space: pre-wrap; font-family: inherit; font-size: 0.83rem; color: var(--white); background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.9rem; margin-top: 0.5rem; }
-        .pl-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.8rem; }
+        .pl-params { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+        .pl-params > * { flex: 1 1 180px; min-width: 0; }
         .pl-params .form-group { margin: 0; }
         /* Paramètres : une ligne par information (champs empilés en pleine largeur) */
         .pl-params-stack { display: flex; flex-direction: column; }
@@ -602,13 +604,12 @@ if ($commissionId > 0) {
             max-width: 100%;
         }
         #frm-generate .pl-params {
-            grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
             max-width: 560px;
             margin-left: auto;
             margin-right: auto;
         }
         @media (max-width: 640px) {
-            .pl-params { grid-template-columns: 1fr !important; }
+            .pl-params > * { flex: 1 1 100% !important; }
             .pl-params .form-group { width: 100%; max-width: 100%; min-width: 0; }
             .pl-params input[type="date"] { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
             input[name="period_start"], input[name="period_end"] {
@@ -708,7 +709,7 @@ if ($commissionId > 0) {
                         </div>
                         <?php endif; ?>
 
-                        <div class="pl-stats" style="display:grid; gap:0.75rem;">
+                        <div class="pl-stats" style="display:flex; flex-wrap:wrap; gap:0.75rem;">
                             <?php
                             // Une carte par indicateur, valeurs stockées en data-annee
                             $cartesIndicateurs = [
@@ -866,7 +867,7 @@ if ($commissionId > 0) {
                             <input type="hidden" name="action" value="save_seance">
                             <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
                             <?php $prochainMode = (string)($prochain['mode'] ?? ''); if ($prochainMode === '') { $prochainMode = $modeDefaut; } ?>
-                            <div class="pl-params" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); margin-bottom:0.7rem;">
+                            <div class="pl-params" style="margin-bottom:0.7rem;">
                                 <div class="form-group" style="margin:0;">
                                     <label class="form-label">🕐 Heure de début</label>
                                     <select name="heure_seance" class="form-input" style="width:100%;">

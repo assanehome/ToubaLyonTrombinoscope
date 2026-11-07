@@ -25,7 +25,7 @@ $email = '';
 $telephone = '';
 $statut = '';
 $annee_integration = '';
-$STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
+$STATUTS = ['Professionnel', 'Etudiant', 'Alternant', 'Indépendant'];
 
 // Abandon de l'inscription en cours de validation d'e-mail (« recommencer »)
 if (isset($_GET['recommencer'])) {

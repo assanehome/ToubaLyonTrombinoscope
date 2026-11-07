@@ -258,33 +258,39 @@ foreach ($blocs as $k => $bl) {
         /* Choix de disponibilité : boutons modernes */
         .dp-form { margin-top: 0.7rem; padding: 0.9rem 1rem 1rem; border: 1px solid rgba(212,175,55,0.35); border-radius: 12px; background: rgba(212,175,55,0.05); position: relative; }
         .dp-form-tete { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
-        .dp-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.55rem; }
+        /* Interrupteur segmenté : Dispo / Pas dispo / Pas défini */
+        .dp-seg { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(0,0,0,0.28); border: 1px solid rgba(255,255,255,0.1); box-shadow: inset 0 1px 3px rgba(0,0,0,0.35); }
         .dp-seg input { position: absolute; opacity: 0; pointer-events: none; }
-        .dp-opt { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.3rem; padding: 0.9rem 0.4rem; border-radius: 12px; border: 1.5px solid var(--glass-border); background: rgba(255,255,255,0.04); color: var(--text-muted); font-weight: 700; font-size: 0.85rem; text-align: center; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform .12s, border-color .15s, background .15s, box-shadow .15s, color .15s; }
-        .dp-opt .ic { font-size: 1.6rem; line-height: 1; filter: grayscale(0.7); opacity: 0.7; transition: filter .15s, opacity .15s, transform .15s; }
-        .dp-opt:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.3); }
-        .dp-opt:active { transform: scale(0.97); }
-        .dp-seg input:checked + .dp-opt .ic { filter: none; opacity: 1; transform: scale(1.12); }
-        .dp-seg input:checked + .dp-o-ok { background: rgba(37,211,102,0.18); border-color: #25d366; color: #7bd8a6; box-shadow: 0 0 0 3px rgba(37,211,102,0.15); }
-        .dp-seg input:checked + .dp-o-ko { background: rgba(191,33,33,0.18); border-color: #e04b4b; color: #fca5a5; box-shadow: 0 0 0 3px rgba(191,33,33,0.15); }
-        .dp-seg input:checked + .dp-o-nr { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.45); color: var(--white); box-shadow: 0 0 0 3px rgba(255,255,255,0.08); }
+        .dp-opt { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.7rem 0.6rem; border-radius: 999px; border: 0; background: transparent; color: var(--text-muted); font-weight: 700; font-size: 0.88rem; text-align: center; white-space: nowrap; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: background .2s, color .2s, box-shadow .2s, transform .12s; }
+        .dp-opt .ic { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; font-size: 0.8rem; font-weight: 900; line-height: 1; border: 1.5px solid currentColor; opacity: 0.75; transition: background .2s, color .2s, border-color .2s, opacity .2s, transform .2s; }
+        .dp-opt:hover { color: var(--white); background: rgba(255,255,255,0.07); }
+        .dp-opt:active { transform: scale(0.96); }
+        .dp-seg input:checked + .dp-opt { color: #fff; }
+        .dp-seg input:checked + .dp-opt .ic { opacity: 1; background: rgba(255,255,255,0.95); border-color: transparent; transform: scale(1.08); }
+        .dp-seg input:checked + .dp-o-ok { background: linear-gradient(135deg, #1f9d55, #25d366); box-shadow: 0 4px 14px rgba(37,211,102,0.35); }
+        .dp-seg input:checked + .dp-o-ok .ic { color: #1f9d55; }
+        .dp-seg input:checked + .dp-o-ko { background: linear-gradient(135deg, #b91c1c, #e04b4b); box-shadow: 0 4px 14px rgba(224,75,75,0.35); }
+        .dp-seg input:checked + .dp-o-ko .ic { color: #b91c1c; }
+        .dp-seg input:checked + .dp-o-nr { background: linear-gradient(135deg, #475569, #64748b); box-shadow: 0 4px 14px rgba(100,116,139,0.35); }
+        .dp-seg input:checked + .dp-o-nr .ic { color: #475569; }
         .dp-seg input:focus-visible + .dp-opt { outline: 2px solid var(--accent); outline-offset: 2px; }
         .dp-save { width: 100%; margin-top: 0.8rem; justify-content: center; }
-        @media (max-width: 420px) { .dp-opt { padding: 0.8rem 0.2rem; font-size: 0.78rem; } }
+        @media (max-width: 420px) { .dp-opt { padding: 0.65rem 0.3rem; font-size: 0.78rem; gap: 0.3rem; } .dp-opt .ic { width: 18px; height: 18px; font-size: 0.7rem; } }
         /* Dimanches à venir : groupe fermé par défaut */
-        .dp-futurs { margin-top: 0.8rem; border: 1px solid var(--glass-border); border-radius: 12px; background: rgba(255,255,255,0.025); overflow: hidden; }
-        .dp-futurs > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; color: var(--white); font-weight: 800; font-size: 0.92rem; }
+        .dp-futurs { margin-top: 0.8rem; border: 1px solid rgba(212,175,55,0.38); border-radius: 12px; background: rgba(255,255,255,0.03); overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+        .dp-futurs > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.4rem; padding: 0.85rem 1rem; color: var(--gold); font-weight: 800; font-size: 0.95rem; transition: background .15s; }
         .dp-futurs > summary::-webkit-details-marker { display: none; }
         .dp-futurs > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
+        .dp-futurs > summary:hover { background: rgba(212,175,55,0.08); }
         .dp-futurs[open] > summary::after { transform: rotate(90deg); }
-        .dp-futurs[open] > summary { border-bottom: 1px solid var(--glass-border); background: rgba(212,175,55,0.07); }
+        .dp-futurs[open] > summary { border-bottom: 1px solid rgba(212,175,55,0.3); background: rgba(212,175,55,0.1); }
         .dp-futurs-n { color: var(--text-muted); font-weight: 600; font-size: 0.78rem; }
         .dp-futurs-corps { padding: 0.8rem 1rem 1rem; position: relative; }
         .dp-fr { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; flex-wrap: wrap; padding: 0.65rem 0.8rem; margin-bottom: 0.5rem; border: 1px solid rgba(212,175,55,0.3); border-radius: 10px; background: rgba(255,255,255,0.04); }
-        .dp-mini { gap: 0.35rem; }
-        .dp-mini .dp-opt { flex-direction: row; padding: 0.45rem 0.7rem; border-radius: 12px; font-size: 0.8rem; gap: 0.3rem; }
-        .dp-mini .dp-opt .ic { font-size: 1rem; }
-        @media (max-width: 520px) { .dp-fr { flex-direction: column; align-items: stretch; } .dp-mini { grid-template-columns: repeat(3, 1fr); } .dp-mini .dp-opt { justify-content: center; } }
+        .dp-mini { gap: 3px; padding: 3px; }
+        .dp-mini .dp-opt { padding: 0.4rem 0.8rem; font-size: 0.8rem; gap: 0.35rem; }
+        .dp-mini .dp-opt .ic { width: 18px; height: 18px; font-size: 0.68rem; }
+        @media (max-width: 520px) { .dp-fr { flex-direction: column; align-items: stretch; } .dp-mini .dp-opt { justify-content: center; } }
     </style>
 </head>
 <body>
@@ -332,9 +338,9 @@ foreach ($blocs as $k => $bl) {
                             <?php else: ?><span class="dp-b dp-b-nr dp-cur">— Non précisée</span><?php endif; ?>
                         </div>
                         <div class="dp-seg">
-                            <input type="radio" id="<?php echo $h($bl['ancre']); ?>-o" name="dispo" value="dispo"<?php echo $cur === 'dispo' ? ' checked' : ''; ?>><label class="dp-opt dp-o-ok" for="<?php echo $h($bl['ancre']); ?>-o"><span class="ic">✅</span><span>Disponible</span></label>
-                            <input type="radio" id="<?php echo $h($bl['ancre']); ?>-n" name="dispo" value="indispo"<?php echo $cur === 'indispo' ? ' checked' : ''; ?>><label class="dp-opt dp-o-ko" for="<?php echo $h($bl['ancre']); ?>-n"><span class="ic">❌</span><span>Indisponible</span></label>
-                            <input type="radio" id="<?php echo $h($bl['ancre']); ?>-x" name="dispo" value=""<?php echo $cur === '' ? ' checked' : ''; ?>><label class="dp-opt dp-o-nr" for="<?php echo $h($bl['ancre']); ?>-x"><span class="ic">➖</span><span>Non précisé</span></label>
+                            <input type="radio" id="<?php echo $h($bl['ancre']); ?>-o" name="dispo" value="dispo"<?php echo $cur === 'dispo' ? ' checked' : ''; ?>><label class="dp-opt dp-o-ok" for="<?php echo $h($bl['ancre']); ?>-o"><span class="ic">✓</span><span>Disponible</span></label>
+                            <input type="radio" id="<?php echo $h($bl['ancre']); ?>-n" name="dispo" value="indispo"<?php echo $cur === 'indispo' ? ' checked' : ''; ?>><label class="dp-opt dp-o-ko" for="<?php echo $h($bl['ancre']); ?>-n"><span class="ic">✕</span><span>Pas disponible</span></label>
+                            <input type="radio" id="<?php echo $h($bl['ancre']); ?>-x" name="dispo" value=""<?php echo $cur === '' ? ' checked' : ''; ?>><label class="dp-opt dp-o-nr" for="<?php echo $h($bl['ancre']); ?>-x"><span class="ic">?</span><span>Pas défini</span></label>
                         </div>
                         <noscript><button type="submit" class="btn btn-primary dp-save">💾 Enregistrer ma disponibilité</button></noscript>
                     </form>
@@ -355,9 +361,9 @@ foreach ($blocs as $k => $bl) {
                                     <div class="dp-date"><?php echo $h(ucfirst(dahira_date_longue($df['date_dahira']))); ?>
                                         <small><?php if (!empty($df['titre'])) { echo '📌 ' . $h($df['titre']) . ' · '; } ?><span class="dp-cnt" data-n="<?php echo (int) ($nbOkF[$pf][$cid] ?? 0); ?>">✅ <?php echo (int) ($nbOkF[$pf][$cid] ?? 0); ?> disponible(s)</span></small></div>
                                     <div class="dp-seg dp-mini">
-                                        <input type="radio" id="<?php echo $h($rid); ?>-o" name="dispoF[<?php echo $pf; ?>]" value="dispo"<?php echo $cf === 'dispo' ? ' checked' : ''; ?>><label class="dp-opt dp-o-ok" for="<?php echo $h($rid); ?>-o" title="Disponible"><span class="ic">✅</span><span>Dispo</span></label>
-                                        <input type="radio" id="<?php echo $h($rid); ?>-n" name="dispoF[<?php echo $pf; ?>]" value="indispo"<?php echo $cf === 'indispo' ? ' checked' : ''; ?>><label class="dp-opt dp-o-ko" for="<?php echo $h($rid); ?>-n" title="Indisponible"><span class="ic">❌</span><span>Indispo</span></label>
-                                        <input type="radio" id="<?php echo $h($rid); ?>-x" name="dispoF[<?php echo $pf; ?>]" value=""<?php echo $cf === '' ? ' checked' : ''; ?>><label class="dp-opt dp-o-nr" for="<?php echo $h($rid); ?>-x" title="Non précisé"><span class="ic">➖</span><span>—</span></label>
+                                        <input type="radio" id="<?php echo $h($rid); ?>-o" name="dispoF[<?php echo $pf; ?>]" value="dispo"<?php echo $cf === 'dispo' ? ' checked' : ''; ?>><label class="dp-opt dp-o-ok" for="<?php echo $h($rid); ?>-o" title="Disponible"><span class="ic">✓</span><span>Dispo</span></label>
+                                        <input type="radio" id="<?php echo $h($rid); ?>-n" name="dispoF[<?php echo $pf; ?>]" value="indispo"<?php echo $cf === 'indispo' ? ' checked' : ''; ?>><label class="dp-opt dp-o-ko" for="<?php echo $h($rid); ?>-n" title="Pas disponible"><span class="ic">✕</span><span>Pas dispo</span></label>
+                                        <input type="radio" id="<?php echo $h($rid); ?>-x" name="dispoF[<?php echo $pf; ?>]" value=""<?php echo $cf === '' ? ' checked' : ''; ?>><label class="dp-opt dp-o-nr" for="<?php echo $h($rid); ?>-x" title="Pas défini"><span class="ic">?</span><span>Pas défini</span></label>
                                     </div>
                                 </div>
                             <?php endforeach; ?>

@@ -27,7 +27,7 @@ $f = [
 
 $TYPES   = ['Membre actif', 'Membre sympathisant'];
 $GENRES  = ['Homme', 'Femme'];
-$STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
+$STATUTS = ['Professionnel', 'Etudiant', 'Alternant', 'Indépendant'];
 try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }
 
 // Abandon de l'inscription en cours de validation d'e-mail (« recommencer »)

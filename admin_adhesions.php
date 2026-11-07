@@ -218,19 +218,12 @@ function filter_select($id, $label, $options) {
                     <span class="adh-count" id="adh-count"></span>
                 </div>
                 <div class="table-responsive">
-                    <table class="admin-table admin-table--compact">
-                        <thead>
-                            <tr>
-                                <th>Photo</th>
-                                <th>Membre</th>
-                                <th>Statut</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                    <div class="dlist">
+                        
+                        
                             <?php foreach ($adhesions as $a): ?>
                                 <?php $name = $a['prenom'] . ' ' . $a['nom']; ?>
-                                <tr class="adh-row"
+                                <div class="drow adh-row"
                                     data-status="<?php echo htmlspecialchars($a['status'], ENT_QUOTES); ?>"
                                     data-commission="<?php echo htmlspecialchars($a['souhait_commission'] ?? '', ENT_QUOTES); ?>"
                                     data-secteur="<?php echo htmlspecialchars($a['secteur_activite'] ?? '', ENT_QUOTES); ?>"
@@ -239,7 +232,7 @@ function filter_select($id, $label, $options) {
                                     data-genre="<?php echo htmlspecialchars($a['genre'] ?? '', ENT_QUOTES); ?>"
                                     data-annee="<?php echo htmlspecialchars($a['annee_integration'] ?? '', ENT_QUOTES); ?>"
                                     data-search="<?php echo htmlspecialchars(mb_strtolower($a['prenom'] . ' ' . $a['nom'] . ' ' . $a['email']), ENT_QUOTES); ?>">
-                                    <td>
+                                    <div class="dcell">
                                         <?php if (!empty($a['photo_path'])): ?>
                                             <a href="uploads/<?php echo htmlspecialchars($a['photo_path']); ?>" target="_blank">
                                                 <img src="uploads/<?php echo htmlspecialchars($a['photo_path']); ?>" class="table-photo" alt="Photo de <?php echo htmlspecialchars($a['prenom']); ?>">
@@ -247,12 +240,12 @@ function filter_select($id, $label, $options) {
                                         <?php else: ?>
                                             <span style="color:var(--text-muted);">—</span>
                                         <?php endif; ?>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell dgrow">
                                         <div style="font-weight:600; text-transform:capitalize;"><?php echo htmlspecialchars($a['prenom']); ?> <span style="text-transform:uppercase;"><?php echo htmlspecialchars($a['nom']); ?></span></div>
                                         <div style="font-size:0.8rem; color:var(--text-muted);"><?php echo htmlspecialchars($a['type_adhesion']); ?></div>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell">
                                         <?php
                                             $st = $a['status'];
                                             if ($st === 'approved') {
@@ -267,8 +260,8 @@ function filter_select($id, $label, $options) {
                                             }
                                         ?>
                                         <span class="badge" style="white-space:nowrap; font-weight:700; <?php echo $stStyle; ?>"><?php echo $stLabel; ?></span>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell">
                                         <div class="table-actions">
                                             <a href="profile.php?id=<?php echo (int)$a['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">Voir</a>
                                             <a href="membre.php?id=<?php echo (int)$a['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--gold); color:var(--gold);">Modifier</a>
@@ -293,11 +286,11 @@ function filter_select($id, $label, $options) {
                                             <?php endif; ?>
                                             <button onclick="handleAction('delete', <?php echo $a['id']; ?>, '<?php echo addslashes(htmlspecialchars($name)); ?>')" class="btn btn-danger btn-sm">Supprimer</button>
                                         </div>
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
                             <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                        
+                    </div>
                 </div>
             <?php endif; ?>
         </section>

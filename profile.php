@@ -8,6 +8,7 @@ require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/send_mail.php';
 require_once __DIR__ . '/contact.php';
 require_once __DIR__ . '/dahira_emails.php';
+require_once __DIR__ . '/profil_modification_helper.php'; // modifications soumises à validation
 
 if (session_status() === PHP_SESSION_NONE) {
     require_once __DIR__ . '/session_config.php'; session_start();
@@ -63,7 +64,17 @@ $profession = $member['profession'] ?? '';
 $annee_integration = $member['annee_integration'] ?? '';
 $commentaires = $member['commentaires'] ?? '';
 $souhait_commission = $member['souhait_commission'] ?? '';
-$STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
+// Demande de modification en attente de validation : ses valeurs remplacent celles du formulaire
+$modifAttente = null;
+if (!$adminView) {
+    $modifAttente = profil_modif_en_attente($pdo, (int) $playerId);
+    if ($modifAttente) {
+        foreach ($modifAttente['champs'] as $mk => $mv) {
+            if (in_array($mk, ['civilite', 'nom', 'prenom', 'email', 'adresse', 'code_postal', 'commune', 'telephone', 'statut', 'secteur_activite', 'profession', 'annee_integration', 'commentaires', 'souhait_commission'], true)) { $$mk = (string) $mv; }
+        }
+    }
+}
+$STATUTS = ['Professionnel', 'Etudiant', 'Alternant', 'Indépendant'];
 try { $commissionsList = $pdo->query("SELECT nom FROM commissions ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $commissionsList = []; }
 try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }
 
@@ -218,7 +229,25 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                     }
                 }
 
-                if (empty($error)) {
+                if (empty($error) && ($member['status'] ?? '') === 'approved') {
+                    // Compte validé : toute modification (même la photo) attend la validation d'un administrateur
+                    $nouveauxChamps = ['civilite' => $civilite, 'nom' => $nom, 'prenom' => $prenom, 'email' => $email, 'adresse' => $adresse, 'code_postal' => $code_postal, 'commune' => $commune, 'telephone' => $telephone,
+                                       'statut' => $statut, 'secteur_activite' => $secteur_activite, 'profession' => $profession, 'annee_integration' => $annee_integration, 'commentaires' => $commentaires, 'souhait_commission' => $souhait_commission];
+                    $resMod = profil_modif_soumettre($pdo, $member, $nouveauxChamps, $photoUploaded ? $newFilename : null);
+                    $mdpChange = false;
+                    if (!empty($password)) {
+                        // Le mot de passe n'est pas une donnée de profil à valider : il s'applique tout de suite
+                        $pdo->prepare("UPDATE membres SET password = ? WHERE id = ?")->execute([password_hash($password, PASSWORD_BCRYPT), $playerId]);
+                        $mdpChange = true;
+                    }
+                    if (!empty($resMod['aucune'])) {
+                        $success = $mdpChange ? "Votre mot de passe a été modifié." : "Aucune modification à enregistrer.";
+                    } else {
+                        $success = "Vos modifications ont été envoyées : elles seront appliquées après validation par un administrateur. En attendant, votre profil actuel reste inchangé."
+                            . ($mdpChange ? " Votre mot de passe a été modifié." : "");
+                        $modifAttente = profil_modif_en_attente($pdo, (int) $playerId);
+                    }
+                } elseif (empty($error)) {
                     // Un compte déjà validé ne repasse jamais en attente lors d'un
                     // complément / d'une mise à jour de ses informations.
                     $estApprouve = (($member['status'] ?? '') === 'approved');
@@ -446,6 +475,27 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
             <?php endif; ?>
 
             <!-- Profile Summary Card -->
+            <?php if (!empty($modifAttente) && !$adminView): ?>
+            <div class="glass-card" style="margin-bottom:1.2rem; padding:1rem 1.3rem; border:1px solid rgba(255,193,7,0.5); background:rgba(255,193,7,0.07);">
+                <div style="color:#ffd873; font-weight:800; margin-bottom:0.3rem;">⏳ Modifications en attente de validation</div>
+                <div style="color:var(--text-muted); font-size:0.85rem; line-height:1.55;">
+                    Un administrateur doit valider vos modifications avant qu'elles soient appliquées à votre profil. En attendant, vos données actuelles restent en vigueur.
+                    <?php
+                        $libMod = [];
+                        $tousLib = profil_champs();
+                        foreach (array_keys($modifAttente['champs']) as $mk2) { if (isset($tousLib[$mk2])) { $libMod[] = $tousLib[$mk2]; } }
+                        if (!empty($modifAttente['photo'])) { $libMod[] = 'Photo'; }
+                    ?>
+                    <?php if (!empty($libMod)): ?><br>À valider : <strong style="color:var(--white);"><?php echo htmlspecialchars(implode(', ', $libMod)); ?></strong>.<?php endif; ?>
+                </div>
+                <?php if (!empty($modifAttente['photo'])): ?>
+                <div style="margin-top:0.6rem; display:flex; align-items:center; gap:0.6rem; color:var(--text-muted); font-size:0.82rem;">
+                    <img src="uploads/<?php echo htmlspecialchars(rawurlencode($modifAttente['photo'])); ?>" alt="" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid rgba(255,193,7,0.6);">
+                    <span>Nouvelle photo en attente de validation</span>
+                </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
             <div class="profile-header-card glass-card">
                 <?php if (!$readonly): ?>
                 <label for="photo-input" class="profile-large-photo-wrap editable" id="pp-wrap" title="Cliquez pour changer votre photo" aria-label="Changer ma photo de profil">

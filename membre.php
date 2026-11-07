@@ -98,7 +98,7 @@ try {
 $isAdhesion = $m && !empty($m['type_adhesion']);
 $backLink = $isAdhesion ? 'admin_adhesions.php' : 'admin_dashboard.php';
 $backLabel = $isAdhesion ? 'Inscriptions Dahira' : 'Tableau de bord';
-$STATUTS = ['Professionnel', 'Etudiant', 'Alternant'];
+$STATUTS = ['Professionnel', 'Etudiant', 'Alternant', 'Indépendant'];
 // Mode lecture seule (bouton "Voir") : profil non editable.
 $readonly = isset($_GET['view']) && $_GET['view'] === '1';
 try { $secteursList = $pdo->query("SELECT nom FROM secteurs ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $secteursList = []; }

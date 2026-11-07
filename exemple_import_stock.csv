@@ -1,0 +1,12 @@
+﻿nom;quantite;statut;lieu;date_achat;prix_achat;description;photo;album
+Table pliante;20;Disponible;Box;2025-03;35,00;Table pliante 180 cm;table_pliante.png;
+Chaise pliante;120;Disponible;Box;2025-03;8,50;Chaise empilable noire;chaise_pliante.png;
+Chaise pliante cassée;6;Non utilisable;Box;2024-06;8,50;Pieds cassés, à jeter ou réparer;;
+Enceinte;2;Disponible;Keur Serigne Touba;2024-11;120;Enceinte 300 W, haut-parleur à changer;enceinte.png;enceinte_2.png
+Micro sans fil;4;Disponible;Keur Serigne Touba;2025-01;75,90;Micro main avec récepteur;micro_sans_fil.png;
+Câble XLR 10 m;12;Disponible;Keur Serigne Touba;2025-01;9,90;;;
+Tente 3x3 m;3;Réservé;Box;2023-09;180;Tente blanche pour événements;tente_3x3.png;
+Tapis de prière;60;Disponible;Keur Serigne Touba;2024-04;6;Tapis 70x120 cm;tapis_priere.png;
+Marmite 50 L;5;Disponible;Box;2023-08;95;Marmite inox pour le Magal;marmite_50l.png;
+Réchaud à gaz;4;Disponible;Box;2023-08;45;Brûleur à nettoyer;;
+Vidéoprojecteur;1;Disponible;Keur Serigne Touba;2024-02;420;;;

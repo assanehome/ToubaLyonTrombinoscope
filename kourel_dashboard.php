@@ -440,19 +440,19 @@ $renderRepetitionItem = function ($r, $showTitle = true) use ($pdo) {
         $optDist = $mv === 'distance' ? ' selected' : '';
         $optPres = $mv === 'presentiel' ? ' selected' : '';
         $h .= '<div id="rep-edit-' . $rid . '" style="display:none; margin-top:0.5rem;">';
-        $h .= '<form method="POST" class="repetition-create-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:0.6rem;">' . $csrf;
+        $h .= '<form method="POST" class="repetition-create-form" style="display:flex; flex-wrap:wrap; --fx-min:150px; gap:0.6rem;">' . $csrf;
         $h .= '<input type="hidden" name="action" value="edit_repetition"><input type="hidden" name="repetition_id" value="' . $rid . '">';
-        $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Titre</label><input type="text" name="titre" class="form-input" required value="' . htmlspecialchars((string) $r['titre'], ENT_QUOTES) . '"></div>';
-        $h .= '<div class="form-group" style="grid-column:1/-1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2">' . htmlspecialchars((string) ($r['description'] ?? '')) . '</textarea></div>';
+        $h .= '<div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Titre</label><input type="text" name="titre" class="form-input" required value="' . htmlspecialchars((string) $r['titre'], ENT_QUOTES) . '"></div>';
+        $h .= '<div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2">' . htmlspecialchars((string) ($r['description'] ?? '')) . '</textarea></div>';
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Date</label><input type="date" name="date_reunion" class="form-input" required min="' . date('Y-m-d') . '" value="' . htmlspecialchars((string) $r['date_reunion'], ENT_QUOTES) . '" style="width:100%; max-width:100%; box-sizing:border-box;"></div>';
         $curH = dahira_heure_hm((string) $r['heure']);
         $optsH = '<option value="">— Heure —</option>';
         for ($hh = 7; $hh <= 23; $hh++) { foreach (['00', '30'] as $mm) { $hv = sprintf('%02d:%s', $hh, $mm); $optsH .= '<option value="' . $hv . '"' . ($curH === $hv ? ' selected' : '') . '>' . $hv . '</option>'; } }
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Heure</label><select name="heure" class="form-input modern-select" required>' . $optsH . '</select></div>';
         $h .= '<div class="form-group" style="margin:0;"><label class="form-label">Mode</label><select name="mode" class="form-input modern-select r-mode" required><option value="distance"' . $optDist . '>💻 À distance (Zoom)</option><option value="presentiel"' . $optPres . '>🏛️ Présentiel</option></select></div>';
-        $h .= '<div class="form-group r-lien" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
-        $h .= '<div class="form-group r-lieu" style="grid-column:1/-1; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
-        $h .= '<div style="grid-column:1/-1;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>';
+        $h .= '<div class="form-group r-lien" style="flex: 1 1 100%; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom</label><input type="url" name="lien" class="form-input r-lien-input" value="' . htmlspecialchars((string) ($r['lien'] ?? ''), ENT_QUOTES) . '"></div>';
+        $h .= '<div class="form-group r-lieu" style="flex: 1 1 100%; margin:0; display:none;"><label class="form-label">📍 Adresse</label><input type="text" name="lieu" class="form-input r-lieu-input" value="' . htmlspecialchars((string) ($r['lieu'] ?? ''), ENT_QUOTES) . '"></div>';
+        $h .= '<div style="flex: 1 1 100%;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>';
         $h .= '</form></div>';
     }
     $h .= '</div>'; // fin carte
@@ -549,10 +549,7 @@ $membersJs = array_map(function ($m) {
         .kav-message > summary { cursor: pointer; color: var(--gold); font-weight: 700; font-size: 0.8rem; list-style: none; }
         .kav-message > summary::-webkit-details-marker { display: none; }
         /* Réglages du Kurel : un groupe replié, discret */
-        .kourel-params { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.6rem 0.9rem; margin-top: 0.5rem; }
-        .kourel-params > summary { cursor: pointer; color: var(--gold); font-weight: 700; font-size: 0.85rem; list-style: none; }
-        .kourel-params > summary::-webkit-details-marker { display: none; }
-        .kourel-params[open] > summary { margin-bottom: 0.5rem; }
+        .kourel-params { margin-top: 0.5rem; }
         /* Un cadre autour des formulaires de saisie */
         .kourel-cadre { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); }
         /* La Khassida travaillée, sur la répétition */
@@ -734,19 +731,19 @@ $membersJs = array_map(function ($m) {
                                 </div>
                             </details>
                             <?php endif; ?>
-                            <details style="border:1px solid var(--glass-border); border-radius:10px; padding:0.85rem 1rem; background:rgba(255,255,255,0.02); margin-top:0.5rem;">
+                            <details style="margin-top:0.5rem;">
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Créer une répétition</summary>
-                                <form method="POST" class="repetition-create-form kourel-cadre" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.7rem;">
+                                <form method="POST" class="repetition-create-form kourel-cadre" style="margin-top:0.8rem; display:flex; flex-wrap:wrap; --fx-min:160px; gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="create_repetition">
                                     <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required placeholder="Ex: Répétition hebdomadaire du Kurel"></div>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"></textarea></div>
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Titre <span style="color:var(--danger)">*</span></label><input type="text" name="titre" class="form-input" required placeholder="Ex: Répétition hebdomadaire du Kurel"></div>
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Ordre du jour</label><textarea name="description" class="form-input" rows="2"></textarea></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Date <span style="color:var(--danger)">*</span></label><input type="date" name="date_debut" class="form-input" required min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Heure <span style="color:var(--danger)">*</span></label><select name="heure" class="form-input modern-select" required><option value="">— Heure —</option><?php for ($hh = 7; $hh <= 23; $hh++): foreach (['00', '30'] as $mm): $hv = sprintf('%02d:%s', $hh, $mm); ?><option value="<?php echo $hv; ?>"><?php echo $hv; ?></option><?php endforeach; endfor; ?></select></div>
                                     <div class="form-group" style="margin:0;"><label class="form-label">Mode <span style="color:var(--danger)">*</span></label><select name="mode" class="form-input modern-select r-mode" required><option value="distance">💻 À distance (Zoom)</option><option value="presentiel" selected>🏛️ Présentiel</option></select></div>
                                     <?php // La Khassida travaillée vient du programme du Kurel : la mélodie suit. ?>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0; min-width:0;">
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0; min-width:0;">
                                         <label class="form-label">📜 Khassida travaillée <span style="color:var(--text-muted); font-size:0.8rem;">(facultatif)</span></label>
                                         <select name="avancement_id" class="form-input modern-select">
                                             <option value="">— Aucune —</option>
@@ -758,14 +755,14 @@ $membersJs = array_map(function ($m) {
                                             <p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Inscrivez d'abord une Khassida au programme, ci-dessous.</p>
                                         <?php endif; ?>
                                     </div>
-                                    <div class="form-group r-lien" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (répétition à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($repZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
-                                    <div class="form-group r-lieu" style="grid-column:1 / -1; margin:0; display:none;"><label class="form-label">📍 Adresse (présentiel) <span style="color:var(--danger)">*</span></label><input type="text" name="lieu" class="form-input r-lieu-input" value="<?php echo htmlspecialchars($repLieuDefaut); ?>"><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec l'adresse du Dahira — modifiable.</p></div>
-                                    <div class="form-group" style="grid-column:1 / -1; margin:0;">
+                                    <div class="form-group r-lien" style="flex: 1 1 100%; margin:0; display:none;"><label class="form-label">🔗 Lien Zoom (répétition à distance) <span style="color:var(--danger)">*</span></label><input type="url" name="lien" class="form-input r-lien-input" value="<?php echo htmlspecialchars($repZoomLien); ?>" placeholder="https://us06web.zoom.us/..."><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec le lien du Guddi Àjjuma — modifiable.</p></div>
+                                    <div class="form-group r-lieu" style="flex: 1 1 100%; margin:0; display:none;"><label class="form-label">📍 Adresse (présentiel) <span style="color:var(--danger)">*</span></label><input type="text" name="lieu" class="form-input r-lieu-input" value="<?php echo htmlspecialchars($repLieuDefaut); ?>"><p style="color:var(--text-muted); font-size:0.75rem; margin:0.3rem 0 0;">Pré-rempli avec l'adresse du Dahira — modifiable.</p></div>
+                                    <div class="form-group" style="flex: 1 1 100%; margin:0;">
                                         <label class="form-label" style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;"><input type="checkbox" name="periodique" value="1" class="r-periodique"> 🔁 Répétition périodique</label>
                                     </div>
                                     <div class="form-group r-per-fields" style="margin:0; display:none;"><label class="form-label">Périodicité</label><select name="periodicite" class="form-input modern-select"><option value="hebdomadaire">Hebdomadaire</option><option value="quinzaine">Une semaine sur deux</option><option value="mensuelle">Mensuelle</option></select></div>
                                     <div class="form-group r-per-fields" style="margin:0; display:none;"><label class="form-label">Date de fin</label><input type="date" name="date_fin" class="form-input" min="<?php echo date('Y-m-d'); ?>" style="width:100%; max-width:100%; box-sizing:border-box;"></div>
-                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Créer la répétition</button></div>
+                                    <div style="flex: 1 1 100%;"><button type="submit" class="btn btn-primary btn-sm">💾 Créer la répétition</button></div>
                                 </form>
                             </details>
                         </div>
@@ -828,7 +825,7 @@ $membersJs = array_map(function ($m) {
                                                             Le mot porte sur cette Khassida et sur le niveau atteint par le membre :
                                                             il reçoit une notification dans l'application, et un e-mail s'il a une adresse.
                                                         </p>
-                                                        <form method="POST" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap:0.6rem;"
+                                                        <form method="POST" style="display:flex; flex-wrap:wrap; --fx-min:min(100%, 11rem); gap:0.6rem;"
                                                               data-confirm="Envoyer ce message au membre choisi, par notification et par e-mail&nbsp;?">
                                                             <?php echo csrf_field(); ?>
                                                             <input type="hidden" name="action" value="message_membre">
@@ -836,8 +833,8 @@ $membersJs = array_map(function ($m) {
                                                             <input type="hidden" name="avancement_id" value="<?php echo (int) $av['id']; ?>">
                                                             <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">👤 Membre <span style="color:var(--danger)">*</span></label><select name="membre_id" class="form-input modern-select" required><?php foreach ($membersOfK as $mm): ?><option value="<?php echo (int) $mm['id']; ?>"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></option><?php endforeach; ?></select></div>
                                                             <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📈 Niveau du membre</label><select name="niveau" class="form-input modern-select"><option value="">— Sans niveau —</option><?php foreach (kourel_niveaux() as $cle => $lib): ?><option value="<?php echo $cle; ?>"><?php echo $lib; ?></option><?php endforeach; ?></select></div>
-                                                            <div class="form-group" style="grid-column:1 / -1; margin:0;"><label class="form-label">Message <span style="color:var(--danger)">*</span></label><textarea name="message" class="form-input" rows="3" required placeholder="Ex : Assalamu aleykum, continue à travailler le début de la Khassida, tu y es presque."></textarea></div>
-                                                            <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">📨 Envoyer le message</button></div>
+                                                            <div class="form-group" style="flex: 1 1 100%; margin:0;"><label class="form-label">Message <span style="color:var(--danger)">*</span></label><textarea name="message" class="form-input" rows="3" required placeholder="Ex : Assalamu aleykum, continue à travailler le début de la Khassida, tu y es presque."></textarea></div>
+                                                            <div style="flex: 1 1 100%;"><button type="submit" class="btn btn-primary btn-sm">📨 Envoyer le message</button></div>
                                                         </form>
                                                     </details>
                                                 <?php endif; ?>
@@ -849,7 +846,7 @@ $membersJs = array_map(function ($m) {
 
                             <details>
                                 <summary style="cursor:pointer; color:var(--gold); font-weight:700; font-size:0.9rem;">➕ Ajouter une Khassida au programme</summary>
-                                <form method="POST" class="kourel-cadre" style="margin-top:0.8rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:0.7rem;">
+                                <form method="POST" class="kourel-cadre" style="margin-top:0.8rem; display:flex; flex-wrap:wrap; --fx-min:150px; gap:0.7rem;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="avancement_ajouter">
                                     <input type="hidden" name="kourel_id" value="<?php echo (int) $k['id']; ?>">
@@ -857,7 +854,7 @@ $membersJs = array_map(function ($m) {
                                     <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">🎶 Mélodie</label><select name="melodie" class="form-input modern-select"><option value="">— Aucune —</option><?php foreach ($melodiesList as $ml): ?><option value="<?php echo htmlspecialchars($ml['nom'], ENT_QUOTES); ?>"><?php echo htmlspecialchars($ml['nom']); ?></option><?php endforeach; ?></select></div>
                                     <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">📅 Année</label><select name="annee" class="form-input modern-select"><?php foreach (kourel_annees() as $an): ?><option value="<?php echo (int) $an; ?>"<?php echo $an === (int) date('Y') ? ' selected' : ''; ?>><?php echo (int) $an; ?></option><?php endforeach; ?></select></div>
                                     <div class="form-group" style="margin:0; min-width:0;"><label class="form-label">Avancement</label><select name="statut" class="form-input modern-select"><?php foreach ($statuts as $cle => $s): ?><option value="<?php echo $cle; ?>"><?php echo $s['icone'] . ' ' . $s['libelle']; ?></option><?php endforeach; ?></select></div>
-                                    <div style="grid-column:1 / -1;"><button type="submit" class="btn btn-primary btn-sm">💾 Ajouter au programme</button></div>
+                                    <div style="flex: 1 1 100%;"><button type="submit" class="btn btn-primary btn-sm">💾 Ajouter au programme</button></div>
                                 </form>
                             </details>
                         </div>

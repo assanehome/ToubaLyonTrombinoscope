@@ -103,15 +103,19 @@ try {
             box-shadow: 0 4px 12px rgba(27, 67, 50, 0.3);
         }
         .game-layout {
-            display: grid;
-            grid-template-columns: 1fr;
+            display: flex;
+            flex-direction: column;
             gap: 2rem;
             margin-top: 1.5rem;
         }
+        .game-layout > * { min-width: 0; }
         @media(min-width: 768px) {
             .game-layout {
-                grid-template-columns: 350px 1fr;
+                flex-direction: row;
+                align-items: flex-start;
             }
+            .game-layout > :first-child { flex: 0 0 350px; }
+            .game-layout > :last-child { flex: 1 1 0; }
         }
         .game-photo-card {
             display: flex;
@@ -378,7 +382,7 @@ try {
                     <?php if (!empty($leaderboard)): ?>
                         <div style="margin-bottom: 2.5rem;">
                             <h4 style="color: var(--gold); font-size: 0.95rem; margin-bottom: 1.5rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; text-align: center;">🏆 Top 3 des Joueurs</h4>
-                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; justify-content: center; align-items: end;">
+                            <div style="display: flex; flex-wrap: wrap; --fx-min: 90px; gap: 0.75rem; justify-content: center; align-items: flex-end;">
                                 <?php 
                                 $top3 = array_slice($leaderboard, 0, 3);
                                 $rankIdx = 1;
@@ -503,15 +507,9 @@ try {
                     </div>
 
                     <div style="overflow-x: auto;">
-                        <table class="leaderboard-table">
-                            <thead>
-                                <tr>
-                                    <th class="rank-col">Rang</th>
-                                    <th>Joueur</th>
-                                    <th style="text-align: right;">Score Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                        <div class="dlist">
+                            
+                            
                                 <?php 
                                     $rank = 1;
                                     foreach ($leaderboard as $row): 
@@ -524,11 +522,11 @@ try {
                                     <?php 
                                         $rowName = $row['prenom'] . ' ' . $row['nom'];
                                     ?>
-                                    <tr class="leaderboard-row">
-                                        <td class="rank-col">
+                                    <div class="drow leaderboard-row">
+                                        <div class="dcell rank-col">
                                             <span class="rank-badge <?php echo $rankClass; ?>"><?php echo $rankBadge; ?></span>
-                                        </td>
-                                        <td style="font-weight: 600; color: var(--white);">
+                                        </div>
+                                        <div class="dcell dgrow" style="font-weight: 600; color: var(--white);">
                                             <div style="display: flex; align-items: center; gap: 0.75rem;">
                                                 <img src="uploads/<?php echo htmlspecialchars($row['photo_path']); ?>" alt="Photo de <?php echo htmlspecialchars($rowName); ?>" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--glass-border);">
                                                 <span>
@@ -538,17 +536,17 @@ try {
                                                     <?php endif; ?>
                                                 </span>
                                             </div>
-                                        </td>
-                                        <td style="text-align: right; font-weight: 800; color: var(--gold); font-size: 1.1rem;">
+                                        </div>
+                                        <div class="dcell" style="text-align: right; font-weight: 800; color: var(--gold); font-size: 1.1rem;">
                                             <?php echo (int)$row['score']; ?> pts
-                                        </td>
-                                    </tr>
+                                        </div>
+                                    </div>
                                 <?php 
                                     $rank++;
                                     endforeach; 
                                 ?>
-                            </tbody>
-                        </table>
+                            
+                        </div>
                     </div>
                 <?php endif; ?>
             </div>

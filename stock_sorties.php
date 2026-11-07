@@ -271,7 +271,8 @@ $empNomAffiche = function (array $s) use ($nomMembre) {
         .pk-tools input[type=text] { flex: 1 1 200px; min-width: 0; }
         .pk-chip { border: 1px solid rgba(212,175,55,0.45); background: transparent; color: var(--white); border-radius: 999px; padding: 0.45rem 0.95rem; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
         .pk-chip.on { background: rgba(212,175,55,0.22); color: var(--gold); }
-        .pk-grid { flex: 1 1 auto; overflow-y: auto; padding: 0.3rem 1.1rem 0.9rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.7rem; align-content: start; }
+        .pk-grid { flex: 1 1 auto; overflow-y: auto; padding: 0.3rem 1.1rem 0.9rem; display: flex; flex-wrap: wrap; gap: 0.7rem; align-content: start; }
+        .pk-grid > * { flex: 1 1 150px; min-width: 0; max-width: calc(150px * 1.6); }
         .pk-item { position: relative; border: 2px solid rgba(255,255,255,0.1); border-radius: 12px; overflow: hidden; background: rgba(255,255,255,0.04); cursor: pointer; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
         .pk-item:hover { border-color: rgba(212,175,55,0.55); }
         .pk-item.on { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(212,175,55,0.25); }
@@ -287,7 +288,7 @@ $empNomAffiche = function (array $s) use ($nomMembre) {
         .pk-item.on .pk-step { display: flex; }
         .pk-step button { width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--gold); background: transparent; color: var(--gold); font-weight: 800; font-size: 1rem; cursor: pointer; padding: 0; }
         .pk-step input { width: 48px; min-width: 0; text-align: center; padding: 0.3rem 0.2rem; }
-        .pk-vide { display: none; text-align: center; color: var(--text-muted); padding: 1.5rem 0; grid-column: 1 / -1; }
+        .pk-vide { display: none; text-align: center; color: var(--text-muted); padding: 1.5rem 0; flex: 1 1 100%; }
         .pk-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; padding: 0.8rem 1.1rem; border-top: 1px solid rgba(255,255,255,0.1); }
         .pk-foot .pk-n { color: var(--text-muted); font-size: 0.88rem; }
         .pk-foot .pk-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; }

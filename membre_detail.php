@@ -208,7 +208,8 @@ try {
         }
         .md-name { font-size: 1.2rem; font-weight: 700; color: var(--white); margin: 0; text-transform: capitalize; text-shadow: 0 1px 4px rgba(0,0,0,0.5); }
         .md-civ { margin-top: 0.1rem; }
-        .md-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.9rem; margin-bottom: 1.4rem; }
+        .md-grid { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-bottom: 1.4rem; }
+        .md-grid > * { flex: 1 1 220px; min-width: 0; }
         .md-item { border-radius: 10px; padding: 1rem 1.1rem; }
         .md-item .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
         .md-item .v { font-size: 0.98rem; font-weight: 600; color: var(--white); white-space: pre-line; word-break: break-word; }

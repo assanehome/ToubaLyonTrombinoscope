@@ -42,7 +42,7 @@ try {
         elseif ($type === 'repetition') { $table = 'kourel_repetitions'; $dateCol = 'date_reunion'; }
         else { $table = 'guddi_plannings'; $dateCol = 'date_guddi'; }
         // Horaires RÉELS de l'événement : heure de début (et de fin) propres à chaque séance
-        $selectCols = $type === 'dahira' ? "$dateCol, publie, heure_debut, heure_fin" : ($type === 'reunion' ? "$dateCol, publie, heure, heure_fin" : ($type === 'repetition' ? "$dateCol, publie, heure" : "$dateCol, publie, heure, heure_fin"));
+        $selectCols = $type === 'dahira' ? "$dateCol, publie, heure_debut, heure_fin, cloture" : ($type === 'reunion' ? "$dateCol, publie, heure, heure_fin, cloture" : ($type === 'repetition' ? "$dateCol, publie, heure, cloture" : "$dateCol, publie, heure, heure_fin, cloture"));
         $st = $pdo->prepare("SELECT $selectCols FROM $table WHERE id = ?");
         $st->execute([$planningId]);
         $row = $st->fetch();
@@ -64,13 +64,13 @@ try {
             $heureDebut = trim((string) ($row['heure'] ?? '')) !== '' ? trim((string) $row['heure']) : dahira_param($pdo, 'guddi_heure', '20h00');
             $heureFin = trim((string) ($row['heure_fin'] ?? '')) !== '' ? trim((string) $row['heure_fin']) : dahira_param($pdo, 'guddi_heure_fin', '');
         }
-        $etatP = dahira_presence_etat((string) $row[$dateCol], $heureDebut, $heureFin !== '' ? $heureFin : null);
+        $etatP = dahira_presence_etat((string) $row[$dateCol], $heureDebut, $heureFin !== '' ? $heureFin : null, ((int) ($row['cloture'] ?? 0)) === 1);
         if ($etatP === 'avenir') {
             echo json_encode(['ok' => false, 'msg' => 'La validation ne sera possible qu\'à partir de l\'heure de début (' . $heureDebut . ' le ' . date('d/m/Y', strtotime((string) $row[$dateCol])) . ').']);
             exit;
         }
         if ($etatP === 'terminee') {
-            echo json_encode(['ok' => false, 'msg' => 'La validation de présence est clôturée : l\'événement est terminé.']);
+            echo json_encode(['ok' => false, 'msg' => 'La validation de présence est clôturée : l\'événement est clôturé.']);
             exit;
         }
         $pdo->prepare("INSERT IGNORE INTO presence_validations (planning_type, planning_id, membre_id) VALUES (?, ?, ?)")

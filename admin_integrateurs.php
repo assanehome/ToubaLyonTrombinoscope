@@ -156,24 +156,24 @@ try {
                     <div class="empty-state"><div class="empty-state-icon">👤</div><p>Aucun membre validé pour le moment.</p></div>
                 <?php else: ?>
                 <div class="table-responsive">
-                    <table class="admin-table admin-table--compact">
-                        <thead><tr><th>Membre</th><th>Rôle</th><th>Action</th></tr></thead>
-                        <tbody>
+                    <div class="dlist">
+                        
+                        
                             <?php foreach ($membres as $mm): ?>
                                 <?php $isInteg = ((int)$mm['is_integrateur'] === 1); ?>
-                                <tr data-search="<?php echo htmlspecialchars(mb_strtolower($mm['prenom'] . ' ' . $mm['nom'] . ' ' . $mm['email']), ENT_QUOTES); ?>" data-commission="<?php echo htmlspecialchars($mm['souhait_commission'] ?? '', ENT_QUOTES); ?>">
-                                    <td>
+                                <div class="drow" data-search="<?php echo htmlspecialchars(mb_strtolower($mm['prenom'] . ' ' . $mm['nom'] . ' ' . $mm['email']), ENT_QUOTES); ?>" data-commission="<?php echo htmlspecialchars($mm['souhait_commission'] ?? '', ENT_QUOTES); ?>">
+                                    <div class="dcell dgrow">
                                         <div style="font-weight:600;"><?php echo htmlspecialchars($mm['prenom'] . ' ' . $mm['nom']); ?></div>
                                         <div style="font-size:0.8rem; color:var(--text-muted); word-break:break-all;"><?php echo htmlspecialchars($mm['email']); ?></div>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell">
                                         <?php if ($isInteg): ?>
                                             <span class="role-badge">🧭 Intégrateur</span>
                                         <?php else: ?>
                                             <span style="color:var(--text-muted);">—</span>
                                         <?php endif; ?>
-                                    </td>
-                                    <td>
+                                    </div>
+                                    <div class="dcell">
                                         <form action="admin_integrateurs.php" method="POST" style="display:inline;">
                                             <?php echo csrf_field(); ?>
                                             <input type="hidden" name="member_id" value="<?php echo (int)$mm['id']; ?>">
@@ -185,11 +185,11 @@ try {
                                                 <button type="submit" class="btn btn-primary btn-sm">Donner le rôle</button>
                                             <?php endif; ?>
                                         </form>
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
                             <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                        
+                    </div>
                 </div>
                 <div class="empty-state" id="role-noresult" style="display:none;">
                     <div class="empty-state-icon">🔍</div><p>Aucun membre ne correspond à votre recherche.</p>
@@ -219,7 +219,7 @@ try {
         (function () {
             var roleInput = document.getElementById('role-search-input');
             var comSel = document.getElementById('role-commission');
-            var rows = Array.from(document.querySelectorAll('tr[data-search]'));
+            var rows = Array.from(document.querySelectorAll('.drow[data-search]'));
             var noResult = document.getElementById('role-noresult');
             var countEl = document.getElementById('role-count');
             function norm(s){ return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim(); }

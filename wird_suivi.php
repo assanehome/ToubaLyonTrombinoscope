@@ -314,7 +314,8 @@ function wsuivi_badge($s)
         .ws-wrap { max-width: 900px; margin: 2rem auto; }
         .ws-prog { height: 10px; border-radius: 12px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 0.4rem 0 0.6rem; }
         .ws-prog > i { display: block; height: 100%; background: linear-gradient(90deg,#2d6a4f,#7bd8a6); }
-        .ws-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+        .ws-stats { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem; }
+        .ws-stats > * { flex: 1 1 110px; min-width: 0; }
         .ws-stat { border-radius: 10px; padding: 0.85rem 1rem; text-align: center; }
         .ws-stat .n { font-size: 1.5rem; font-weight: 800; color: var(--white); line-height: 1.1; }
         .ws-stat .l { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 0.2rem; }
@@ -353,7 +354,7 @@ function wsuivi_badge($s)
             .ws-head .ws-head-per { display: block; margin-top: 0.25rem; }
             .ws-head .btn { width: 100%; }
             /* Indicateurs : 2 par ligne, centrés, pleine largeur */
-            .ws-stats { grid-template-columns: repeat(2, 1fr); }
+            .ws-stats > * { flex-basis: calc(50% - 0.75rem); }
             /* Barre Diffusion : centrée, actions empilées pleine largeur */
             .ws-diffusion { flex-direction: column; align-items: stretch; text-align: center; }
             .ws-diffusion > div { margin-left: 0 !important; width: 100%; flex-direction: column; }
@@ -673,7 +674,7 @@ function wsuivi_badge($s)
                 <?php echo csrf_field(); ?>
                 <input type="hidden" name="action" value="set_kamil_managers">
                 <input type="hidden" name="session_id" value="<?php echo $sid; ?>">
-                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:0.4rem; margin-bottom:0.85rem;">
+                <div style="display:flex; flex-wrap:wrap; --fx-min:200px; --fx-fill:1; gap:0.4rem; margin-bottom:0.85rem;">
                     <?php foreach ($culteMembres as $cmb): ?>
                     <label style="display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:8px; padding:0.4rem 0.7rem; cursor:pointer;">
                         <input type="checkbox" name="membre_ids[]" value="<?php echo (int) $cmb['id']; ?>"<?php echo in_array((int) $cmb['id'], $kamilGest, true) ? ' checked' : ''; ?>>

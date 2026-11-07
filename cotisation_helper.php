@@ -162,6 +162,23 @@ function cotisation_virement_confirmer(PDO $pdo, int $membreId, string $periode)
 }
 
 /**
+ * La Finance annule la confirmation de réception d'un virement automatique (confirmation faite par erreur) :
+ * le mois redevient « à confirmer ». Retire le pointage « payé par virement » de ce mois, rien d'autre.
+ */
+function cotisation_virement_annuler_reception(PDO $pdo, int $membreId, string $periode): bool
+{
+    if (cotisation_mode($pdo, $membreId) !== 'virement' || !cotisation_virement_couvre($pdo, $membreId, $periode)) { return false; }
+    try {
+        $st = $pdo->prepare("DELETE FROM cotisations WHERE membre_id = ? AND periode = ? AND statut = 'paye' AND methode = 'virement'");
+        $st->execute([$membreId, $periode]);
+        return $st->rowCount() > 0;
+    } catch (Exception $e) {
+        error_log('Touba Lyon cotisation virement_annuler_reception : ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Virement non reçu : le membre est prévenu (cloche + e-mail) et l'option
  * « virement automatique » est désactivée (retour en cotisation mensuelle).
  * Les mois déjà couverts par le virement sont d'abord enregistrés comme réglés,
@@ -249,40 +266,129 @@ function cotisation_stripe_pret(PDO $pdo): bool
 }
 
 /**
- * Appel à l'API Stripe (form-urlencoded). Retourne [ok, data|error].
+ * Appel à l'API Stripe (form-urlencoded). Retourne ['ok' => bool, 'data' => …|'error' => …, 'http' => code, 'errno' => code cURL].
+ * Plus tolérant sur un hébergement mutualisé : IPv4 forcé (IPv6 sortant souvent bloqué), nouvel essai sur une
+ * erreur réseau passagère, autre bundle de certificats si celui de PHP est introuvable, et repli sans cURL.
  */
 function cotisation_stripe_api(string $sk, string $method, string $path, array $params = []): array
 {
     $url = 'https://api.stripe.com/v1/' . ltrim($path, '/');
-    $ch = curl_init();
-    $opts = [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $sk],
-        CURLOPT_TIMEOUT => 20,
-    ];
-    if (strtoupper($method) === 'POST') {
-        $opts[CURLOPT_POST] = true;
-        $opts[CURLOPT_POSTFIELDS] = http_build_query($params);
+    $post = strtoupper($method) === 'POST';
+    $body = $post ? http_build_query($params) : '';
+
+    if (!function_exists('curl_init')) {
+        return cotisation_stripe_api_flux($sk, $url, $post, $body);
     }
-    curl_setopt_array($ch, $opts);
-    $resp = curl_exec($ch);
-    $errno = curl_errno($ch);
-    $err = curl_error($ch);
-    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+
+    // Bundles de certificats usuels (essayés seulement si la vérification SSL échoue)
+    $bundles = [];
+    foreach (['/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/cert.pem', '/usr/local/share/certs/ca-root-nss.crt', __DIR__ . '/cacert.pem'] as $cb) {
+        if (@is_readable($cb)) { $bundles[] = $cb; }
+    }
+    $resp = false; $errno = 0; $err = ''; $code = 0;
+    $essai = 0; $bundleIdx = -1;
+    while ($essai < 4) {
+        $essai++;
+        $ch = curl_init();
+        $opts = [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $sk],
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 25,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ];
+        if (defined('CURL_IPRESOLVE_V4')) { $opts[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4; }
+        if ($bundleIdx >= 0 && isset($bundles[$bundleIdx])) { $opts[CURLOPT_CAINFO] = $bundles[$bundleIdx]; }
+        if ($post) {
+            $opts[CURLOPT_POST] = true;
+            $opts[CURLOPT_POSTFIELDS] = $body;
+        }
+        curl_setopt_array($ch, $opts);
+        $resp = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $err = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($errno === 0) { break; }
+        if (in_array($errno, [60, 77, 35, 58, 83], true) && $bundleIdx + 1 < count($bundles)) { $bundleIdx++; continue; } // certificat : autre bundle
+        if (in_array($errno, [28, 7, 6, 56, 52, 55], true) && $essai < 3) { usleep(400000); continue; }                    // réseau : nouvel essai
+        break;
+    }
     if ($errno !== 0) {
-        return ['ok' => false, 'error' => 'Connexion Stripe impossible : ' . $err];
+        // Dernier recours : même appel sans cURL (flux PHP), si l'hébergeur l'autorise
+        $flux = cotisation_stripe_api_flux($sk, $url, $post, $body);
+        if (!empty($flux['ok']) || (isset($flux['http']) && $flux['http'] > 0)) { return $flux; }
+        return ['ok' => false, 'error' => 'Connexion Stripe impossible (cURL ' . $errno . ') : ' . $err, 'http' => 0, 'errno' => $errno];
     }
-    $data = json_decode((string) $resp, true);
+    return cotisation_stripe_reponse((string) $resp, $code, 0);
+}
+
+/** Interprète la réponse HTTP de Stripe. */
+function cotisation_stripe_reponse(string $resp, int $code, int $errno): array
+{
+    $data = json_decode($resp, true);
     if (!is_array($data)) {
-        return ['ok' => false, 'error' => 'Réponse Stripe invalide.'];
+        return ['ok' => false, 'error' => 'Réponse Stripe invalide (HTTP ' . $code . ').', 'http' => $code, 'errno' => $errno];
     }
     if ($code >= 200 && $code < 300) {
-        return ['ok' => true, 'data' => $data];
+        return ['ok' => true, 'data' => $data, 'http' => $code, 'errno' => $errno];
     }
     $msg = $data['error']['message'] ?? ('Erreur Stripe (HTTP ' . $code . ').');
-    return ['ok' => false, 'error' => $msg];
+    return ['ok' => false, 'error' => $msg, 'http' => $code, 'errno' => $errno];
+}
+
+/** Appel Stripe sans cURL (flux PHP : allow_url_fopen + OpenSSL). */
+function cotisation_stripe_api_flux(string $sk, string $url, bool $post, string $body): array
+{
+    if (!ini_get('allow_url_fopen')) {
+        return ['ok' => false, 'error' => 'Connexion Stripe impossible : ni cURL ni allow_url_fopen ne sont disponibles sur ce serveur.', 'http' => 0, 'errno' => -1];
+    }
+    $headers = "Authorization: Bearer " . $sk . "\r\n";
+    if ($post) { $headers .= "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: " . strlen($body) . "\r\n"; }
+    $ctx = stream_context_create(['http' => ['method' => $post ? 'POST' : 'GET', 'header' => $headers, 'content' => $post ? $body : '', 'timeout' => 25, 'ignore_errors' => true]]);
+    $resp = @file_get_contents($url, false, $ctx);
+    if ($resp === false) {
+        $e = error_get_last();
+        return ['ok' => false, 'error' => 'Connexion Stripe impossible (flux PHP) : ' . ($e['message'] ?? 'échec réseau'), 'http' => 0, 'errno' => -2];
+    }
+    $code = 0;
+    foreach (($http_response_header ?? []) as $h) { if (preg_match('#^HTTP/\S+\s+(\d{3})#', $h, $m)) { $code = (int) $m[1]; } }
+    return cotisation_stripe_reponse((string) $resp, $code, 0);
+}
+
+/**
+ * Diagnostic de la connexion à Stripe (administrateur) : environnement, DNS et appel d'essai.
+ * Retourne [ok => bool, lignes => string[]]. Ne révèle jamais la clé secrète.
+ */
+function cotisation_stripe_diagnostic(PDO $pdo): array
+{
+    $l = [];
+    $l[] = 'PHP ' . PHP_VERSION;
+    if (function_exists('curl_version')) { $cv = curl_version(); $l[] = 'cURL ' . ($cv['version'] ?? '?') . ' (' . ($cv['ssl_version'] ?? 'SSL ?') . ')'; }
+    else { $l[] = 'cURL absent'; }
+    $l[] = 'OpenSSL ' . (extension_loaded('openssl') ? 'oui' : 'non') . ', allow_url_fopen ' . (ini_get('allow_url_fopen') ? 'oui' : 'non');
+    $ip = @gethostbyname('api.stripe.com');
+    $l[] = 'DNS api.stripe.com : ' . (($ip !== '' && $ip !== 'api.stripe.com') ? $ip : 'échec de résolution');
+    $conf = cotisation_stripe_config($pdo);
+    $sk = $conf['sk'];
+    $mode = $sk === '' ? 'aucune clé secrète' : (strpos($sk, '_live_') !== false ? 'clé réelle (live)' : (strpos($sk, '_test_') !== false ? 'clé de test' : 'format de clé inattendu'));
+    $l[] = 'Clé secrète : ' . $mode . ($conf['pk'] === '' ? ' · clé publique absente' : '');
+    $res = cotisation_stripe_api($sk, 'GET', 'balance');
+    if (!empty($res['ok'])) {
+        $l[] = 'Appel Stripe : réussi (HTTP ' . (int) ($res['http'] ?? 200) . ') — la clé est valide.';
+        return ['ok' => true, 'lignes' => $l];
+    }
+    $http = (int) ($res['http'] ?? 0);
+    if ($http > 0) {
+        // Stripe répond : la connexion fonctionne, c'est la clé qui est refusée ou limitée
+        $l[] = 'Connexion à Stripe : OK (HTTP ' . $http . ').';
+        $l[] = 'Réponse de Stripe : ' . ($res['error'] ?? '');
+        return ['ok' => false, 'lignes' => $l, 'connexion' => true];
+    }
+    $l[] = 'Connexion à Stripe : ÉCHEC — ' . ($res['error'] ?? 'erreur réseau');
+    return ['ok' => false, 'lignes' => $l, 'connexion' => false];
 }
 
 /**

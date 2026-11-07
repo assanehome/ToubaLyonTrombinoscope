@@ -211,9 +211,14 @@ if (!empty($smgData)) {
         .mc-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
         .mc-chip { background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.2rem 0.7rem; font-size: 0.82rem; color: var(--white); }
         .mc-chip.resp { border-color: rgba(212,175,55,0.5); color: var(--gold); }
-        .mc-grp { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.9rem; background: rgba(255,255,255,0.03); margin-bottom: 0.5rem; }
-        .mc-grp > summary { cursor: pointer; list-style: none; font-weight: 700; color: var(--white); font-size: 0.9rem; display: flex; align-items: center; gap: 0.4rem; }
+        .mc-grp { border: 1px solid rgba(212,175,55,0.38); border-radius: 12px; padding: 0 1rem 1rem; background: rgba(255,255,255,0.03); margin-bottom: 0.5rem; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
+        .mc-grp:not([open]) { padding-bottom: 0; }
+        .mc-grp > summary { cursor: pointer; list-style: none; margin: 0 -1rem; padding: 0.85rem 1rem; font-weight: 800; color: var(--gold); font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem; transition: background .15s; }
         .mc-grp > summary::-webkit-details-marker { display: none; }
+        .mc-grp > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
+        .mc-grp > summary:hover { background: rgba(212,175,55,0.08); }
+        .mc-grp[open] > summary::after { transform: rotate(90deg); }
+        .mc-grp[open] > summary { background: rgba(212,175,55,0.1); border-bottom: 1px solid rgba(212,175,55,0.3); margin-bottom: 0.8rem; }
         .mc-reu { border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.55rem 0.8rem; margin-top: 0.5rem; background: rgba(255,255,255,0.04); }
         .mc-reu-top { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
         .mc-reu-titre { color: var(--white); font-weight: 700; }
@@ -227,7 +232,7 @@ if (!empty($smgData)) {
         .mc-frame-full { display: block; width: 100%; border: 0; min-height: 260px; background: transparent; overflow: hidden; }
         /* Une commission = un groupe, au même format que les autres groupes de l'application */
         details.mc-com { border: 1px solid rgba(212,175,55,0.38); border-radius: 12px; background: rgba(255,255,255,0.03); overflow: hidden; margin: 0 0 1rem; padding: 0; box-shadow: 0 2px 10px rgba(0,0,0,0.16); }
-        details.mc-com > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.85rem 1rem; color: var(--white); font-weight: 800; font-size: 0.92rem; transition: background .15s; }
+        details.mc-com > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0.85rem 1rem; color: var(--gold); font-weight: 800; font-size: 0.92rem; transition: background .15s; }
         details.mc-com > summary::-webkit-details-marker { display: none; }
         details.mc-com > summary::after { content: '▸'; margin-left: auto; color: var(--gold); transition: transform .2s; }
         details.mc-com[open] > summary::after { transform: rotate(90deg); }
@@ -439,8 +444,8 @@ if (!empty($smgData)) {
         .smg-head h3 { margin: 0; color: #fff; font-size: 1.05rem; }
         .smg-x { background: none; border: 0; color: #fff; font-size: 1.7rem; line-height: 1; cursor: pointer; }
         .smg-note { padding: 0.55rem 1.25rem; font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.08); }
-        .smg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 0; flex: 1; overflow: hidden; }
-        .smg-col { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid rgba(255,255,255,0.08); }
+        .smg-cols { display: flex; gap: 0; min-height: 0; flex: 1; overflow: hidden; }
+        .smg-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid rgba(255,255,255,0.08); }
         .smg-col:last-child { border-right: 0; }
         .smg-col-head { padding: 0.7rem 0.9rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .smg-title { color: var(--gold); font-weight: 700; font-size: 0.82rem; margin-bottom: 0.4rem; }
@@ -456,7 +461,7 @@ if (!empty($smgData)) {
         .smg-btn.rem { background: rgba(191,33,33,0.2); color: #fca5a5; }
         .smg-vide { padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
         .smg-foot { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; padding: 0.8rem 1.25rem; border-top: 1px solid rgba(255,255,255,0.08); color: var(--text-muted); font-size: 0.8rem; }
-        @media (max-width: 600px) { .smg-cols { grid-template-columns: 1fr; overflow-y: auto; } .smg-col { border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.08); } .smg-list { max-height: 34vh; } }
+        @media (max-width: 600px) { .smg-cols { flex-direction: column; overflow-y: auto; } .smg-col { border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.08); } .smg-list { max-height: 34vh; } }
     </style>
     <div id="smg-modal">
         <div class="smg-card">

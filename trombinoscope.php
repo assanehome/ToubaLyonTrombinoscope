@@ -183,7 +183,7 @@ try {
                 grid.style.display = 'none';
                 noResults.style.display = 'block';
             } else {
-                grid.style.display = 'grid';
+                grid.style.display = 'flex';
                 noResults.style.display = 'none';
             }
         }

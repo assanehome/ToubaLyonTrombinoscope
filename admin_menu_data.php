@@ -25,6 +25,13 @@ function troba_admin_menu_items(?PDO $pdo = null): array
         }
     }
 
+    // Modifications de profil en attente de validation (badge du menu)
+    $modifs = 0;
+    if ($pdo instanceof PDO) {
+        try { $modifs = (int) $pdo->query("SELECT COUNT(*) FROM membre_modifications WHERE statut = 'attente'")->fetchColumn(); }
+        catch (Throwable $e) { $modifs = 0; }
+    }
+
     // Le lien Stock est proposé si au moins une commission l'a activé
     $stockOn = false;
     if ($pdo instanceof PDO) {
@@ -38,6 +45,7 @@ function troba_admin_menu_items(?PDO $pdo = null): array
         'admin_dashboard.php#trombi' => '🖼️ Trombinoscope',
         'actualites.php'             => '📰 Actualités',
         'admin_adhesions.php'        => '📝 Membres (' . $adhesions . ')',
+        'admin_modifications.php'    => '✏️ Modifications profil (' . $modifs . ')',
         'admin_reponses.php'         => '📊 Suivi intégration',
         'admin_integrateurs.php'     => '👤 Intégrateurs',
         'kourel_dashboard.php'       => '🎵 Kurels',

@@ -83,6 +83,9 @@ unset($_SESSION['magal_flash']);
 function magal_redirect(int $annee, string $tab, string $msg = ''): void
 {
     if ($msg !== '') { $_SESSION['magal_flash'] = $msg; }
+    // Action lancée depuis l'accueil ou la liste « en cours » : on y revient
+    $retour = (string) ($_POST['retour_tab'] ?? '');
+    if (in_array($retour, ['accueil', 'besoins', 'taches'], true)) { $tab = $retour; }
     header('Location: magal.php?annee=' . $annee . '&tab=' . urlencode($tab));
     exit;
 }
@@ -341,6 +344,92 @@ $stBesoin = magal_statuts_besoin();
 $stTache = magal_statuts_tache();
 $aujourdhui = date('Y-m-d');
 
+// ---------------------------------------------------------------------------
+// Besoins et tâches en cours (accueil, haut des onglets Besoins / Tâches) :
+// une ligne par élément, ses actions en boutons, selon les mêmes droits que
+// les formulaires des onglets (statut : responsables, demandeur ou personne
+// chargée de la tâche ; suppression : responsables de la commission).
+// ---------------------------------------------------------------------------
+$mgBouton = function (string $action, int $id, string $tabRetour, array $extra, string $label,
+                      string $classe = 'btn-secondary', string $confirm = '') use ($annee, $h): string {
+    $champs = '';
+    foreach ($extra as $k => $v) { $champs .= '<input type="hidden" name="' . $h($k) . '" value="' . $h($v) . '">'; }
+    return '<form method="POST" action="magal.php" style="margin:0;"'
+        . ($confirm !== '' ? ' data-confirm="' . $h($confirm) . '" data-confirm-danger="1"' : '') . '>'
+        . csrf_field()
+        . '<input type="hidden" name="action" value="' . $h($action) . '">'
+        . '<input type="hidden" name="annee" value="' . (int) $annee . '">'
+        . '<input type="hidden" name="id" value="' . $id . '">'
+        . '<input type="hidden" name="retour_tab" value="' . $h($tabRetour) . '">'
+        . $champs
+        . '<button type="submit" class="btn ' . $classe . ' btn-sm"' . ($classe === 'mg-btn-suppr' ? ' title="Supprimer"' : '') . '>' . $label . '</button></form>';
+};
+$mgLigneEnCours = function (string $type, array $l, string $tabRetour)
+        use ($h, $mgBouton, $mgPeutEditer, $mgMembre, $nomCommission, $aujourdhui, $stBesoin, $stTache): string {
+    $cid = (int) $l['commission_id'];
+    $id = (int) $l['id'];
+    $edit = $mgPeutEditer($cid);
+    $retard = !empty($l['echeance']) && $l['echeance'] < $aujourdhui;
+    $sub = '📋 ' . $h($nomCommission[$cid] ?? '');
+    if ($type === 't') {
+        $sub .= ' · 👤 ' . (trim((string) ($l['assignee_nom'] ?? '')) !== '' ? $h($l['assignee_nom']) : 'Non attribuée');
+    } elseif (!empty($l['quantite'])) {
+        $sub .= ' · Quantité : ' . $h($l['quantite']);
+    }
+    if (!empty($l['echeance'])) {
+        $sub .= ' · 📅 <span' . ($retard ? ' style="color:#fca5a5; font-weight:700;"' : '') . '>'
+            . $h(date('d/m/Y', strtotime($l['echeance']))) . ($retard ? ' (en retard)' : '') . '</span>';
+    }
+    $html = '<div class="mg-row"><div class="mg-main"><strong>' . $h($type === 't' ? $l['titre'] : $l['libelle']) . '</strong>'
+        . '<div class="mg-sub">' . $sub . '</div>'
+        . ($type === 't' && !empty($l['description']) ? '<div class="mg-sub">' . nl2br($h($l['description'])) . '</div>' : '')
+        . '</div><div class="mg-actions">';
+    if ($type === 'b') {
+        $peut = $edit || ($mgMembre > 0 && (int) ($l['created_by'] ?? 0) === $mgMembre);
+        if ($peut) {
+            if ($l['statut'] !== 'a_trouver') { $html .= $mgBouton('set_besoin_statut', $id, $tabRetour, ['statut' => 'a_trouver'], '🔎 À trouver'); }
+            if ($l['statut'] !== 'en_cours') { $html .= $mgBouton('set_besoin_statut', $id, $tabRetour, ['statut' => 'en_cours'], '⏳ En cours'); }
+            $html .= $mgBouton('set_besoin_statut', $id, $tabRetour, ['statut' => 'obtenu'], '✅ Obtenu', 'btn-primary');
+            if ($edit) { $html .= $mgBouton('delete_besoin', $id, $tabRetour, [], '🗑️ Supprimer', 'mg-btn-suppr', 'Supprimer ce besoin ?'); }
+        } else {
+            $html .= '<span class="mg-badge ' . ($l['statut'] === 'en_cours' ? 'mg-b-info' : 'mg-b-att') . '">' . $h($stBesoin[$l['statut']] ?? $l['statut']) . '</span>';
+        }
+    } else {
+        $peut = $edit || ($mgMembre > 0 && ((int) $l['assignee_id'] === $mgMembre || (int) ($l['created_by'] ?? 0) === $mgMembre));
+        if ($peut) {
+            if ($l['statut'] === 'a_faire') { $html .= $mgBouton('set_tache_statut', $id, $tabRetour, ['statut' => 'en_cours'], '▶ Commencer'); }
+            if ($l['statut'] === 'en_cours') { $html .= $mgBouton('set_tache_statut', $id, $tabRetour, ['statut' => 'a_faire'], '↩ À faire'); }
+            $html .= $mgBouton('set_tache_statut', $id, $tabRetour, ['statut' => 'fait'], '✅ Fait', 'btn-primary');
+            if ($edit) { $html .= $mgBouton('delete_tache', $id, $tabRetour, [], '🗑️ Supprimer', 'mg-btn-suppr', 'Supprimer cette tâche ?'); }
+        } else {
+            $html .= '<span class="mg-badge ' . ($l['statut'] === 'en_cours' ? 'mg-b-info' : 'mg-b-att') . '">' . $h($stTache[$l['statut']] ?? $l['statut']) . '</span>';
+        }
+    }
+    return $html . '</div></div>';
+};
+// Groupes ouverts par statut ; $defs : [type, statut, titre]. Rien d'en cours : rien d'affiché.
+$mgGroupesEnCours = function (array $defs, string $tabRetour) use ($visibles, $besoins, $taches, $mgLigneEnCours, $h): string {
+    $html = '';
+    foreach ($defs as [$type, $statut, $titre]) {
+        $liste = [];
+        foreach ($visibles as $vcid) {
+            foreach ((($type === 't' ? $taches : $besoins)[$vcid] ?? []) as $l) {
+                if ($l['statut'] === $statut) { $liste[] = $l; }
+            }
+        }
+        if (empty($liste)) { continue; }
+        // Les plus urgents d'abord : échéance la plus proche, sans échéance en dernier
+        usort($liste, static function ($a, $b) {
+            return [empty($a['echeance']), (string) $a['echeance']] <=> [empty($b['echeance']), (string) $b['echeance']];
+        });
+        $html .= '<details class="glass-card mg-card" open><summary>' . $titre . ' <span class="mg-count">' . count($liste) . '</span></summary>'
+            . '<div style="margin-top:0.7rem;">';
+        foreach ($liste as $l) { $html .= $mgLigneEnCours($type, $l, $tabRetour); }
+        $html .= '</div></details>';
+    }
+    return $html;
+};
+
 // Indicateurs de l'édition (limités aux commissions visibles par le membre)
 $ind = ['com' => count($visibles), 'bT' => 0, 'bOk' => 0, 'bEnc' => 0, 'bAtt' => 0, 'bRet' => 0, 'tT' => 0, 'tOk' => 0, 'tEnc' => 0, 'tAtt' => 0, 'tRet' => 0, 'parCom' => []];
 foreach ($visibles as $icid) {
@@ -394,22 +483,31 @@ if ($mgOrganisateur || $mgFinance) {
         .mg-card h3 { margin: 0 0 0.7rem; color: var(--white); font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
         .mg-count { font-size: 0.72rem; font-weight: 800; color: #0c241a; background: linear-gradient(135deg,#d4af37,#f1d279); border-radius: 12px; padding: 2px 10px; }
         .mg-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); border-radius: 10px; padding: 0.5rem 0.8rem; margin-bottom: 0.45rem; }
+        /* Actions des besoins et tâches en cours (accueil, haut des onglets) :
+           sous le libellé, un bouton par ligne, sur toute la largeur */
+        .mg-actions { display: flex; flex-direction: column; gap: 0.35rem; width: 100%; }
+        .mg-actions form, .mg-actions .btn { width: 100%; margin: 0; }
+        .mg-actions .btn { justify-content: center; text-align: center; }
+        .mg-actions .mg-badge { align-self: flex-start; }
+        .mg-btn-suppr { background: transparent; border: 1px solid var(--danger); color: #fca5a5; }
         .mg-row .mg-main { flex: 1; min-width: 160px; }
         .mg-row .mg-sub { color: var(--text-muted); font-size: 0.78rem; margin-top: 2px; }
         .mg-row.done .mg-main strong { text-decoration: line-through; opacity: 0.6; }
         .mg-form { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end; margin-top: 0.7rem; }
         .mg-form .form-group { margin: 0; flex: 1; min-width: 150px; }
         .mg-sel { background: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); color: var(--white); border-radius: 8px; padding: 0.3rem 0.5rem; font-size: 0.82rem; color-scheme: dark; }
-        .mg-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.7rem; margin-bottom: 1.1rem; }
+        .mg-stats { display: flex; flex-wrap: wrap; gap: 0.7rem; margin-bottom: 1.1rem; }
+        .mg-stats > * { flex: 1 1 150px; min-width: 0; }
         .mg-stat { border-radius: 10px; padding: 0.8rem 1rem; text-align: center; }
         .mg-stat .v { font-size: 1.4rem; font-weight: 800; color: var(--white); }
         .mg-stat .l { color: var(--text-muted); font-size: 0.78rem; }
         .mg-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
         .mg-bar > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #2d6a4f, #d4af37); }
-        .mg-ind-row { display: grid; grid-template-columns: minmax(120px, 1.2fr) 2fr; gap: 0.3rem 0.9rem; align-items: center; padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.07); }
+        .mg-ind-row { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; align-items: center; padding: 0.55rem 0; border-top: 1px solid rgba(255,255,255,0.07); }
+        .mg-ind-row > .mg-ind-nom { flex: 1.2 1 140px; }
+        .mg-ind-row > .mg-bar { flex: 2 1 200px; }
         .mg-ind-row .mg-ind-nom { color: var(--white); font-weight: 700; font-size: 0.9rem; }
-        .mg-ind-row .mg-ind-txt { grid-column: 1 / -1; color: var(--text-muted); font-size: 0.78rem; }
-        @media (max-width: 600px) { .mg-ind-row { grid-template-columns: 1fr; } }
+        .mg-ind-row .mg-ind-txt { flex: 1 1 100%; color: var(--text-muted); font-size: 0.78rem; }
         .mg-badge { font-size: 0.72rem; padding: 0.15rem 0.55rem; border-radius: 12px; white-space: nowrap; border: 1px solid; }
         .mg-b-ok { background: rgba(37,211,102,0.15); color: #7bd8a6; border-color: rgba(37,211,102,0.4); }
         .mg-b-att { background: rgba(255,193,7,0.15); color: #ffd873; border-color: rgba(255,193,7,0.4); }
@@ -510,67 +608,38 @@ if ($mgOrganisateur || $mgFinance) {
             <?php if ($tab === 'accueil'):
                 // Le travail en cours des commissions visibles, rangé par statut ;
                 // ce qui est obtenu ou fait se retrouve dans les onglets Besoins / Tâches
-                $acc = [
+                $accCreables = array_values(array_filter($visibles, $mgPeutCreer));
+                $accGroupes = $mgGroupesEnCours([
                     ['t', 'en_cours',  '⏳ Tâches en cours'],
                     ['t', 'a_faire',   '🕓 Tâches à faire'],
                     ['b', 'a_trouver', '🔎 Besoins à trouver'],
                     ['b', 'en_cours',  '⏳ Besoins en cours'],
-                ];
-                $accLignes = [];
-                foreach ($visibles as $acid) {
-                    foreach (($taches[$acid] ?? []) as $at) { $accLignes['t'][$at['statut']][] = $at; }
-                    foreach (($besoins[$acid] ?? []) as $ab) { $accLignes['b'][$ab['statut']][] = $ab; }
-                }
-                $accCreables = array_values(array_filter($visibles, $mgPeutCreer));
-                $accVide = true;
+                ], 'accueil');
             ?>
-                <?php if (!empty($accCreables)): ?>
-                <div class="glass-card mg-card">
-                    <h3>➕ Ajouter un besoin ou une tâche</h3>
-                    <?php foreach ($accCreables as $acid): ?>
-                        <div class="mg-row">
-                            <div class="mg-main"><strong>📋 <?php echo $h($nomCommission[$acid] ?? ''); ?></strong></div>
-                            <a class="btn btn-secondary btn-sm" href="magal.php?annee=<?php echo (int) $annee; ?>&tab=besoins#ajout-besoin-<?php echo (int) $acid; ?>">🧰 ➕ Besoin</a>
-                            <a class="btn btn-primary btn-sm" href="magal.php?annee=<?php echo (int) $annee; ?>&tab=taches#ajout-tache-<?php echo (int) $acid; ?>">✅ ➕ Tâche</a>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
+                <?php // En haut de page : les tâches et besoins en cours, par statut, avec leurs actions ?>
+                <?php echo $accGroupes; ?>
+                <?php if ($accGroupes === '' && !empty($visibles)): ?>
+                    <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">✅ Aucune tâche ni aucun besoin en cours pour l'édition <?php echo (int) $annee; ?>.</p></div>
                 <?php endif; ?>
 
                 <?php if (empty($visibles)): ?>
                     <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">Aucune commission impliquée pour le moment.</p></div>
                 <?php endif; ?>
 
-                <?php foreach ($acc as [$accType, $accStatut, $accTitre]):
-                    $accListe = $accLignes[$accType][$accStatut] ?? [];
-                    if (empty($accListe)) { continue; }
-                    $accVide = false;
-                ?>
-                    <details class="glass-card mg-card" open>
-                        <summary><?php echo $accTitre; ?> <span class="mg-count"><?php echo count($accListe); ?></span></summary>
-                        <div style="margin-top:0.7rem;">
-                        <?php foreach ($accListe as $al):
-                            $alRetard = !empty($al['echeance']) && $al['echeance'] < $aujourdhui;
-                            $alTab = $accType === 't' ? 'taches' : 'besoins';
-                        ?>
-                            <div class="mg-row">
-                                <div class="mg-main">
-                                    <strong><?php echo $h($accType === 't' ? $al['titre'] : $al['libelle']); ?></strong>
-                                    <div class="mg-sub">
-                                        📋 <?php echo $h($nomCommission[(int) $al['commission_id']] ?? ''); ?>
-                                        <?php if ($accType === 't'): ?> · 👤 <?php echo !empty(trim((string) $al['assignee_nom'])) ? $h($al['assignee_nom']) : 'Non attribuée'; ?><?php endif; ?>
-                                        <?php if ($accType === 'b' && !empty($al['quantite'])): ?> · Quantité : <?php echo $h($al['quantite']); ?><?php endif; ?>
-                                        <?php if (!empty($al['echeance'])): ?> · 📅 <span<?php echo $alRetard ? ' style="color:#fca5a5; font-weight:700;"' : ''; ?>><?php echo $h(date('d/m/Y', strtotime($al['echeance']))); ?><?php echo $alRetard ? ' (en retard)' : ''; ?></span><?php endif; ?>
-                                    </div>
-                                </div>
-                                <a class="btn btn-secondary btn-sm" href="magal.php?annee=<?php echo (int) $annee; ?>&tab=<?php echo $alTab; ?>">Gérer</a>
+                <?php // Puis l'ajout, commission par commission : un bouton par ligne ?>
+                <?php if (!empty($accCreables)): ?>
+                <div class="glass-card mg-card">
+                    <h3>➕ Ajouter un besoin ou une tâche</h3>
+                    <?php foreach ($accCreables as $acid): ?>
+                        <div class="mg-row">
+                            <div class="mg-main"><strong>📋 <?php echo $h($nomCommission[$acid] ?? ''); ?></strong></div>
+                            <div class="mg-actions">
+                                <a class="btn btn-secondary btn-sm" href="magal.php?annee=<?php echo (int) $annee; ?>&tab=besoins#ajout-besoin-<?php echo (int) $acid; ?>">🧰 ➕ Ajouter un besoin</a>
+                                <a class="btn btn-primary btn-sm" href="magal.php?annee=<?php echo (int) $annee; ?>&tab=taches#ajout-tache-<?php echo (int) $acid; ?>">✅ ➕ Ajouter une tâche</a>
                             </div>
-                        <?php endforeach; ?>
                         </div>
-                    </details>
-                <?php endforeach; ?>
-                <?php if ($accVide && !empty($visibles)): ?>
-                    <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">✅ Aucune tâche ni aucun besoin en cours pour l'édition <?php echo (int) $annee; ?>.</p></div>
+                    <?php endforeach; ?>
+                </div>
                 <?php endif; ?>
 
             <?php elseif ($tab === 'commissions'): ?>
@@ -623,6 +692,11 @@ if ($mgOrganisateur || $mgFinance) {
                 </div>
 
             <?php elseif ($tab === 'besoins'): ?>
+                <?php // En haut : les besoins en cours, toutes commissions, avec leurs actions ?>
+                <?php echo $mgGroupesEnCours([
+                    ['b', 'a_trouver', '🔎 Besoins à trouver'],
+                    ['b', 'en_cours',  '⏳ Besoins en cours'],
+                ], 'besoins'); ?>
                 <?php if (empty($visibles)): ?>
                     <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">Aucune commission impliquée pour le moment.</p></div>
                 <?php endif; ?>
@@ -699,6 +773,11 @@ if ($mgOrganisateur || $mgFinance) {
                 <?php endforeach; ?>
 
             <?php elseif ($tab === 'taches'): ?>
+                <?php // En haut : les tâches en cours, toutes commissions, avec leurs actions ?>
+                <?php echo $mgGroupesEnCours([
+                    ['t', 'en_cours', '⏳ Tâches en cours'],
+                    ['t', 'a_faire',  '🕓 Tâches à faire'],
+                ], 'taches'); ?>
                 <?php if (empty($visibles)): ?>
                     <div class="glass-card mg-card"><p style="color:var(--text-muted); margin:0;">Aucune commission impliquée pour le moment.</p></div>
                 <?php endif; ?>
@@ -854,14 +933,12 @@ if ($mgOrganisateur || $mgFinance) {
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
 <script src="modern-date.js" defer></script>
 <script>
-// Arrivée depuis « ➕ Besoin / ➕ Tâche » de l'accueil : le formulaire de la
-// commission est mis en évidence et son premier champ prêt à la saisie
+// Arrivée depuis « Ajouter un besoin / une tâche » de l'accueil : le formulaire
+// de la commission vient à l'écran, son premier champ prêt à la saisie
 (function () {
     var cible = location.hash && document.getElementById(location.hash.slice(1));
     if (!cible || !/^ajout-/.test(cible.id)) { return; }
     cible.scrollIntoView({ block: 'center' });
-    cible.style.outline = '2px solid var(--gold)';
-    cible.style.borderRadius = '10px';
     var champ = cible.querySelector('input[type="text"]');
     if (champ) { setTimeout(function () { champ.focus(); }, 300); }
 })();

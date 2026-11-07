@@ -131,7 +131,8 @@ $waHref = 'https://wa.me/?text=' . rawurlencode($shareText);
         header.rpt-head .org { font-size: 13px; color: #6b7280; letter-spacing: 1px; text-transform: uppercase; }
         header.rpt-head h1 { font-size: 22px; margin: 6px 0 4px; color: #1b4332; }
         header.rpt-head .sub { font-size: 13px; color: #555; }
-        .meta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 20px; margin: 16px 0 22px; font-size: 13.5px; }
+        .meta-grid > * { flex: 1 1 calc(50% - 20px); min-width: 0; }
+        .meta-grid { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 16px 0 22px; font-size: 13.5px; }
         .meta-grid .k { color: #6b7280; font-weight: 700; }
         h2.sec { font-size: 15px; color: #1b4332; border-left: 4px solid #d4af37; padding-left: 10px; margin: 26px 0 10px; text-transform: uppercase; letter-spacing: 0.5px; }
         .cr-content { font-size: 14px; }

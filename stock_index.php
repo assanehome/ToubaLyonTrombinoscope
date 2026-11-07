@@ -41,7 +41,8 @@ try {
     <link rel="stylesheet" href="style.css">
     <style>
         .stk-wrap { max-width: 900px; margin: 2rem auto; }
-        .stk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+        .stk-grid { display: flex; flex-wrap: wrap; gap: 1rem; }
+        .stk-grid > * { flex: 1 1 240px; min-width: 0; max-width: calc(240px * 1.6); }
         .stk-card { border-radius: 12px; padding: 1.25rem 1.5rem; display: flex; flex-direction: column; gap: 0.75rem; text-decoration: none; }
         .stk-card:hover { border-color: rgba(212,175,55,0.5); }
         .stk-card h3 { margin: 0; color: var(--white); font-size: 1.15rem; }

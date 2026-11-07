@@ -111,8 +111,10 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
     <link rel="stylesheet" href="style.css">
     <style>
         .si-wrap { max-width: 900px; margin: 2rem auto; }
-        .si-top { display: grid; grid-template-columns: 260px 1fr; gap: 1.5rem; }
-        @media (max-width: 640px) { .si-top { grid-template-columns: 1fr; } }
+        .si-top { display: flex; flex-wrap: wrap; gap: 1.5rem; }
+        .si-top > :first-child { flex: 0 0 260px; max-width: 100%; min-width: 0; }
+        .si-top > :last-child { flex: 1 1 280px; min-width: 0; }
+        @media (max-width: 640px) { .si-top > :first-child { flex-basis: 100%; } }
         .si-cover { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 12px; background: #081c15; }
         .si-cover-ph { width: 100%; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: var(--gold); background: rgba(212,175,55,0.08); border-radius: 12px; }
         .si-rows { display: flex; flex-direction: column; }
@@ -121,7 +123,8 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
         .si-row .k { color: var(--text-muted); font-size: 0.85rem; }
         .si-row .v { color: #fff; font-weight: 600; text-align: right; }
         .si-badge { display: inline-block; font-size: 0.72rem; font-weight: 700; border-radius: 12px; padding: 2px 10px; }
-        .si-album { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.85rem; }
+        .si-album { display: flex; flex-wrap: wrap; gap: 0.85rem; }
+        .si-album > * { flex: 1 1 150px; min-width: 0; max-width: calc(150px * 1.6); }
         .si-ph-card { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--glass-border); }
         .si-ph-card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; }
         .si-ph-actions { display: flex; gap: 0.3rem; padding: 0.4rem; }
