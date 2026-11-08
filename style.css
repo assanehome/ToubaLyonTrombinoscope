@@ -2489,53 +2489,90 @@ img { -webkit-touch-callout: none; -webkit-user-drag: none; -webkit-user-select:
 [style*="--fx-fill"] > * { max-width: calc(var(--fx-min) * 1.6); }
 
 /* ==========================================================================
-   GROUPE REPLIABLE — CSS UNIQUE
-   Référence : le groupe « Mode admin » de l'accueil membre. Un seul jeu de règles pour TOUS les
-   <details> de l'application (fermer / ouvrir, bordure, en-tête, flèche, retraits), quelle que soit
-   la page. Exclus : .no-group, .sd-votants, .kav-message, .mfile.
+   GROUPE REPLIABLE — CSS UNIQUE (style « pastille et icône »)
+   Un seul jeu de règles pour TOUS les <details> de l'application : pastille ronde (émoji du titre,
+   voir group-icons.js) + titre + flèche dans un rond. Fermé : bordure discrète, titre blanc.
+   Ouvert : bordure dorée, titre doré, pastille cerclée d'or. Exclus : .no-group, .sd-votants,
+   .kav-message, .mfile.
    ========================================================================== */
-main details:not(.no-group, .sd-votants, .kav-message, .mfile) {
-    border: 1px solid rgba(212, 175, 55, 0.38) !important;
-    border-radius: 12px !important;
-    background: rgba(255, 255, 255, 0.03) !important;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16) !important;
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) {
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 14px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    box-shadow: none !important;
     overflow: hidden;
-    padding: 0 1.2rem 1.2rem !important;
+    padding: 0 1rem 1rem !important;
+    transition: border-color 0.2s;
 }
-main details:not(.no-group, .sd-votants, .kav-message, .mfile):not([open]) { padding-bottom: 0 !important; }
-main details:not(.no-group, .sd-votants, .kav-message, .mfile) > summary {
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c)[open] { border-color: rgba(212, 175, 55, 0.45) !important; }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c):not([open]) { padding-bottom: 0 !important; }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) > summary {
     display: flex !important;
     align-items: center;
-    gap: 0.5rem;
-    margin: 0 -1.2rem !important;
-    padding: 0.95rem 1.2rem !important;
+    gap: 0.75rem;
+    margin: 0 -1rem !important;
+    padding: 0.7rem 1rem !important;
     cursor: pointer;
     list-style: none;
     font-size: 1rem !important;
     font-weight: 800 !important;
     line-height: 1.3;
-    color: var(--gold) !important;
+    color: #fff !important;
     text-transform: none !important;
     letter-spacing: 0 !important;
     background: transparent;
     border: 0 !important;
     user-select: none;
-    transition: background 0.15s;
+    transition: background 0.15s, color 0.15s;
 }
-main details:not(.no-group, .sd-votants, .kav-message, .mfile) > summary::-webkit-details-marker { display: none; }
-main details:not(.no-group, .sd-votants, .kav-message, .mfile) > summary::after {
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) > summary::-webkit-details-marker { display: none; }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) > summary::after {
     content: '▸';
+    flex: 0 0 auto;
     margin-left: auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(212, 175, 55, 0.5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
     color: var(--gold);
-    transition: transform 0.2s;
+    transition: transform 0.2s, background 0.15s;
 }
-main details:not(.no-group, .sd-votants, .kav-message, .mfile)[open] > summary::after { transform: rotate(90deg); }
-main details:not(.no-group, .sd-votants, .kav-message, .mfile) > summary:hover { background: rgba(212, 175, 55, 0.08); }
-main details:not(.no-group, .sd-votants, .kav-message, .mfile)[open] > summary {
-    background: rgba(212, 175, 55, 0.1);
-    border-bottom: 1px solid rgba(212, 175, 55, 0.3) !important;
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) > summary:hover { background: rgba(212, 175, 55, 0.06); }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) > summary:hover::after { background: rgba(212, 175, 55, 0.14); }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c)[open] > summary {
+    color: var(--gold) !important;
+    background: transparent;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
     margin-bottom: 0.9rem !important;
 }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c)[open] > summary::after { transform: rotate(90deg); }
+/* Pastille ronde à gauche du titre (créée par group-icons.js) */
+.grp-ic {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(212, 175, 55, 0.16);
+    color: var(--gold);
+    font-size: 1.05rem;
+    line-height: 1;
+    transition: background 0.2s, box-shadow 0.2s;
+}
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c)[open] > summary > .grp-ic { background: rgba(212, 175, 55, 0.3); box-shadow: 0 0 0 1.5px var(--gold); }
+/* Espaces uniformes : même marge autour de chaque groupe, aucun décalage au-dessus du titre ni entre le titre et le contenu,
+   pas de soulèvement au survol (comme les autres cartes en .glass-card) */
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) { margin-top: 0.8rem !important; margin-bottom: 0.8rem !important; transform: none !important; }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c):hover { transform: none !important; }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c)[open] > summary + * { margin-top: 0 !important; }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) > :last-child:not(summary) { margin-bottom: 0 !important; }
+main details:not(.no-group, .sd-votants, .kav-message, .mfile):not(.grp-a):not(.grp-b):not(.grp-c) > summary { margin-top: 0 !important; }
 /* Le retrait du contenu vient du groupe lui-même : on retire les retraits propres à certains types de groupe */
 main details:is(.com-reu-group, .com-members-group) > :not(summary) { margin-left: 0 !important; margin-right: 0 !important; }
 main details.mc-com .mc-card-in,

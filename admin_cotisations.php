@@ -71,6 +71,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = "Ce membre n'est plus en virement automatique.";
                     }
                 }
+            } elseif ($action === 'virement_decl_valider' || $action === 'virement_decl_refuser') {
+                $mid = (int) ($_POST['membre_id'] ?? 0);
+                if ($mid <= 0) {
+                    $error = "Demande invalide.";
+                } elseif ($action === 'virement_decl_valider') {
+                    $success = cotisation_virement_decl_valider($pdo, $mid) ? "Virement automatique activé : le membre est prévenu." : "Cette déclaration n'existe plus.";
+                } else {
+                    $success = cotisation_virement_decl_refuser($pdo, $mid, trim((string) ($_POST['motif'] ?? ''))) ? "Déclaration refusée : le membre est prévenu." : "Cette déclaration n'existe plus.";
+                }
             } elseif ($action === 'virement_annuler') {
                 $mid = (int) ($_POST['membre_id'] ?? 0);
                 $per = (string) ($_POST['periode'] ?? '');
@@ -206,6 +215,8 @@ try {
     $st = $pdo->query("SELECT membre_id, mode FROM cotisation_config");
     while ($r = $st->fetch()) { $modes[(int) $r['membre_id']] = (string) $r['mode']; }
 } catch (Exception $e) { $modes = []; }
+$nbCapAValider = 0;
+foreach ($membres as $mm0) { if (($modes[(int) $mm0['id']] ?? 'mensuel') !== 'exempt' && !cotisation_capacite_validee($pdo, (int) $mm0['id'])) { $nbCapAValider++; } }
 $payes = [];
 try {
     $st = $pdo->prepare("SELECT membre_id, statut, methode, paid_at FROM cotisations WHERE periode = ?");
@@ -215,6 +226,7 @@ try {
 
 // Virements automatiques attendus pour la période (à confirmer par la Finance)
 $virements = cotisation_virements_attendus($pdo, $periode);
+$declarationsVir = cotisation_virement_declarations($pdo);
 $virementsAConfirmer = count(array_filter($virements, function ($v) { return !$v['recu']; }));
 
 $skDefini = trim(dahira_param($pdo, 'stripe_sk', '')) !== '';
@@ -363,7 +375,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div style="flex-basis:100%; color:var(--text-muted); font-size:0.85rem;">Cotisation : <strong style="color:var(--accent);"><?php echo number_format($montant, 2, ',', ' '); ?> €</strong></div>
+                        <div style="flex-basis:100%; color:var(--text-muted); font-size:0.85rem;">Tarif standard : <strong style="color:var(--accent);"><?php echo number_format($montant, 2, ',', ' '); ?> €</strong></div>
                     </form>
 
                     <details id="cot-details-indicateurs-mois" class="glass-card cot-bilan-annee" style="margin-bottom:1.4rem;" open>
@@ -383,6 +395,44 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                             <div class="glass-card cot-stat"><div class="v" style="color:var(--white); font-size:1.2rem;"><?php echo number_format($totauxMethode['stripe'], 2, ',', ' '); ?> €</div><div class="l">💳 Stripe</div></div>
                         </div>
                     </details>
+
+                    <!-- Virements automatiques déclarés par les membres (à activer) -->
+                    <?php if (!empty($declarationsVir)): ?>
+                    <div class="glass-card" style="margin-bottom:1.4rem; border-color:rgba(45,140,255,0.5);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.4rem;">
+                            <div style="color:var(--white); font-weight:700;">🏦 Virements automatiques déclarés par les membres</div>
+                            <span class="cot-badge cot-info"><?php echo count($declarationsVir); ?> à traiter</span>
+                        </div>
+                        <p style="color:var(--text-muted); font-size:0.82rem; margin:0 0 0.8rem; line-height:1.5;">Le membre indique avoir mis en place un virement permanent, avec le jour du mois. Activez le virement automatique après avoir vérifié la réception du premier virement.</p>
+                        <div class="dlist">
+                            <?php foreach ($declarationsVir as $dv): $dvNom = trim($dv['prenom'] . ' ' . $dv['nom']); ?>
+                            <div class="drow">
+                                <div class="dcell dgrow">
+                                    <strong style="color:var(--white);"><?php echo htmlspecialchars($dvNom); ?></strong>
+                                    <div style="color:var(--text-muted); font-size:0.8rem;">📅 <?php echo $dv['date'] !== '' ? 'à partir du ' . htmlspecialchars(date('d/m/Y', strtotime($dv['date']))) . ', ' : ''; ?>le <?php echo (int) $dv['jour']; ?> de chaque mois · 💶 <?php echo number_format($dv['montant'], 2, ',', ' '); ?> € · déclaré le <?php echo htmlspecialchars(date('d/m/Y', strtotime($dv['le']))); ?></div>
+                                </div>
+                                <div class="dcell">
+                                    <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;" data-confirm="Activer le virement automatique de <?php echo htmlspecialchars($dvNom, ENT_QUOTES); ?> (<?php echo $dv['date'] !== '' ? 'à partir du ' . htmlspecialchars(date('d/m/Y', strtotime($dv['date']))) . ', ' : ''; ?>le <?php echo (int) $dv['jour']; ?> de chaque mois) ?">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="virement_decl_valider">
+                                        <input type="hidden" name="membre_id" value="<?php echo (int) $dv['id']; ?>">
+                                        <button type="submit" class="btn btn-sm" style="background:#1f9d55; border-color:#1f9d55; color:#fff;">✅ Activer</button>
+                                    </form>
+                                </div>
+                                <div class="dcell">
+                                    <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0; display:flex; gap:0.4rem; flex-wrap:wrap;" data-confirm="Refuser la déclaration de <?php echo htmlspecialchars($dvNom, ENT_QUOTES); ?> ? Le membre sera prévenu." data-confirm-danger="1">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="virement_decl_refuser">
+                                        <input type="hidden" name="membre_id" value="<?php echo (int) $dv['id']; ?>">
+                                        <input type="text" name="motif" class="form-input" maxlength="160" placeholder="Motif (facultatif)" style="min-width:140px;">
+                                        <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;">🚫 Refuser</button>
+                                    </form>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
 
                     <!-- Virements automatiques : confirmation de réception -->
                     <?php if (!empty($virements)): ?>
@@ -445,7 +495,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                     <div class="glass-card" style="overflow:visible;">
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.7rem;">
                             <div style="color:var(--white); font-weight:700;">👥 Membres — <?php echo htmlspecialchars(cotisation_libelle_mois($periode)); ?></div>
-                            <span id="cot-count" style="color:var(--text-muted); font-size:0.82rem;"></span>
+                            <span id="cot-count" style="color:var(--text-muted); font-size:0.82rem;"></span><?php if ($nbCapAValider > 0): ?><span class="cot-badge cot-att" title="Membres qui n'ont pas encore validé leur capacité mensuelle">⏳ <?php echo (int) $nbCapAValider; ?> capacité(s) à valider</span><?php endif; ?>
                         </div>
                         <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.8rem;">
                             <input type="text" id="cot-search" placeholder="🔍 Rechercher un membre…" style="flex:1 1 240px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:12px; padding:0.5rem 1rem; font-size:0.9rem;">
@@ -480,7 +530,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                 ?>
                                 <div class="cot-name">
                                     <?php if ($ph !== ''): ?><img class="cot-av" src="uploads/<?php echo htmlspecialchars($ph); ?>" alt=""><?php else: ?><span class="cot-av cot-av-ph"><?php echo htmlspecialchars($ini); ?></span><?php endif; ?>
-                                    <span><?php echo htmlspecialchars(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? ''))); ?></span>
+                                    <span><?php echo htmlspecialchars(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? ''))); ?></span><?php $capM = cotisation_capacite($pdo, $mid); if ($mmode !== 'exempt' && !cotisation_capacite_validee($pdo, $mid)): ?> <span class="cot-badge cot-att" title="Le membre n'a pas encore validé sa capacité mensuelle (par défaut : tarif standard)">⏳ capacité à valider</span><?php endif; ?><?php if ($capM !== null): ?> <span class="cot-badge cot-info" title="Capacité mensuelle déclarée par le membre : elle remplace le tarif standard">💶 <?php echo number_format($capM, 2, ',', ' '); ?> €/mois</span><?php endif; ?>
                                 </div>
                                 <div class="cot-cell">
                                     <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;">

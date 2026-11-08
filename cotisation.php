@@ -23,12 +23,57 @@ $error = '';
 $success = '';
 
 $periode = cotisation_periode_courante();
-$montant = cotisation_montant_periode($pdo, $periode);
+$montantStandard = cotisation_montant_periode($pdo, $periode);
+$montant = cotisation_montant_membre($pdo, $membreId, $periode);
 $mode = cotisation_mode($pdo, $membreId);
 $virementRef = ($mode === 'virement') ? cotisation_virement_ref($pdo, $membreId) : null;
 // Mode effectif pour le mois courant : un virement pas encore entré en vigueur
 // (mois courant <= référence de bascule) se comporte comme mensuel.
 $modeEff = ($mode === 'virement' && $virementRef !== null && $periode <= $virementRef) ? 'mensuel' : $mode;
+
+// Déclaration à la Finance d'un virement automatique mis en place (jour du mois obligatoire)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), ['declarer_virement', 'annuler_declaration_virement'], true)) {
+    if (!csrf_validate()) {
+        $error = "Échec de validation de sécurité (CSRF). Veuillez réessayer.";
+    } elseif ($mode !== 'mensuel') {
+        $error = $mode === 'virement' ? "Votre virement automatique est déjà activé." : "Vous êtes dispensé(e) de cotisation.";
+    } elseif ($_POST['action'] === 'annuler_declaration_virement') {
+        cotisation_virement_declaration_annuler($pdo, $membreId);
+        $success = "Votre déclaration de virement automatique a été retirée.";
+    } else {
+        $dateDecl = trim((string) ($_POST['date_debut'] ?? ''));
+        $dtDecl = DateTime::createFromFormat('Y-m-d', $dateDecl);
+        if (!$dtDecl || $dtDecl->format('Y-m-d') !== $dateDecl) {
+            $error = "Choisissez la date de début de votre virement (obligatoire).";
+        } elseif (cotisation_virement_declarer($pdo, $membreId, $dateDecl)) {
+            $success = "Merci ! Votre virement automatique (à partir du " . $dtDecl->format('d/m/Y') . ", le " . $dtDecl->format('j') . " de chaque mois) est déclaré à la Finance, qui l'activera après vérification.";
+        } else {
+            $error = "Une erreur technique est survenue. Veuillez réessayer.";
+        }
+    }
+}
+
+// Capacité de cotisation mensuelle : le membre indique le montant qu'il peut verser chaque mois
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_capacite') {
+    if (!csrf_validate()) {
+        $error = "Échec de validation de sécurité (CSRF). Veuillez réessayer.";
+    } elseif ($mode === 'exempt') {
+        $error = "Vous êtes dispensé(e) de cotisation.";
+    } elseif (($_POST['effacer'] ?? '') === '1') {
+        cotisation_set_capacite($pdo, $membreId, null);
+        $success = "Capacité validée : votre cotisation suit le tarif défini par la Finance (" . number_format($montantStandard, 2, ',', ' ') . " € par mois)." . ($mode === 'mensuel' ? " Dernière étape : pensez au virement automatique selon votre capacité (RIB ci-dessous)." : '');
+    } else {
+        $brut = str_replace([' ', ','], ['', '.'], trim((string) ($_POST['capacite'] ?? '')));
+        if (!is_numeric($brut) || (float) $brut < 1 || (float) $brut > 1000) {
+            $error = "Indiquez un montant mensuel compris entre 1 et 1 000 €.";
+        } elseif (cotisation_set_capacite($pdo, $membreId, abs(round((float) $brut, 2) - round($montantStandard, 2)) < 0.005 ? null : round((float) $brut, 2))) {
+            $success = "Capacité validée : " . number_format(round((float) $brut, 2), 2, ',', ' ') . " € par mois. Elle s'applique à vos cotisations en cours et à venir." . ($mode === 'mensuel' ? " Dernière étape : pensez au virement automatique selon votre capacité (RIB ci-dessous)." : '');
+        } else {
+            $error = "Une erreur technique est survenue. Veuillez réessayer.";
+        }
+    }
+    $montant = cotisation_montant_membre($pdo, $membreId, $periode);
+}
 
 // Paiement : création d'une session Stripe puis redirection
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'payer') {
@@ -100,7 +145,7 @@ foreach ($periodesHistorique as $hPer) {
 $moisRetard = cotisation_mois_retard($pdo, $membreId);
 $nbRetard = count($moisRetard);
 $totalRetard = 0.0;
-foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, $mr); }
+foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $membreId, $mr); }
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -162,7 +207,7 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
                                 <?php foreach ($moisRetard as $mr): ?>
                                 <div class="co-retard-ligne">
                                     <span style="color:#fff;">🔴 <?php echo htmlspecialchars(cotisation_libelle_mois($mr)); ?></span>
-                                    <span style="color:#fca5a5; font-weight:700;"><?php echo number_format(cotisation_montant_periode($pdo, $mr), 2, ',', ' '); ?> €</span>
+                                    <span style="color:#fca5a5; font-weight:700;"><?php echo number_format(cotisation_montant_membre($pdo, $membreId, $mr), 2, ',', ' '); ?> €</span>
                                 </div>
                                 <?php endforeach; ?>
                                 <div style="display:flex; justify-content:space-between; gap:0.6rem; padding:0.55rem 0.75rem; border-top:1px dashed rgba(255,255,255,0.2); margin-top:0.2rem;">
@@ -172,6 +217,31 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
                             </div>
                         </details>
                     </div>
+                    <?php endif; ?>
+                    <?php $capAValider = ($mode !== 'exempt' && !cotisation_capacite_validee($pdo, $membreId)); ?>
+                    <?php if ($capAValider): ?>
+                    <details id="cap-alerte" class="cap-alerte" open>
+                        <summary>⚠️ Validez votre capacité de cotisation mensuelle</summary>
+                        <div style="color:var(--text-muted); font-size:0.88rem; line-height:1.55;">Par défaut, c'est le montant défini par la Finance : <strong style="color:#ffd873;"><?php echo number_format($montantStandard, 2, ',', ' '); ?> €</strong> par mois. Gardez-le ou indiquez ce que vous pouvez verser, puis validez.</div>
+                        <div style="display:flex; flex-wrap:wrap; gap:0.6rem; margin-top:0.85rem;">
+                            <form action="cotisation.php" method="POST" style="margin:0;">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="set_capacite">
+                                <input type="hidden" name="capacite" value="<?php echo htmlspecialchars((string) $montantStandard); ?>">
+                                <button type="submit" class="btn btn-primary btn-sm">✅ Valider <?php echo number_format($montantStandard, 2, ',', ' '); ?> € par mois</button>
+                            </form>
+                            <a href="#cot-capacite" class="btn btn-secondary btn-sm">✏️ Choisir un autre montant</a>
+                        </div>
+                    </details>
+                    <script>
+                        // Alerte « capacité à valider » : on peut replier le groupe ; le choix est gardé pour la session (elle revient à la prochaine visite)
+                        (function () {
+                            var d = document.getElementById('cap-alerte');
+                            if (!d) { return; }
+                            try { if (sessionStorage.getItem('capAlerteFermee') === '1') { d.open = false; } } catch (e) {}
+                            d.addEventListener('toggle', function () { try { sessionStorage.setItem('capAlerteFermee', d.open ? '0' : '1'); } catch (e) {} });
+                        })();
+                    </script>
                     <?php endif; ?>
                     <div class="co-hero glass-card">
                         <div style="color:var(--text-muted); font-size:0.85rem;">Cotisation de <?php echo htmlspecialchars(cotisation_libelle_mois($periode)); ?></div>
@@ -218,6 +288,98 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
                         <?php endif; ?>
                     </div>
 
+                    <?php if ($mode !== 'exempt'): $capacite = cotisation_capacite($pdo, $membreId); $capJusteValidee = ($mode === 'mensuel' && (!empty($_GET['cap_ok']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_capacite' && !empty($success)))); ?>
+                    <details id="cot-capacite" class="glass-card" style="margin-top:1.2rem;"<?php echo ((!empty($error) && ($_POST['action'] ?? '') === 'set_capacite') || !cotisation_capacite_validee($pdo, $membreId) || $capJusteValidee) ? ' open' : ''; ?>>
+                        <summary>💶 <span style="display:flex; flex-direction:column; min-width:0; line-height:1.25;">Ma capacité mensuelle<small style="font-weight:600; font-size:0.78rem; color:<?php echo cotisation_capacite_validee($pdo, $membreId) ? 'var(--text-muted)' : '#ffd873'; ?>;"><?php echo !cotisation_capacite_validee($pdo, $membreId) ? 'À valider · par défaut ' . number_format($montantStandard, 2, ',', ' ') . ' € (défini par la Finance)' : ($capacite !== null ? number_format($capacite, 2, ',', ' ') . ' € / mois' : 'Tarif de la Finance : ' . number_format($montantStandard, 2, ',', ' ') . ' €'); ?></small></span></summary>
+                        <p style="color:var(--text-muted); font-size:0.88rem; line-height:1.55; margin:0 0 0.9rem;">Indiquez le montant que vous pouvez verser chaque mois. Par défaut, c'est le montant défini par la Finance (<?php echo number_format($montantStandard, 2, ',', ' '); ?> €) ; le montant choisi le remplace pour vos cotisations en cours, en retard et à venir ; les mois déjà réglés ne changent pas.</p>
+                        <form action="cotisation.php" method="POST" style="margin:0; display:flex; flex-wrap:wrap; gap:0.7rem; align-items:flex-end;">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="set_capacite">
+                            <div class="form-group" style="flex:1 1 180px; margin:0;">
+                                <label class="form-label" for="cot-capacite-input">Mon montant mensuel (€)</label>
+                                <input type="number" id="cot-capacite-input" name="capacite" class="form-input" min="1" max="1000" step="0.5" inputmode="decimal" required value="<?php echo htmlspecialchars((string) ($capacite !== null ? $capacite : $montantStandard)); ?>" placeholder="Ex : <?php echo htmlspecialchars((string) $montantStandard); ?>">
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm"><?php echo cotisation_capacite_validee($pdo, $membreId) ? '💾 Enregistrer' : '✅ Valider ce montant'; ?></button>
+                        </form>
+                        <?php if ($capacite !== null): ?>
+                        <form action="cotisation.php" method="POST" style="margin:0.7rem 0 0;" data-confirm="Revenir au tarif standard (<?php echo number_format($montantStandard, 2, ',', ' '); ?> € par mois) ?">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="set_capacite">
+                            <input type="hidden" name="effacer" value="1">
+                            <button type="submit" class="btn btn-secondary btn-sm">↩️ Revenir au tarif standard</button>
+                        </form>
+                        <?php endif; ?>
+                    <?php if ($mode === 'mensuel'):
+                        // Suggestion : virement automatique (pas encore activé par la Finance pour ce membre)
+                        $rib = cotisation_rib($pdo);
+                        $nomVir = '';
+                        try { $stN = $pdo->prepare("SELECT prenom, nom FROM membres WHERE id = ?"); $stN->execute([$membreId]); $rN = $stN->fetch(); $nomVir = $rN ? trim(($rN['prenom'] ?? '') . ' ' . ($rN['nom'] ?? '')) : ''; } catch (Exception $e) { $nomVir = ''; }
+                        $libelleVir = 'Cotisation ' . $nomVir;
+                    ?>
+                    <div id="cot-virement" style="margin-top:1.1rem; border-radius:12px; padding:1.1rem 1.3rem; border:1px solid rgba(45,140,255,0.45); background:rgba(45,140,255,0.07);">
+                        <?php if ($capJusteValidee): ?><div style="margin-bottom:0.8rem; padding:0.6rem 0.9rem; border-radius:10px; border:1px solid rgba(37,211,102,0.45); background:rgba(37,211,102,0.1); color:#7bd8a6; font-weight:700; font-size:0.9rem;">✅ Capacité validée — dernière étape : pensez au virement automatique</div><?php endif; ?>
+                        <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                            <div style="font-size:1.7rem;">🏦</div>
+                            <div style="flex:1; min-width:200px;">
+                                <div style="color:#fff; font-weight:800;">Pensez au virement automatique</div>
+                                <div style="color:var(--text-muted); font-size:0.88rem; margin-top:0.2rem; line-height:1.55;">Pour ne plus avoir à y penser, mettez en place un <strong style="color:#8ec5ff;">virement permanent mensuel</strong> depuis votre banque vers le compte du Dahira, <strong style="color:#fff;">selon votre capacité</strong>, avec le libellé « <?php echo htmlspecialchars($libelleVir); ?> ». Une fois le virement en place, la Finance l'active sur votre compte (« virement automatique »).</div>
+                            </div>
+                        </div>
+                        <details class="co-rib" style="margin-top:0.9rem;"<?php echo $capJusteValidee ? ' open' : ''; ?>>
+                            <summary>📄 Voir le RIB du Dahira</summary>
+                            <div class="co-rib-liste" style="display:flex; flex-direction:column; gap:0.45rem;">
+                                <?php
+                                    $lignesRib = [
+                                        ['Titulaire', $rib['titulaire'], false],
+                                        ['IBAN', $rib['iban'], true],
+                                        ['BIC / SWIFT', $rib['bic'], true],
+                                        ['Libellé du virement', $libelleVir, true],
+                                        ['Montant mensuel', 'Selon votre capacité', false],
+                                    ];
+                                    foreach ($lignesRib as $lr):
+                                ?>
+                                <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; padding:0.5rem 0.75rem; border:1px solid rgba(255,255,255,0.1); border-radius:10px; background:rgba(255,255,255,0.03);">
+                                    <span style="color:var(--text-muted); font-size:0.8rem; flex:0 0 150px;"><?php echo htmlspecialchars($lr[0]); ?></span>
+                                    <strong style="color:#fff; flex:1 1 200px; min-width:0; word-break:break-word; font-size:0.92rem;"><?php echo htmlspecialchars($lr[1]); ?></strong>
+                                    <?php if ($lr[2]): ?><button type="button" class="btn btn-secondary btn-sm" data-copier="<?php echo htmlspecialchars($lr[1], ENT_QUOTES); ?>">Copier</button><?php endif; ?>
+                                </div>
+                                <?php endforeach; ?>
+                                <div style="color:var(--text-muted); font-size:0.8rem; line-height:1.6; padding:0.4rem 0.2rem 0;">
+                                    Domiciliation : <?php echo nl2br(htmlspecialchars($rib['banque'])); ?><br>
+                                    Adresse du titulaire : <?php echo nl2br(htmlspecialchars($rib['adresse'])); ?><br>
+                                    Code banque <?php echo htmlspecialchars($rib['code_banque']); ?> · Code guichet <?php echo htmlspecialchars($rib['code_guichet']); ?> · N° de compte <?php echo htmlspecialchars($rib['numero_compte']); ?> · Clé RIB <?php echo htmlspecialchars($rib['cle_rib']); ?>
+                                </div>
+                            </div>
+                        </details>
+                        <?php $declaration = cotisation_virement_declaration($pdo, $membreId); ?>
+                        <div style="margin-top:0.9rem; padding-top:0.9rem; border-top:1px solid rgba(255,255,255,0.1);">
+                            <?php if ($declaration !== null): ?>
+                                <div style="display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap;">
+                                    <span class="co-badge co-badge-att">⏳ Déclaré à la Finance : virement <?php echo $declaration['date'] !== '' ? 'à partir du ' . htmlspecialchars(date('d/m/Y', strtotime($declaration['date']))) . ' — ' : ''; ?>le <?php echo (int) $declaration['jour']; ?> de chaque mois — en attente de confirmation</span>
+                                    <form action="cotisation.php" method="POST" style="margin:0;" data-confirm="Retirer votre déclaration de virement automatique ?">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="annuler_declaration_virement">
+                                        <button type="submit" class="btn btn-secondary btn-sm">↩️ Retirer ma déclaration</button>
+                                    </form>
+                                </div>
+                            <?php else: ?>
+                                <div style="color:#fff; font-weight:700; font-size:0.92rem; margin-bottom:0.5rem;">J'ai mis en place mon virement</div>
+                                <form action="cotisation.php" method="POST" style="margin:0; display:flex; flex-wrap:wrap; gap:0.7rem; align-items:flex-end;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="declarer_virement">
+                                    <div class="form-group" style="flex:1 1 200px; margin:0;">
+                                        <label class="form-label" for="cot-vir-jour">Date de début du virement <span style="color:var(--danger)">*</span></label>
+                                        <input type="date" id="cot-vir-jour" name="date_debut" class="form-input" required max="<?php echo date('Y-m-d', strtotime('+1 year')); ?>">
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-sm">📨 Déclarer à la Finance</button>
+                                </form>
+                                <div style="color:var(--text-muted); font-size:0.78rem; margin-top:0.4rem; line-height:1.5;">Le jour de cette date est repris chaque mois : la Finance est prévenue ce jour-là pour confirmer la bonne réception de votre virement.</div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                    </details>
+                    <?php endif; ?>
                     <h3 style="color:var(--white); font-size:1.05rem; margin:1.2rem 0 0.7rem;">🧾 Historique</h3>
                     <?php if (empty($historique)): ?>
                         <?php if ($modeEff === 'virement'): ?>
@@ -230,7 +392,7 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
                         <?php foreach ($historique as $h):
                             $hPer = (string) $h['periode'];
                             // Montant/méthode : ceux de la ligne enregistrée, sinon le tarif du mois (aucun paiement pointé)
-                            $hMontant = isset($h['montant']) ? (float) $h['montant'] : cotisation_montant_periode($pdo, $hPer);
+                            $hMontant = isset($h['montant']) ? (float) $h['montant'] : cotisation_montant_membre($pdo, $membreId, $hPer);
                             $hMethode = $h['methode'] ?? null;
                             // Virement : ne couvre que les mois postérieurs à la référence de bascule
                             $hCouvertVirement = $mode === 'virement' && ($virementRef === null || $hPer > $virementRef);
@@ -256,5 +418,17 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_periode($pdo, 
     </main>
     <footer class="app-footer"><p>&copy; 2026 Touba Lyon - Tous droits réservés.</p></footer>
     <?php include __DIR__ . '/modern_popup.php'; ?>
+    <script>
+        // Bouton « Copier » du RIB
+        document.addEventListener('click', function (e) {
+            var b = e.target.closest ? e.target.closest('[data-copier]') : null;
+            if (!b) { return; }
+            var v = b.getAttribute('data-copier') || '';
+            var fini = function () { var o = b.getAttribute('data-libelle') || b.textContent; b.setAttribute('data-libelle', o); b.textContent = 'Copié ✓'; setTimeout(function () { b.textContent = o; }, 1600); };
+            if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(v).then(fini, fini); }
+            else { var t = document.createElement('textarea'); t.value = v; document.body.appendChild(t); t.select(); try { document.execCommand('copy'); } catch (x) {} document.body.removeChild(t); fini(); }
+        });
+    </script>
+    <script src="modern-date.js" defer></script>
 </body>
 </html>

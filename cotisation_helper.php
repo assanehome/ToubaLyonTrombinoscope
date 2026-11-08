@@ -35,6 +35,98 @@ function cotisation_montant_periode(PDO $pdo, string $periode): float
     return cotisation_montant_annee($pdo, (int) substr($periode, 0, 4));
 }
 
+/**
+ * Relevé d'identité bancaire du Dahira, proposé aux membres pour mettre en place un virement automatique.
+ * Valeurs par défaut ci-dessous ; chacune peut être remplacée par un réglage « cotisation_rib_<clé> ».
+ */
+function cotisation_rib(PDO $pdo): array
+{
+    $defauts = [
+        'titulaire' => 'MUBAWWA SIDQ',
+        'adresse' => "60 R F ET IRENE JOLIOT CURIE\n69100 VILLEURBANNE",
+        'banque' => "SG LYON GARIBALDI (01354)\n100 CRS GAMBETTA\n69007 LYON",
+        'code_banque' => '30003',
+        'code_guichet' => '01354',
+        'numero_compte' => '00036819973',
+        'cle_rib' => '04',
+        'iban' => 'FR76 3000 3013 5400 0368 1997 304',
+        'bic' => 'SOGEFRPP',
+    ];
+    $rib = [];
+    foreach ($defauts as $k => $v) {
+        $r = trim((string) dahira_param($pdo, 'cotisation_rib_' . $k, ''));
+        $rib[$k] = $r !== '' ? $r : $v;
+    }
+    return $rib;
+}
+
+/** Capacités mensuelles déclarées par les membres [membre_id => euros], chargées une fois par requête. */
+function cotisation_capacites(PDO $pdo, bool $recharger = false): array
+{
+    static $cache = null;
+    if ($cache === null || $recharger) {
+        $cache = [];
+        try {
+            foreach ($pdo->query("SELECT membre_id, montant_mensuel FROM cotisation_config WHERE montant_mensuel IS NOT NULL") as $r) {
+                $v = (float) $r['montant_mensuel'];
+                if ($v > 0) { $cache[(int) $r['membre_id']] = $v; }
+            }
+        } catch (Exception $e) { $cache = []; }
+    }
+    return $cache;
+}
+
+/** Membres ayant validé leur capacité [membre_id => true] (capacité enregistrée, ou validation du tarif standard). */
+function cotisation_capacites_validees(PDO $pdo, bool $recharger = false): array
+{
+    static $cache = null;
+    if ($cache === null || $recharger) {
+        $cache = [];
+        try {
+            foreach ($pdo->query("SELECT membre_id FROM cotisation_config WHERE capacite_validee_le IS NOT NULL OR montant_mensuel IS NOT NULL") as $r) { $cache[(int) $r['membre_id']] = true; }
+        } catch (Exception $e) { $cache = []; }
+    }
+    return $cache;
+}
+
+/** Le membre a-t-il validé sa capacité mensuelle ? Sinon une alerte lui est affichée. */
+function cotisation_capacite_validee(PDO $pdo, int $membreId): bool
+{
+    $v = cotisation_capacites_validees($pdo);
+    return !empty($v[$membreId]);
+}
+
+/** Capacité mensuelle déclarée par un membre (euros), ou null s'il suit le tarif standard. */
+function cotisation_capacite(PDO $pdo, int $membreId): ?float
+{
+    $c = cotisation_capacites($pdo);
+    return $c[$membreId] ?? null;
+}
+
+/** Définit (1 à 1000 €) ou efface (null = tarif standard de la Finance) la capacité mensuelle d'un membre ; cela vaut validation. */
+function cotisation_set_capacite(PDO $pdo, int $membreId, ?float $montant): bool
+{
+    if ($montant !== null && ($montant < 1 || $montant > 1000)) { return false; }
+    try {
+        $pdo->prepare("INSERT INTO cotisation_config (membre_id, mode, montant_mensuel, capacite_validee_le, updated_at) VALUES (?, 'mensuel', ?, NOW(), NOW())
+                       ON DUPLICATE KEY UPDATE montant_mensuel = VALUES(montant_mensuel), capacite_validee_le = NOW(), updated_at = NOW()")
+            ->execute([$membreId, $montant]);
+        cotisation_capacites($pdo, true);
+        cotisation_capacites_validees($pdo, true);
+        return true;
+    } catch (Exception $e) {
+        error_log('Touba Lyon cotisation capacité : ' . $e->getMessage());
+        return false;
+    }
+}
+
+/** Montant dû par un membre pour une période : sa capacité mensuelle s'il en a déclaré une, sinon le tarif de l'année. */
+function cotisation_montant_membre(PDO $pdo, int $membreId, string $periode): float
+{
+    $c = cotisation_capacite($pdo, $membreId);
+    return $c !== null ? $c : cotisation_montant_periode($pdo, $periode);
+}
+
 /** Période courante au format AAAA-MM. */
 function cotisation_periode_courante(): string
 {
@@ -97,15 +189,112 @@ function cotisation_virement_couvre(PDO $pdo, int $membreId, string $periode): b
  * que les mois à venir, jamais rétroactivement. En quittant le virement, la
  * référence est effacée.
  */
-function cotisation_set_mode(PDO $pdo, int $membreId, string $mode, ?int $jour = null): void
+function cotisation_set_mode(PDO $pdo, int $membreId, string $mode, ?int $jour = null, ?string $depuis = null): void
 {
     if (!in_array($mode, ['mensuel', 'virement', 'exempt'], true)) { $mode = 'mensuel'; }
-    $ref = ($mode === 'virement') ? cotisation_periode_courante() : null;
+    // Référence de couverture : par défaut le mois courant (le virement ne couvre que les mois suivants) ;
+    // avec une date de début, le virement couvre dès le mois de cette date (référence = mois précédent)
+    $debut = null;
+    if ($mode === 'virement' && $depuis !== null) {
+        $dd = DateTime::createFromFormat('Y-m-d', $depuis);
+        if ($dd && $dd->format('Y-m-d') === $depuis) { $debut = $depuis; }
+    }
+    if ($mode === 'virement') {
+        $ref = $debut !== null ? date('Y-m', strtotime(substr($debut, 0, 7) . '-01 -1 month')) : cotisation_periode_courante();
+    } else {
+        $ref = null;
+    }
     // Jour du mois prévu pour le virement automatique (1-31), seulement en mode virement
     $jourVal = ($mode === 'virement' && $jour !== null && $jour >= 1 && $jour <= 31) ? $jour : null;
-    $pdo->prepare("INSERT INTO cotisation_config (membre_id, mode, virement_depuis, virement_jour, updated_at) VALUES (?,?,?,?,NOW())
-                   ON DUPLICATE KEY UPDATE mode = VALUES(mode), virement_depuis = VALUES(virement_depuis), virement_jour = VALUES(virement_jour), updated_at = NOW()")
-        ->execute([$membreId, $mode, $ref, $jourVal]);
+    $pdo->prepare("INSERT INTO cotisation_config (membre_id, mode, virement_depuis, virement_jour, virement_debut, updated_at) VALUES (?,?,?,?,?,NOW())
+                   ON DUPLICATE KEY UPDATE mode = VALUES(mode), virement_depuis = VALUES(virement_depuis), virement_jour = VALUES(virement_jour), virement_debut = VALUES(virement_debut), virement_decl_jour = NULL, virement_decl_le = NULL, virement_decl_date = NULL, updated_at = NOW()")
+        ->execute([$membreId, $mode, $ref, $jourVal, $debut]);
+}
+
+/** Déclaration de virement automatique en attente d'un membre : ['jour' => 1..31, 'le' => date de déclaration, 'date' => date de début] ou null. */
+function cotisation_virement_declaration(PDO $pdo, int $membreId): ?array
+{
+    try {
+        $st = $pdo->prepare("SELECT virement_decl_jour, virement_decl_le, virement_decl_date FROM cotisation_config WHERE membre_id = ? AND mode <> 'virement'");
+        $st->execute([$membreId]);
+        $r = $st->fetch();
+        if ($r && $r['virement_decl_jour'] !== null && (int) $r['virement_decl_jour'] >= 1 && (int) $r['virement_decl_jour'] <= 31) {
+            return ['jour' => (int) $r['virement_decl_jour'], 'le' => (string) $r['virement_decl_le'], 'date' => (string) ($r['virement_decl_date'] ?? '')];
+        }
+    } catch (Exception $e) { /* aucune déclaration */ }
+    return null;
+}
+
+/**
+ * Le membre déclare à la Finance qu'il a mis en place un virement automatique. Le jour du mois (1 à 31) est
+ * déduit de la date de début choisie (obligatoire) : la Finance est prévenue ce jour-là chaque mois. Réservé aux membres en mode mensuel.
+ */
+function cotisation_virement_declarer(PDO $pdo, int $membreId, string $dateDebut): bool
+{
+    $dd = DateTime::createFromFormat('Y-m-d', $dateDebut);
+    if (!$dd || $dd->format('Y-m-d') !== $dateDebut || cotisation_mode($pdo, $membreId) !== 'mensuel') { return false; }
+    $jour = (int) $dd->format('j'); // le jour de cette date est repris chaque mois pour prévenir la Finance
+    try {
+        $pdo->prepare("INSERT INTO cotisation_config (membre_id, mode, virement_decl_jour, virement_decl_le, virement_decl_date, updated_at) VALUES (?, 'mensuel', ?, NOW(), ?, NOW())
+                       ON DUPLICATE KEY UPDATE virement_decl_jour = VALUES(virement_decl_jour), virement_decl_le = NOW(), virement_decl_date = VALUES(virement_decl_date), updated_at = NOW()")
+            ->execute([$membreId, $jour, $dateDebut]);
+        $st = $pdo->prepare("SELECT TRIM(CONCAT(prenom, ' ', nom)) FROM membres WHERE id = ?");
+        $st->execute([$membreId]);
+        $nom = (string) $st->fetchColumn();
+        $fins = $pdo->query("SELECT DISTINCT cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE LOWER(c.nom) LIKE '%finance%' OR LOWER(c.nom) LIKE '%trésor%' OR LOWER(c.nom) LIKE '%tresor%'")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($fins as $fid) {
+            troba_notify_membre($pdo, (int) $fid, 'cotisation', '🏦 Virement automatique déclaré', $nom . ' déclare un virement automatique à partir du ' . $dd->format('d/m/Y') . ' (le ' . $jour . ' de chaque mois, ' . number_format(cotisation_montant_membre($pdo, $membreId, cotisation_periode_courante()), 2, ',', ' ') . ' €).', 'admin_cotisations.php');
+        }
+        return true;
+    } catch (Exception $e) {
+        error_log('Touba Lyon cotisation virement_declarer : ' . $e->getMessage());
+        return false;
+    }
+}
+
+/** Le membre retire sa déclaration de virement automatique (encore en attente). */
+function cotisation_virement_declaration_annuler(PDO $pdo, int $membreId): void
+{
+    try {
+        $pdo->prepare("UPDATE cotisation_config SET virement_decl_jour = NULL, virement_decl_le = NULL, updated_at = NOW() WHERE membre_id = ? AND mode <> 'virement'")->execute([$membreId]);
+    } catch (Exception $e) { /* sans effet */ }
+}
+
+/** Déclarations de virement automatique en attente (pour la Finance) : membre_id, prenom, nom, jour, le, montant. */
+function cotisation_virement_declarations(PDO $pdo): array
+{
+    $out = [];
+    try {
+        $rows = $pdo->query("SELECT c.membre_id, c.virement_decl_jour AS jour, c.virement_decl_le AS le, c.virement_decl_date AS ddate, m.prenom, m.nom
+                             FROM cotisation_config c JOIN membres m ON m.id = c.membre_id
+                             WHERE c.virement_decl_jour IS NOT NULL AND c.mode <> 'virement' AND m.status = 'approved'
+                             ORDER BY c.virement_decl_le ASC")->fetchAll();
+        foreach ($rows as $r) {
+            $mid = (int) $r['membre_id'];
+            $out[] = ['id' => $mid, 'prenom' => (string) $r['prenom'], 'nom' => (string) $r['nom'], 'jour' => (int) $r['jour'], 'le' => (string) $r['le'], 'date' => (string) ($r['ddate'] ?? ''),
+                      'montant' => cotisation_montant_membre($pdo, $mid, cotisation_periode_courante())];
+        }
+    } catch (Exception $e) { return []; }
+    return $out;
+}
+
+/** La Finance valide la déclaration : le membre passe en virement automatique, au jour indiqué. */
+function cotisation_virement_decl_valider(PDO $pdo, int $membreId): bool
+{
+    $d = cotisation_virement_declaration($pdo, $membreId);
+    if ($d === null) { return false; }
+    cotisation_set_mode($pdo, $membreId, 'virement', $d['jour'], $d['date'] !== '' ? $d['date'] : null);
+    troba_notify_membre($pdo, $membreId, 'cotisation', '🏦 Virement automatique activé', 'La Finance a activé votre virement automatique' . ($d['date'] !== '' ? ' à partir du ' . date('d/m/Y', strtotime($d['date'])) : '') . ' (le ' . $d['jour'] . ' de chaque mois). Merci !', 'cotisation.php');
+    return true;
+}
+
+/** La Finance refuse la déclaration (motif facultatif) : le membre est prévenu et reste en cotisation mensuelle. */
+function cotisation_virement_decl_refuser(PDO $pdo, int $membreId, string $motif = ''): bool
+{
+    if (cotisation_virement_declaration($pdo, $membreId) === null) { return false; }
+    cotisation_virement_declaration_annuler($pdo, $membreId);
+    troba_notify_membre($pdo, $membreId, 'cotisation', '🏦 Virement automatique non retenu', 'La Finance n\'a pas pu confirmer votre virement automatique' . ($motif !== '' ? ' : ' . mb_substr($motif, 0, 160) : '.') . ' Vous pouvez régler votre cotisation en ligne ou refaire une déclaration.', 'cotisation.php');
+    return true;
 }
 
 /** Jour du mois (1-31) prévu pour le virement automatique d'un membre, ou null. */
@@ -195,7 +384,7 @@ function cotisation_virement_non_recu(PDO $pdo, int $membreId, string $periode):
             if ($ref !== null && $m <= $ref) { continue; }
             if (cotisation_statut($pdo, $membreId, $m) !== null) { continue; }
             $pdo->prepare("INSERT IGNORE INTO cotisations (membre_id, periode, montant, statut, methode, paid_at) VALUES (?,?,?, 'paye', 'virement', NOW())")
-                ->execute([$membreId, $m, cotisation_montant_periode($pdo, $m)]);
+                ->execute([$membreId, $m, cotisation_montant_membre($pdo, $membreId, $m)]);
         }
         // Le mois concerné est retiré d'un éventuel pointage : il reste dû
         $pdo->prepare("DELETE FROM cotisations WHERE membre_id = ? AND periode = ? AND statut <> 'paye'")->execute([$membreId, $periode]);
@@ -205,7 +394,7 @@ function cotisation_virement_non_recu(PDO $pdo, int $membreId, string $periode):
         return false;
     }
     $libelle = cotisation_libelle_mois($periode);
-    $montant = number_format(cotisation_montant_periode($pdo, $periode), 2, ',', ' ');
+    $montant = number_format(cotisation_montant_membre($pdo, $membreId, $periode), 2, ',', ' ');
     troba_notify_membre(
         $pdo,
         $membreId,
@@ -401,7 +590,7 @@ function cotisation_creer_session(PDO $pdo, int $membreId, string $periode, stri
     if ($conf['sk'] === '') {
         return ['url' => null, 'error' => 'Le paiement en ligne n\'est pas encore configuré.'];
     }
-    $montant = cotisation_montant_periode($pdo, $periode);
+    $montant = cotisation_montant_membre($pdo, $membreId, $periode);
     $cents = (int) round($montant * 100);
     if ($cents < 100) {
         return ['url' => null, 'error' => 'Montant de cotisation invalide.'];
@@ -451,7 +640,7 @@ function cotisation_creer_session(PDO $pdo, int $membreId, string $periode, stri
  */
 function cotisation_marquer_paye(PDO $pdo, int $membreId, string $periode, string $methode = 'stripe', string $ref = ''): bool
 {
-    $montant = cotisation_montant_periode($pdo, $periode);
+    $montant = cotisation_montant_membre($pdo, $membreId, $periode);
     try {
         // Déjà payée ? éviter double remerciement
         $deja = cotisation_est_paye($pdo, $membreId, $periode);
@@ -500,13 +689,13 @@ function cotisation_check_mois(PDO $pdo): void
                 $mid,
                 'cotisation',
                 '💶 Cotisation du mois',
-                'La cotisation de ' . cotisation_libelle_mois($periode) . ' (' . number_format($montant, 2, ',', ' ') . ' €) est ouverte. Vous pouvez la régler en ligne.',
+                'La cotisation de ' . cotisation_libelle_mois($periode) . ' (' . number_format(cotisation_montant_membre($pdo, $mid, $periode), 2, ',', ' ') . ' €) est ouverte. Vous pouvez la régler en ligne.',
                 'cotisation.php'
             );
         }
         // Début de mois : les responsables Finance doivent confirmer les virements automatiques reçus
         $attendus = cotisation_virements_attendus($pdo, $periode);
-        $aConfirmer = count(array_filter($attendus, function ($v) { return !$v['recu']; }));
+        $aConfirmer = count(array_filter($attendus, function ($v) { return !$v['recu'] && $v['jour'] === null; }));
         if ($aConfirmer > 0) {
             $fins = $pdo->query("SELECT DISTINCT cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE LOWER(c.nom) LIKE '%finance%' OR LOWER(c.nom) LIKE '%trésor%' OR LOWER(c.nom) LIKE '%tresor%'")->fetchAll(PDO::FETCH_COLUMN);
             foreach ($fins as $fid) {
@@ -591,17 +780,17 @@ function cotisation_wa_rappel(string $prenom): string
  */
 function cotisation_recap_texte(PDO $pdo, int $membreId, string $prenom): string
 {
-    $montantCourant = cotisation_montant_periode($pdo, cotisation_periode_courante());
+    $montantCourant = cotisation_montant_membre($pdo, $membreId, cotisation_periode_courante());
     $moisRetard = cotisation_mois_retard($pdo, $membreId);
     $nb = count($moisRetard);
     $txt = "Assalamu aleykum" . ($prenom !== '' ? ' ' . trim($prenom) : '') . ",\n\n"
         . "Voici le récapitulatif de votre cotisation au Dahira Touba Lyon :\n"
-        . "- Montant mensuel : " . number_format($montantCourant, 2, ',', ' ') . " €\n";
+        . "- Montant mensuel : " . number_format($montantCourant, 2, ',', ' ') . " €" . (cotisation_capacite($pdo, $membreId) !== null ? " (votre capacité déclarée)" : "") . "\n";
     if ($nb > 0) {
         $total = 0.0;
         $txt .= "- Mois en retard (" . $nb . ") :\n";
         foreach ($moisRetard as $m) {
-            $mMontant = cotisation_montant_periode($pdo, $m);
+            $mMontant = cotisation_montant_membre($pdo, $membreId, $m);
             $total += $mMontant;
             $txt .= "   • " . cotisation_libelle_mois($m) . " (" . number_format($mMontant, 2, ',', ' ') . " €)\n";
         }
@@ -764,7 +953,7 @@ function cotisation_bilan(PDO $pdo, string $periode): array
                 $bilan['total'] += $paye[$mid];
             } else {
                 $bilan['attente']++;
-                $bilan['attendu'] += $montant;
+                $bilan['attendu'] += cotisation_montant_membre($pdo, $mid, $periode);
             }
         }
     } catch (Exception $e) {
@@ -825,4 +1014,45 @@ function cotisation_totaux_methode_annee(PDO $pdo, int $annee): array
         error_log('Touba Lyon cotisation totaux_methode_annee : ' . $e->getMessage());
     }
     return $out;
+}
+
+/**
+ * Chaque jour (au premier chargement de l'accueil), prévient les responsables Finance des virements automatiques dont
+ * le jour du mois est arrivé (ou dépassé) et dont la réception n'est pas encore confirmée, pour qu'ils valident
+ * « bien reçu » ou « non reçu ». Une seule notification par membre et par mois. Jamais bloquant.
+ */
+function cotisation_check_virements_jour(PDO $pdo): void
+{
+    $aujourdhui = date('Y-m-d');
+    $flag = 'vir_jour_check_' . $aujourdhui;
+    if (dahira_param($pdo, $flag, '') === '1') { return; }
+    $periode = cotisation_periode_courante();
+    $jourAuj = (int) date('j');
+    $nbJours = (int) date('t');
+    try {
+        $fins = $pdo->query("SELECT DISTINCT cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE LOWER(c.nom) LIKE '%finance%' OR LOWER(c.nom) LIKE '%trésor%' OR LOWER(c.nom) LIKE '%tresor%'")->fetchAll(PDO::FETCH_COLUMN);
+        $rows = $pdo->query("SELECT m.id, m.prenom, m.nom, c.virement_jour, c.virement_debut FROM cotisation_config c JOIN membres m ON m.id = c.membre_id
+                             WHERE c.mode = 'virement' AND m.status = 'approved' AND c.virement_jour IS NOT NULL")->fetchAll();
+        foreach ($rows as $r) {
+            $mid = (int) $r['id'];
+            if (!cotisation_virement_couvre($pdo, $mid, $periode)) { continue; }
+            $jourEff = min((int) $r['virement_jour'], $nbJours);
+            $dateAttendue = sprintf('%s-%02d', $periode, $jourEff);
+            // mois de début : jamais avant la date de début choisie
+            if (!empty($r['virement_debut']) && substr((string) $r['virement_debut'], 0, 7) === $periode && (string) $r['virement_debut'] > $dateAttendue) { $dateAttendue = (string) $r['virement_debut']; }
+            if ($aujourdhui < $dateAttendue) { continue; }
+            if (cotisation_est_paye($pdo, $mid, $periode)) { continue; }
+            $cle = 'vir_notif_' . $mid . '_' . $periode;
+            if (dahira_param($pdo, $cle, '') === '1') { continue; }
+            $nom = trim($r['prenom'] . ' ' . $r['nom']);
+            $montant = number_format(cotisation_montant_membre($pdo, $mid, $periode), 2, ',', ' ');
+            foreach ($fins as $fid) {
+                troba_notify_membre($pdo, (int) $fid, 'cotisation', '🏦 Virement à confirmer', $nom . ' : virement de ' . $montant . ' € attendu le ' . date('d/m', strtotime($dateAttendue)) . '. Confirmez la réception ou signalez qu\'il n\'est pas arrivé.', 'admin_cotisations.php?periode=' . $periode);
+            }
+            dahira_set_param($pdo, $cle, '1');
+        }
+        dahira_set_param($pdo, $flag, '1');
+    } catch (Exception $e) {
+        error_log('Touba Lyon cotisation check_virements_jour : ' . $e->getMessage());
+    }
 }

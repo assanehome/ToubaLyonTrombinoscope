@@ -61,6 +61,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'logi_
     exit;
 }
 
+// Validation rapide de la capacité de cotisation au montant défini par la Finance (alerte de l'accueil)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cap_valider') {
+    if (csrf_validate() && isset($_SESSION['player_id'])) {
+        try {
+            require_once __DIR__ . '/cotisation_helper.php';
+            cotisation_set_capacite($pdo, (int) $_SESSION['player_id'], null);
+        } catch (Exception $e) { /* best-effort */ }
+    }
+    header('Location: cotisation.php?cap_ok=1#cot-virement');
+    exit;
+}
+
 // Changement de statut d'une tâche depuis l'accueil (par l'assigné, indépendamment
 // de la publication de la réunion). Journalise un commentaire et notifie le créateur.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'maj_tache_statut') {
@@ -367,6 +379,7 @@ $cotisationRetardMois = [];
 try {
     require_once __DIR__ . '/cotisation_helper.php';
     cotisation_check_mois($pdo);
+    cotisation_check_virements_jour($pdo);
     if (isset($_SESSION['player_id'])) {
         $mid = (int) $_SESSION['player_id'];
         $per = cotisation_periode_courante();
@@ -375,12 +388,15 @@ try {
         // vigueur (mois courant <= référence de bascule) se comporte comme mensuel.
         $modeCotEff = ($modeCot === 'virement' && !cotisation_virement_couvre($pdo, $mid, $per)) ? 'mensuel' : $modeCot;
         $cotisationMoisAff = cotisation_libelle_mois($per);
+        // Capacité mensuelle non validée : alerte affichée jusqu'à validation (par défaut : montant défini par la Finance)
+        $capaciteAValider = ($modeCot !== 'exempt' && !cotisation_capacite_validee($pdo, $mid));
+        $capaciteDefaut = cotisation_montant_periode($pdo, $per);
         // Mois écoulés non réglés (retard) + liste des mois concernés
         $cotisationRetardMois = cotisation_mois_retard($pdo, $mid);
         $cotisationRetard = count($cotisationRetardMois);
         if ($modeCotEff === 'mensuel' && !cotisation_est_paye($pdo, $mid, $per)) {
             $cotisationAlerte = true;
-            $cotisationMontantAff = cotisation_montant_periode($pdo, $per);
+            $cotisationMontantAff = cotisation_montant_membre($pdo, $mid, $per);
         } elseif ($modeCotEff === 'virement' && (int) date('j') <= 15) {
             // Remerciement aux membres en virement automatique, jusqu'au 15 du mois
             $cotisationMerciVirement = true;
@@ -665,6 +681,32 @@ try {
                 <span class="btn btn-primary btn-sm" style="white-space:nowrap;">Compléter →</span>
             </div>
         </a>
+        <?php endif; ?>
+
+        <!-- Alerte : capacité de cotisation à valider (affichée jusqu'à validation) -->
+        <?php if (!empty($capaciteAValider)): ?>
+        <details id="cap-alerte" class="cap-alerte" open>
+            <summary>⚠️ Validez votre capacité de cotisation mensuelle</summary>
+            <div style="color:var(--text-muted); font-size:0.88rem; line-height:1.55;">Par défaut : <strong style="color:#ffd873;"><?php echo number_format($capaciteDefaut, 2, ',', ' '); ?> €</strong> par mois, le montant défini par la Finance. Gardez-le ou indiquez ce que vous pouvez verser.</div>
+            <?php if ($modeCot === 'mensuel'): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.4rem;">💡 Pensez au virement automatique mensuel, selon votre capacité : plus rien à penser.</div><?php endif; ?>
+            <div style="display:flex; flex-wrap:wrap; gap:0.6rem; margin-top:0.85rem;">
+                <form method="POST" action="index.php" style="margin:0;">
+                    <?php echo csrf_field(); ?>
+                    <input type="hidden" name="action" value="cap_valider">
+                    <button type="submit" class="btn btn-primary btn-sm">✅ Valider <?php echo number_format($capaciteDefaut, 2, ',', ' '); ?> € par mois</button>
+                </form>
+                <a href="cotisation.php#cot-capacite" class="btn btn-secondary btn-sm">✏️ Choisir un autre montant</a>
+            </div>
+        </details>
+        <script>
+            // Alerte « capacité à valider » : on peut replier le groupe ; le choix est gardé pour la session (elle revient à la prochaine visite)
+            (function () {
+                var d = document.getElementById('cap-alerte');
+                if (!d) { return; }
+                try { if (sessionStorage.getItem('capAlerteFermee') === '1') { d.open = false; } } catch (e) {}
+                d.addEventListener('toggle', function () { try { sessionStorage.setItem('capAlerteFermee', d.open ? '0' : '1'); } catch (e) {} });
+            })();
+        </script>
         <?php endif; ?>
 
         <!-- Informations de paiement (regroupées, repliées par défaut, animées) -->

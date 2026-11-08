@@ -1136,6 +1136,30 @@ try {
     try {
         $pdo->query("SELECT virement_jour FROM cotisation_config LIMIT 1");
     } catch (Exception $e) {
+    // Capacité de cotisation mensuelle déclarée par le membre (€) : remplace le tarif standard pour ses cotisations
+    try {
+        $pdo->query("SELECT montant_mensuel FROM cotisation_config LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN montant_mensuel DECIMAL(8,2) NULL DEFAULT NULL");
+    }
+    // Date à laquelle le membre a validé sa capacité (tant qu'elle est vide, une alerte lui est affichée)
+    try {
+        $pdo->query("SELECT capacite_validee_le FROM cotisation_config LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN capacite_validee_le DATETIME NULL DEFAULT NULL");
+    }
+    // Déclaration, par le membre, d'un virement automatique mis en place (jour du mois obligatoire) : en attente de la Finance
+    try {
+        $pdo->query("SELECT virement_decl_jour FROM cotisation_config LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_decl_jour TINYINT NULL DEFAULT NULL, ADD COLUMN virement_decl_le DATETIME NULL DEFAULT NULL");
+    }
+    // Date de début du virement : déclarée par le membre (en attente), puis conservée une fois le virement activé par la Finance
+    try {
+        $pdo->query("SELECT virement_decl_date FROM cotisation_config LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_decl_date DATE NULL DEFAULT NULL, ADD COLUMN virement_debut DATE NULL DEFAULT NULL");
+    }
         $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_jour TINYINT NULL DEFAULT NULL");
     }
 

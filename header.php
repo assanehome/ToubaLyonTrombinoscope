@@ -889,3 +889,5 @@ $trobaCsrf = csrf_token();
 <script src="modern-select.js?v=<?php echo (int) @filemtime(__DIR__ . '/modern-select.js'); ?>" defer></script>
 <?php /* Protection des photos (pas de clic droit, de glisser ni d'ouverture seule) — sur toutes les pages qui incluent l'en-tête */ ?>
 <script src="photo-protect.js?v=<?php echo (int) @filemtime(__DIR__ . '/photo-protect.js'); ?>" defer></script>
+<?php /* Pastille ronde (émoji) des groupes repliables — sur toutes les pages qui incluent l'en-tête */ ?>
+<script src="group-icons.js?v=<?php echo (int) @filemtime(__DIR__ . '/group-icons.js'); ?>" defer></script>
