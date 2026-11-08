@@ -871,6 +871,8 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         (function () {
             try {
                 document.querySelectorAll('details[id]').forEach(function (d) {
+                    // « Membres — mois sélectionné » : toujours ouvert à l'arrivée sur la page (pas de mémoire de fermeture)
+                    if (d.id === 'cot-membres') { try { sessionStorage.removeItem('cotAdminOpen_cot-membres'); } catch (e) {} d.open = true; return; }
                     var key = 'cotAdminOpen_' + d.id;
                     var stored = sessionStorage.getItem(key);
                     // Un choix déjà mémorisé (ouvert ou fermé) prévaut sur l'état par défaut du HTML ;
