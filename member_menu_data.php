@@ -95,8 +95,8 @@ function troba_member_gestion_items(?PDO $pdo = null): array
                 }
             } catch (Throwable $e) {}
             try {
-                $finN = (int) $pdo->query("SELECT COUNT(*) FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = $pid AND (LOWER(c.nom) LIKE '%finance%' OR LOWER(c.nom) LIKE '%trésor%' OR LOWER(c.nom) LIKE '%tresor%')")->fetchColumn();
-                if ($finN > 0) { $items['admin_cotisations.php'] = '💶 Cotisations'; }
+                $finN = fr_est_responsable($pdo, 'cotisation', (int) $pid) ? 1 : 0; // responsables désignés des cotisations
+                if ($finN > 0) { $items['admin_cotisations.php'] = '💶 Finance'; }
             } catch (Throwable $e) {}
             if ($stockOn) { $items['stock_index.php'] = '📦 Stock'; }
         }

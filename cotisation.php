@@ -31,6 +31,27 @@ $virementRef = ($mode === 'virement') ? cotisation_virement_ref($pdo, $membreId)
 // (mois courant <= référence de bascule) se comporte comme mensuel.
 $modeEff = ($mode === 'virement' && $virementRef !== null && $periode <= $virementRef) ? 'mensuel' : $mode;
 
+// Déclaration à la Finance d'un paiement du mois (virement ou versement en liquide)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), ['declarer_paiement', 'retirer_paiement'], true)) {
+    $perDecl = trim((string) ($_POST['periode'] ?? ''));
+    if (!csrf_validate()) {
+        $error = "Échec de validation de sécurité (CSRF). Veuillez réessayer.";
+    } elseif ($mode === 'exempt') {
+        $error = "Vous êtes dispensé(e) de cotisation.";
+    } elseif ($_POST['action'] === 'retirer_paiement') {
+        cotisation_paiement_declaration_retirer($pdo, $membreId, $perDecl);
+        $success = "Votre déclaration de cotisation a été retirée.";
+    } elseif (!isset(cotisation_modes_declarables()[(string) ($_POST['methode'] ?? '')])) {
+        $error = "Choisissez le mode de paiement : virement ou versement en liquide.";
+    } elseif (($brutMontant = str_replace([' ', ','], ['', '.'], trim((string) ($_POST['montant'] ?? '')))) === '' || !is_numeric($brutMontant) || (float) $brutMontant < 1 || (float) $brutMontant > 10000) {
+        $error = "Indiquez le montant de votre cotisation (entre 1 et 10 000 €).";
+    } elseif (cotisation_paiement_declarer($pdo, $membreId, $perDecl, (string) $_POST['methode'], round((float) $brutMontant, 2))) {
+        $success = "Merci ! Votre cotisation de " . cotisation_libelle_mois($perDecl) . " est déclarée à la Finance, qui la validera après vérification.";
+    } else {
+        $error = "Ce mois ne peut pas être déclaré (déjà réglé, déjà déclaré ou non dû).";
+    }
+}
+
 // Déclaration à la Finance d'un virement automatique mis en place (jour du mois obligatoire)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), ['declarer_virement', 'annuler_declaration_virement'], true)) {
     if (!csrf_validate()) {
@@ -106,6 +127,8 @@ if (!empty($_GET['ok'])) { $success = $success ?: "Merci ! Votre cotisation a bi
 
 $statutMois = cotisation_statut($pdo, $membreId, $periode);
 $estPaye = $statutMois !== null && ($statutMois['statut'] ?? '') === 'paye';
+$declareMois = $statutMois !== null && ($statutMois['statut'] ?? '') === 'declare';
+$nonRecu = cotisation_virement_non_recu_info($pdo, $membreId); // virement signalé « non reçu » par la Finance
 
 // Historique : tous les mois dus (écoulés + mois courant), même sans ligne en
 // base — pour rester cohérent avec l'indicateur de retard ci-dessus. Un membre
@@ -178,6 +201,12 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
         .co-hist-card { display:flex; align-items:center; justify-content:space-between; gap:0.7rem; flex-wrap:wrap; padding:0.75rem 0.95rem; }
         .co-hist-mois { color:var(--white); font-weight:700; font-size:0.95rem; }
         .co-hist-meta { color:var(--text-muted); font-size:0.82rem; margin-top:0.15rem; }
+        .co-choix { display:flex; gap:0.4rem; flex-wrap:wrap; }
+        .co-choix input { position:absolute; opacity:0; pointer-events:none; }
+        .co-choix label { display:inline-flex; align-items:center; gap:0.4rem; padding:0.5rem 0.95rem; border-radius:999px; border:1.5px solid rgba(212,175,55,0.38); background:rgba(255,255,255,0.03); color:var(--white); font-weight:700; font-size:0.85rem; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; transition:background .15s, border-color .15s, color .15s, box-shadow .15s; }
+        .co-choix label:hover { border-color:var(--gold); background:rgba(212,175,55,0.1); }
+        .co-choix input:checked + label { background:rgba(212,175,55,0.2); border-color:var(--gold); color:var(--gold); box-shadow:0 0 0 3px rgba(212,175,55,0.12); }
+        .co-choix input:focus-visible + label { outline:2px solid var(--accent); outline-offset:2px; }
     </style>
 </head>
 <body>
@@ -218,13 +247,25 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                         </details>
                     </div>
                     <?php endif; ?>
+                    <?php if (!empty($nonRecu)): ?>
+                    <div class="co-retard-alerte glass-card" style="margin-bottom:1rem;">
+                        <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                            <div style="font-size:1.7rem;">🏦</div>
+                            <div style="flex:1; min-width:200px;">
+                                <div style="color:#fff; font-weight:800; font-size:1rem;">Votre virement automatique n'a pas été reçu</div>
+                                <div style="color:var(--text-muted); font-size:0.86rem; margin-top:0.15rem; line-height:1.5;">La Finance n'a pas reçu votre virement<?php echo $nonRecu['periode'] !== '' ? ' de ' . htmlspecialchars(cotisation_libelle_mois($nonRecu['periode'])) : ''; ?> : le virement automatique a été désactivé. Réglez votre cotisation, ou remettez le virement en place et déclarez-le à nouveau à la Finance.</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:0.85rem;"><a href="#cot-virement" class="btn btn-primary btn-sm">🏦 Remettre en place le virement</a></div>
+                    </div>
+                    <?php endif; ?>
                     <?php $capAValider = ($mode !== 'exempt' && !cotisation_capacite_validee($pdo, $membreId)); ?>
                     <?php if ($capAValider): ?>
                     <details id="cap-alerte" class="cap-alerte" open>
                         <summary>⚠️ Validez votre capacité de cotisation mensuelle</summary>
                         <div style="color:var(--text-muted); font-size:0.88rem; line-height:1.55;">Par défaut, c'est le montant défini par la Finance : <strong style="color:#ffd873;"><?php echo number_format($montantStandard, 2, ',', ' '); ?> €</strong> par mois. Gardez-le ou indiquez ce que vous pouvez verser, puis validez.</div>
                         <div style="display:flex; flex-wrap:wrap; gap:0.6rem; margin-top:0.85rem;">
-                            <form action="cotisation.php" method="POST" style="margin:0;">
+                            <form data-confirm="Valider <?php echo number_format($montantStandard, 2, ',', ' '); ?> € par mois comme votre capacité de cotisation mensuelle ?" action="cotisation.php" method="POST" style="margin:0;">
                                 <?php echo csrf_field(); ?>
                                 <input type="hidden" name="action" value="set_capacite">
                                 <input type="hidden" name="capacite" value="<?php echo htmlspecialchars((string) $montantStandard); ?>">
@@ -254,11 +295,11 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                             <?php elseif ($estPaye): ?>
                                 <span class="co-badge co-badge-ok">✅ Réglée<?php echo !empty($statutMois['paid_at']) ? ' le ' . date('d/m/Y', strtotime((string) $statutMois['paid_at'])) : ''; ?></span>
                             <?php else: ?>
-                                <span class="co-badge co-badge-att">⏳ À régler</span>
+                                <?php if (!empty($declareMois)): ?><span class="co-badge co-badge-att">⏳ Cotisation déclarée — en attente de validation</span><?php else: ?><span class="co-badge co-badge-att">⏳ À régler</span><?php endif; ?>
                             <?php endif; ?>
                         </div>
 
-                        <?php if ($modeEff === 'mensuel' && !$estPaye): ?>
+                        <?php if ($modeEff === 'mensuel' && !$estPaye && empty($declareMois)): ?>
                             <?php if ($mode === 'virement'): ?>
                                 <div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.6rem;">🏦 Votre virement automatique prendra le relais à partir du mois prochain. Ce mois-ci reste à régler normalement.</div>
                             <?php endif; ?>
@@ -288,11 +329,64 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                         <?php endif; ?>
                     </div>
 
+                    <?php
+                        $moisDeclarables = cotisation_mois_declarables($pdo, $membreId);
+                        $paiementsDeclares = [];
+                        try { $stPD = $pdo->prepare("SELECT periode, methode FROM cotisations WHERE membre_id = ? AND statut = 'declare' ORDER BY periode DESC"); $stPD->execute([$membreId]); $paiementsDeclares = $stPD->fetchAll(); } catch (Exception $e) { $paiementsDeclares = []; }
+                        $modesDecl = cotisation_modes_declarables();
+                    ?>
+                    <?php if ($mode !== 'exempt' && (!empty($moisDeclarables) || !empty($paiementsDeclares))): ?>
+                    <details id="cot-declaration" class="glass-card" style="margin-top:1.2rem;" open>
+                        <summary>📨 <span style="display:flex; flex-direction:column; min-width:0; line-height:1.25;">J'ai cotisé : le déclarer à la Finance<small style="font-weight:600; font-size:0.78rem; color:var(--text-muted);">Virement bancaire ou versement en liquide</small></span></summary>
+                        <?php foreach ($paiementsDeclares as $pd): ?>
+                        <div class="dlist" style="margin-bottom:0.6rem;">
+                            <div class="drow">
+                                <div class="dcell dgrow"><strong style="color:#fff;"><?php echo htmlspecialchars(cotisation_libelle_mois((string) $pd['periode'])); ?></strong>
+                                    <div style="color:var(--text-muted); font-size:0.8rem;"><?php echo htmlspecialchars($modesDecl[$pd['methode']] ?? (string) $pd['methode']); ?> — ⏳ en attente de validation par la Finance</div></div>
+                                <div class="dcell">
+                                    <form action="cotisation.php" method="POST" style="margin:0;" data-confirm="Retirer votre déclaration de cotisation de <?php echo htmlspecialchars(cotisation_libelle_mois((string) $pd['periode']), ENT_QUOTES); ?> ?">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="retirer_paiement">
+                                        <input type="hidden" name="periode" value="<?php echo htmlspecialchars((string) $pd['periode']); ?>">
+                                        <button type="submit" class="btn btn-secondary btn-sm">↩️ Retirer</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php if (!empty($moisDeclarables)): ?>
+                        <div class="dlist">
+                            <?php foreach ($moisDeclarables as $md): $mdMontant = cotisation_montant_membre($pdo, $membreId, $md); $mdRetard = ($md < $periode); ?>
+                            <form data-confirm="Déclarer votre cotisation de <?php echo htmlspecialchars(cotisation_libelle_mois($md), ENT_QUOTES); ?> à la Finance ?" data-confirm-modele="Déclarer à la Finance votre cotisation de <?php echo htmlspecialchars(cotisation_libelle_mois($md), ENT_QUOTES); ?> : {montant} € par {mode} ?" action="cotisation.php" method="POST" class="drow" style="margin:0;">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="declarer_paiement">
+                                <input type="hidden" name="periode" value="<?php echo htmlspecialchars($md); ?>">
+                                <div class="dcell dgrow">
+                                    <strong style="color:#fff;"><?php echo htmlspecialchars(cotisation_libelle_mois($md)); ?></strong>
+                                    <div style="color:<?php echo $mdRetard ? '#fca5a5' : 'var(--text-muted)'; ?>; font-size:0.8rem;"><?php echo $mdRetard ? '🔴 En retard' : '⏳ À régler ce mois'; ?></div>
+                                </div>
+                                <div class="dcell">
+                                    <input type="number" name="montant" class="form-input" min="1" max="10000" step="0.01" inputmode="decimal" required value="<?php echo number_format($mdMontant, 2, '.', ''); ?>" aria-label="Montant en euros pour <?php echo htmlspecialchars(cotisation_libelle_mois($md), ENT_QUOTES); ?>" style="width:7.5rem;"> €
+                                </div>
+                                <div class="dcell">
+                                    <div class="co-choix" role="radiogroup" aria-label="Mode de paiement pour <?php echo htmlspecialchars(cotisation_libelle_mois($md), ENT_QUOTES); ?>">
+                                        <?php foreach (['virement' => '🏦 Virement', 'especes' => '💵 Liquide'] as $k => $lib): $rid = 'cot-m-' . $md . '-' . $k; ?>
+                                        <input type="radio" name="methode" id="<?php echo htmlspecialchars($rid); ?>" value="<?php echo htmlspecialchars($k); ?>" required><label for="<?php echo htmlspecialchars($rid); ?>"><?php echo htmlspecialchars($lib); ?></label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <div class="dcell"><button type="submit" class="btn btn-primary btn-sm">📨 Déclarer</button></div>
+                            </form>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+                    </details>
+                    <?php endif; ?>
                     <?php if ($mode !== 'exempt'): $capacite = cotisation_capacite($pdo, $membreId); $capJusteValidee = ($mode === 'mensuel' && (!empty($_GET['cap_ok']) || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_capacite' && !empty($success)))); ?>
-                    <details id="cot-capacite" class="glass-card" style="margin-top:1.2rem;"<?php echo ((!empty($error) && ($_POST['action'] ?? '') === 'set_capacite') || !cotisation_capacite_validee($pdo, $membreId) || $capJusteValidee) ? ' open' : ''; ?>>
-                        <summary>💶 <span style="display:flex; flex-direction:column; min-width:0; line-height:1.25;">Ma capacité mensuelle<small style="font-weight:600; font-size:0.78rem; color:<?php echo cotisation_capacite_validee($pdo, $membreId) ? 'var(--text-muted)' : '#ffd873'; ?>;"><?php echo !cotisation_capacite_validee($pdo, $membreId) ? 'À valider · par défaut ' . number_format($montantStandard, 2, ',', ' ') . ' € (défini par la Finance)' : ($capacite !== null ? number_format($capacite, 2, ',', ' ') . ' € / mois' : 'Tarif de la Finance : ' . number_format($montantStandard, 2, ',', ' ') . ' €'); ?></small></span></summary>
+                    <details id="cot-capacite" class="glass-card" style="margin-top:1.2rem;"<?php echo ((!empty($error) && ($_POST['action'] ?? '') === 'set_capacite') || !cotisation_capacite_validee($pdo, $membreId) || $capJusteValidee || !empty($nonRecu)) ? ' open' : ''; ?>>
+                        <summary>💶 Ma capacité mensuelle</summary>
                         <p style="color:var(--text-muted); font-size:0.88rem; line-height:1.55; margin:0 0 0.9rem;">Indiquez le montant que vous pouvez verser chaque mois. Par défaut, c'est le montant défini par la Finance (<?php echo number_format($montantStandard, 2, ',', ' '); ?> €) ; le montant choisi le remplace pour vos cotisations en cours, en retard et à venir ; les mois déjà réglés ne changent pas.</p>
-                        <form action="cotisation.php" method="POST" style="margin:0; display:flex; flex-wrap:wrap; gap:0.7rem; align-items:flex-end;">
+                        <form data-confirm="Valider ce montant comme votre capacité de cotisation mensuelle ?" data-confirm-modele="Valider {montant} € par mois comme votre capacité de cotisation mensuelle ?" action="cotisation.php" method="POST" style="margin:0; display:flex; flex-wrap:wrap; gap:0.7rem; align-items:flex-end;">
                             <?php echo csrf_field(); ?>
                             <input type="hidden" name="action" value="set_capacite">
                             <div class="form-group" style="flex:1 1 180px; margin:0;">
@@ -309,15 +403,21 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                             <button type="submit" class="btn btn-secondary btn-sm">↩️ Revenir au tarif standard</button>
                         </form>
                         <?php endif; ?>
+                    </details>
                     <?php if ($mode === 'mensuel'):
                         // Suggestion : virement automatique (pas encore activé par la Finance pour ce membre)
                         $rib = cotisation_rib($pdo);
                         $nomVir = '';
                         try { $stN = $pdo->prepare("SELECT prenom, nom FROM membres WHERE id = ?"); $stN->execute([$membreId]); $rN = $stN->fetch(); $nomVir = $rN ? trim(($rN['prenom'] ?? '') . ' ' . ($rN['nom'] ?? '')) : ''; } catch (Exception $e) { $nomVir = ''; }
                         $libelleVir = 'Cotisation ' . $nomVir;
+                        $declaration = cotisation_virement_declaration($pdo, $membreId);
                     ?>
-                    <div id="cot-virement" style="margin-top:1.1rem; border-radius:12px; padding:1.1rem 1.3rem; border:1px solid rgba(45,140,255,0.45); background:rgba(45,140,255,0.07);">
-                        <?php if ($capJusteValidee): ?><div style="margin-bottom:0.8rem; padding:0.6rem 0.9rem; border-radius:10px; border:1px solid rgba(37,211,102,0.45); background:rgba(37,211,102,0.1); color:#7bd8a6; font-weight:700; font-size:0.9rem;">✅ Capacité validée — dernière étape : pensez au virement automatique</div><?php endif; ?>
+                    <details id="cot-virement-grp" class="glass-card" style="margin-top:1.2rem;"<?php echo ($capJusteValidee || !empty($nonRecu) || $declaration !== null || (!empty($error) && in_array(($_POST['action'] ?? ''), ['declarer_virement', 'annuler_declaration_virement'], true))) ? ' open' : ''; ?>>
+                        <summary>🏦 Virement automatique<?php if ($declaration !== null): ?> <small style="font-weight:600; font-size:0.78rem; color:#ffd873;">· déclaré, en attente de la Finance</small><?php endif; ?></summary>
+                    <div id="cot-virement" style="margin-top:0.8rem; border-radius:12px; padding:1.1rem 1.3rem; border:1px solid rgba(45,140,255,0.45); background:rgba(45,140,255,0.07);">
+                        <?php if ($capJusteValidee && $declaration === null): ?><div style="margin-bottom:0.8rem; padding:0.6rem 0.9rem; border-radius:10px; border:1px solid rgba(37,211,102,0.45); background:rgba(37,211,102,0.1); color:#7bd8a6; font-weight:700; font-size:0.9rem;">✅ Capacité validée — dernière étape : pensez au virement automatique</div><?php endif; ?>
+                        <?php if (!empty($nonRecu)): ?><div style="margin-bottom:0.8rem; padding:0.6rem 0.9rem; border-radius:10px; border:1px solid rgba(255,193,7,0.5); background:rgba(255,193,7,0.1); color:#ffd873; font-weight:700; font-size:0.9rem;">⚠️ Votre dernier virement n'a pas été reçu : mettez-le en place à nouveau, puis déclarez-le à la Finance.</div><?php endif; ?>
+                        <?php if ($declaration === null): ?>
                         <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
                             <div style="font-size:1.7rem;">🏦</div>
                             <div style="flex:1; min-width:200px;">
@@ -325,7 +425,8 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                                 <div style="color:var(--text-muted); font-size:0.88rem; margin-top:0.2rem; line-height:1.55;">Pour ne plus avoir à y penser, mettez en place un <strong style="color:#8ec5ff;">virement permanent mensuel</strong> depuis votre banque vers le compte du Dahira, <strong style="color:#fff;">selon votre capacité</strong>, avec le libellé « <?php echo htmlspecialchars($libelleVir); ?> ». Une fois le virement en place, la Finance l'active sur votre compte (« virement automatique »).</div>
                             </div>
                         </div>
-                        <details class="co-rib" style="margin-top:0.9rem;"<?php echo $capJusteValidee ? ' open' : ''; ?>>
+                        <?php endif; ?>
+                        <details class="co-rib" style="margin-top:0.9rem;"<?php echo ($capJusteValidee || !empty($nonRecu)) ? ' open' : ''; ?>>
                             <summary>📄 Voir le RIB du Dahira</summary>
                             <div class="co-rib-liste" style="display:flex; flex-direction:column; gap:0.45rem;">
                                 <?php
@@ -351,7 +452,6 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                                 </div>
                             </div>
                         </details>
-                        <?php $declaration = cotisation_virement_declaration($pdo, $membreId); ?>
                         <div style="margin-top:0.9rem; padding-top:0.9rem; border-top:1px solid rgba(255,255,255,0.1);">
                             <?php if ($declaration !== null): ?>
                                 <div style="display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap;">
@@ -364,7 +464,7 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                                 </div>
                             <?php else: ?>
                                 <div style="color:#fff; font-weight:700; font-size:0.92rem; margin-bottom:0.5rem;">J'ai mis en place mon virement</div>
-                                <form action="cotisation.php" method="POST" style="margin:0; display:flex; flex-wrap:wrap; gap:0.7rem; align-items:flex-end;">
+                                <form data-confirm="Déclarer à la Finance que votre virement automatique est mis en place ?" action="cotisation.php" method="POST" style="margin:0; display:flex; flex-wrap:wrap; gap:0.7rem; align-items:flex-end;">
                                     <?php echo csrf_field(); ?>
                                     <input type="hidden" name="action" value="declarer_virement">
                                     <div class="form-group" style="flex:1 1 200px; margin:0;">
@@ -377,8 +477,8 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                             <?php endif; ?>
                         </div>
                     </div>
-                    <?php endif; ?>
                     </details>
+                    <?php endif; ?>
                     <?php endif; ?>
                     <h3 style="color:var(--white); font-size:1.05rem; margin:1.2rem 0 0.7rem;">🧾 Historique</h3>
                     <?php if (empty($historique)): ?>
@@ -397,17 +497,18 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                             // Virement : ne couvre que les mois postérieurs à la référence de bascule
                             $hCouvertVirement = $mode === 'virement' && ($virementRef === null || $hPer > $virementRef);
                             $hp = (($h['statut'] ?? '') === 'paye') || $hCouvertVirement;
+                            $hDecl = !$hp && (($h['statut'] ?? '') === 'declare');
                             // Type effectif de ce mois (mensuel si virement pas encore en vigueur)
                             $hMensuelLike = $mode === 'mensuel' || ($mode === 'virement' && !$hCouvertVirement);
                             // Mois écoulé et non réglé => en retard ; mois courant non réglé => en attente
-                            $hRetard = !$hp && $hMensuelLike && $hPer < $periode;
+                            $hRetard = !$hp && !$hDecl && $hMensuelLike && $hPer < $periode;
                         ?>
                         <div class="glass-card co-hist-card<?php echo $hRetard ? ' co-hist-retard' : ''; ?>">
                             <div class="co-hist-main">
                                 <div class="co-hist-mois"><?php echo htmlspecialchars(cotisation_libelle_mois($hPer)); ?><?php echo $hPer === $periode ? ' <span style="color:var(--text-muted); font-weight:400; font-size:0.78rem;">(en cours)</span>' : ''; ?></div>
                                 <div class="co-hist-meta"><?php echo number_format($hMontant, 2, ',', ' '); ?> €<?php echo $hCouvertVirement ? ' · virement automatique' : (!empty($hMethode) ? ' · ' . htmlspecialchars((string) $hMethode) : ''); ?></div>
                             </div>
-                            <span class="co-badge <?php echo $hp ? 'co-badge-ok' : ($hRetard ? 'co-badge-retard' : 'co-badge-att'); ?>"><?php echo $hp ? '✅ Réglée' : ($hRetard ? '🔴 En retard' : '⏳ En attente'); ?></span>
+                            <span class="co-badge <?php echo $hp ? 'co-badge-ok' : ($hRetard ? 'co-badge-retard' : 'co-badge-att'); ?>"><?php echo $hp ? '✅ Réglée' : ($hDecl ? '📨 Déclarée — à valider' : ($hRetard ? '🔴 En retard' : '⏳ En attente')); ?></span>
                         </div>
                         <?php endforeach; ?>
                     </div>
@@ -430,5 +531,25 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
         });
     </script>
     <script src="modern-date.js" defer></script>
+    <script>
+        // Confirmations : le message reprend le montant et le mode de paiement choisis (modèle data-confirm-modele)
+        (function () {
+            var MODES = { virement: 'virement', especes: 'versement en liquide' };
+            function maj(f) {
+                var t = f.getAttribute('data-confirm-modele');
+                if (!t) { return; }
+                var m = f.querySelector('input[name="montant"], input[name="capacite"]');
+                var c = f.querySelector('input[name="methode"]:checked');
+                var v = m ? parseFloat(String(m.value).replace(',', '.')) : NaN;
+                f.setAttribute('data-confirm', t.replace('{montant}', isNaN(v) ? '…' : v.toFixed(2).replace('.', ',')).replace('{mode}', c ? (MODES[c.value] || c.value) : '…'));
+            }
+            function tout() { Array.prototype.forEach.call(document.querySelectorAll('form[data-confirm-modele]'), maj); }
+            document.addEventListener('input', function (e) { if (e.target && e.target.form) { maj(e.target.form); } });
+            document.addEventListener('change', function (e) { if (e.target && e.target.form) { maj(e.target.form); } });
+            document.addEventListener('submit', function (e) { if (e.target && e.target.getAttribute && e.target.getAttribute('data-confirm-modele')) { maj(e.target); } }, true);
+            tout();
+            document.addEventListener('soft:updated', tout);
+        })();
+    </script>
 </body>
 </html>

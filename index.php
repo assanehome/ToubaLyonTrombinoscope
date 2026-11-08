@@ -391,6 +391,9 @@ try {
         // Capacité mensuelle non validée : alerte affichée jusqu'à validation (par défaut : montant défini par la Finance)
         $capaciteAValider = ($modeCot !== 'exempt' && !cotisation_capacite_validee($pdo, $mid));
         $capaciteDefaut = cotisation_montant_periode($pdo, $per);
+        // Responsables des cotisations (Finance) : ce qui attend leur validation
+        $cotATraiter = cotisation_est_finance($pdo, $mid) ? cotisation_a_traiter($pdo) : null;
+        $virementNonRecu = cotisation_virement_non_recu_info($pdo, $mid);
         // Mois écoulés non réglés (retard) + liste des mois concernés
         $cotisationRetardMois = cotisation_mois_retard($pdo, $mid);
         $cotisationRetard = count($cotisationRetardMois);
@@ -683,14 +686,42 @@ try {
         </a>
         <?php endif; ?>
 
+        <!-- Virement automatique non reçu : à remettre en place -->
+        <?php if (!empty($virementNonRecu)): ?>
+        <div class="glass-card idx-reveal" style="margin-bottom:1.25rem; padding:1.1rem 1.3rem; border:1px solid rgba(255,193,7,0.55); background:rgba(255,193,7,0.08);">
+            <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                <div style="font-size:1.7rem;">🏦</div>
+                <div style="flex:1; min-width:200px;">
+                    <div style="color:#fff; font-weight:800;">Votre virement automatique n'a pas été reçu</div>
+                    <div style="color:var(--text-muted); font-size:0.86rem; margin-top:0.15rem; line-height:1.5;">Il a été désactivé. Remettez-le en place et déclarez-le à la Finance, ou réglez votre cotisation.</div>
+                </div>
+                <a href="cotisation.php#cot-virement" class="btn btn-primary btn-sm">🏦 Remettre en place</a>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Cotisations à traiter (responsables de la commission Finance) -->
+        <?php if (!empty($cotATraiter) && $cotATraiter['total'] > 0): ?>
+        <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.2rem 1.4rem;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.8rem;">
+                <div style="color:#fff; font-weight:800; font-size:1.05rem;">💶 Cotisations à traiter <span class="badge badge-approved"><?php echo (int) $cotATraiter['total']; ?></span></div>
+                <a href="admin_cotisations.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Ouvrir les cotisations →</a>
+            </div>
+            <div class="dlist">
+                <?php if ($cotATraiter['paiements'] > 0): ?><div class="drow"><div class="dcell dgrow">💶 <?php echo (int) $cotATraiter['paiements']; ?> paiement(s) déclaré(s) par des membres à valider</div></div><?php endif; ?>
+                <?php if ($cotATraiter['declarations'] > 0): ?><div class="drow"><div class="dcell dgrow">🏦 <?php echo (int) $cotATraiter['declarations']; ?> virement(s) automatique(s) déclaré(s) à activer</div></div><?php endif; ?>
+                <?php if ($cotATraiter['virements'] > 0): ?><div class="drow"><div class="dcell dgrow">📅 <?php echo (int) $cotATraiter['virements']; ?> virement(s) du mois à confirmer (bien reçu / non reçu)</div></div><?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
         <!-- Alerte : capacité de cotisation à valider (affichée jusqu'à validation) -->
         <?php if (!empty($capaciteAValider)): ?>
         <details id="cap-alerte" class="cap-alerte" open>
             <summary>⚠️ Validez votre capacité de cotisation mensuelle</summary>
             <div style="color:var(--text-muted); font-size:0.88rem; line-height:1.55;">Par défaut : <strong style="color:#ffd873;"><?php echo number_format($capaciteDefaut, 2, ',', ' '); ?> €</strong> par mois, le montant défini par la Finance. Gardez-le ou indiquez ce que vous pouvez verser.</div>
-            <?php if ($modeCot === 'mensuel'): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.4rem;">💡 Pensez au virement automatique mensuel, selon votre capacité : plus rien à penser.</div><?php endif; ?>
+            <?php if ($modeCot === 'mensuel' && cotisation_virement_declaration($pdo, $mid) === null): ?><div style="color:var(--text-muted); font-size:0.82rem; margin-top:0.4rem;">💡 Pensez au virement automatique mensuel, selon votre capacité : plus rien à penser.</div><?php endif; ?>
             <div style="display:flex; flex-wrap:wrap; gap:0.6rem; margin-top:0.85rem;">
-                <form method="POST" action="index.php" style="margin:0;">
+                <form data-confirm="Valider <?php echo number_format($capaciteDefaut, 2, ',', ' '); ?> € par mois comme votre capacité de cotisation mensuelle ?" method="POST" action="index.php" style="margin:0;">
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="action" value="cap_valider">
                     <button type="submit" class="btn btn-primary btn-sm">✅ Valider <?php echo number_format($capaciteDefaut, 2, ',', ' '); ?> € par mois</button>

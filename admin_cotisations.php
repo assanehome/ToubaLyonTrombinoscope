@@ -10,6 +10,10 @@ require_once __DIR__ . '/cotisation_guard.php'; // admins + responsables commiss
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/cotisation_helper.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables des cotisations (comme Lecture Coran)
+
+// Ajout / retrait d'un responsable (appels AJAX de la fenêtre de sélection)
+fr_traiter_post($pdo, 'cotisation', true, (int) $__cotMemberId, !empty($__cotAdmin), 'Cotisations');
 
 $error = '';
 $success = '';
@@ -42,10 +46,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $mode = $_POST['mode'] ?? 'mensuel';
                 if (!in_array($mode, ['mensuel', 'virement', 'exempt'], true)) { $mode = 'mensuel'; }
                 $jour = (int) ($_POST['jour'] ?? 0);
+                $dateMise = (string) ($_POST['date_debut'] ?? '');
+                $ddMise = ($mode === 'virement' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateMise)) ? DateTime::createFromFormat('Y-m-d', $dateMise) : false;
+                if ($ddMise && $ddMise->format('Y-m-d') === $dateMise) { $jour = (int) $ddMise->format('j'); } else { $dateMise = ''; }
                 if ($mode === 'virement' && ($jour < 1 || $jour > 31)) {
-                    $error = "Indiquez le jour du mois prévu pour le virement automatique (entre 1 et 31).";
+                    $error = "Sélectionnez la date de mise en place du virement automatique.";
                 } elseif ($mid > 0) {
-                    cotisation_set_mode($pdo, $mid, $mode, $mode === 'virement' ? $jour : null);
+                    cotisation_set_mode($pdo, $mid, $mode, $mode === 'virement' ? $jour : null, $mode === 'virement' && $dateMise !== '' ? $dateMise : null);
                     $success = "Mode de cotisation mis à jour."
                         . ($mode === 'virement' ? " Virement automatique prévu le " . $jour . " de chaque mois, à partir des mois à venir." : "");
                 }
@@ -71,12 +78,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $error = "Ce membre n'est plus en virement automatique.";
                     }
                 }
+            } elseif ($action === 'paiement_decl_valider' || $action === 'paiement_decl_refuser') {
+                $lid = (int) ($_POST['ligne_id'] ?? 0);
+                if ($lid <= 0) {
+                    $error = "Demande invalide.";
+                } elseif ($action === 'paiement_decl_valider') {
+                    $success = cotisation_paiement_declare_valider($pdo, $lid) ? "Paiement validé : la cotisation est réglée et le membre est remercié." : "Cette déclaration n'existe plus.";
+                } else {
+                    $success = cotisation_paiement_declare_refuser($pdo, $lid, trim((string) ($_POST['motif'] ?? ''))) ? "Déclaration refusée : le membre est prévenu." : "Cette déclaration n'existe plus.";
+                }
             } elseif ($action === 'virement_decl_valider' || $action === 'virement_decl_refuser') {
                 $mid = (int) ($_POST['membre_id'] ?? 0);
                 if ($mid <= 0) {
                     $error = "Demande invalide.";
+                } elseif ($action === 'virement_decl_valider' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($_POST['date_debut'] ?? ''))) {
+                    $error = "Sélectionnez la date de mise en place du virement automatique.";
                 } elseif ($action === 'virement_decl_valider') {
-                    $success = cotisation_virement_decl_valider($pdo, $mid) ? "Virement automatique activé : le membre est prévenu." : "Cette déclaration n'existe plus.";
+                    $success = cotisation_virement_decl_valider($pdo, $mid, (string) $_POST['date_debut']) ? "Virement automatique activé : le membre est prévenu." : "Cette déclaration n'existe plus.";
                 } else {
                     $success = cotisation_virement_decl_refuser($pdo, $mid, trim((string) ($_POST['motif'] ?? ''))) ? "Déclaration refusée : le membre est prévenu." : "Cette déclaration n'existe plus.";
                 }
@@ -95,7 +113,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $per = (string) ($_POST['periode'] ?? '');
                 $meth = $_POST['methode'] ?? 'especes';
                 if (!in_array($meth, ['especes', 'virement', 'cheque', 'stripe'], true)) { $meth = 'especes'; }
-                if ($mid > 0 && preg_match('/^\d{4}-\d{2}$/', $per)) {
+                if ($mid > 0 && preg_match('/^\d{4}-\d{2}$/', $per) && $per > cotisation_periode_courante()) {
+                    $error = "La cotisation d'un mois à venir ne peut pas encore être validée : seuls le mois en cours et les mois passés le peuvent.";
+                } elseif ($mid > 0 && preg_match('/^\d{4}-\d{2}$/', $per)) {
                     cotisation_marquer_paye($pdo, $mid, $per, $meth, '');
                     $success = "Cotisation pointée comme réglée.";
                 }
@@ -202,6 +222,7 @@ $totauxMethodeAnnee = cotisation_totaux_methode_annee($pdo, $annee);
 // Un mois déjà écoulé (antérieur au mois en cours) : les cotisations mensuelles
 // non réglées y sont « en retard », et non plus simplement « en attente ».
 $periodePassee = $periode < cotisation_periode_courante();
+$periodeFuture = $periode > cotisation_periode_courante(); // un mois à venir ne peut pas encore être validé
 $attenteCount = $periodePassee ? 0 : (int) $bilan['attente'];
 $retardCount = $periodePassee ? (int) $bilan['attente'] : 0;
 
@@ -227,6 +248,7 @@ try {
 // Virements automatiques attendus pour la période (à confirmer par la Finance)
 $virements = cotisation_virements_attendus($pdo, $periode);
 $declarationsVir = cotisation_virement_declarations($pdo);
+$paiementsDecl = cotisation_paiements_declares($pdo);
 $virementsAConfirmer = count(array_filter($virements, function ($v) { return !$v['recu']; }));
 
 $skDefini = trim(dahira_param($pdo, 'stripe_sk', '')) !== '';
@@ -237,11 +259,17 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>💶 Cotisations — Touba Lyon</title>
+    <title>💶 Finance — Touba Lyon</title>
     <link rel="stylesheet" href="style.css">
     <script src="password-toggle.js" defer></script>
     <style>
         .cot-wrap { max-width: 1000px; margin: 2rem auto; }
+        /* Type de versement : boutons de choix */
+        .cot-tchoix { display:flex; gap:0.4rem; flex-wrap:wrap; }
+        .cot-tbtn { display:inline-flex; align-items:center; gap:0.4rem; padding:0.45rem 0.9rem; border-radius:999px; border:1.5px solid rgba(212,175,55,0.38); background:rgba(255,255,255,0.03); color:var(--white); font-weight:700; font-size:0.82rem; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; transition:background .15s, border-color .15s, color .15s, box-shadow .15s; }
+        .cot-tbtn:hover { border-color:var(--gold); background:rgba(212,175,55,0.1); }
+        .cot-type-row .cot-av { width:38px; height:38px; font-size:0.75rem; }
+        .cot-tbtn.actif { background:rgba(212,175,55,0.2); border-color:var(--gold); color:var(--gold); box-shadow:0 0 0 3px rgba(212,175,55,0.12); cursor:default; }
         .cot-stats { display:flex; flex-wrap:wrap; gap:0.75rem; margin-bottom:1.4rem; }
         .cot-stats > * { flex:1 1 150px; min-width:0; }
         .cot-stats-4 > * { flex-basis:200px; }
@@ -255,6 +283,9 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         .cot-stat { text-align:center; padding:1rem; border:1.5px solid rgba(212,175,55,0.3); }
         /* Sélecteurs de filtre (année, mois) : bordure bien visible */
         .cot-filter-select { background:rgba(255,255,255,0.05); border:1.5px solid rgba(212,175,55,0.55); color:var(--white); border-radius:8px; padding:0.4rem 0.7rem; color-scheme:dark; }
+        /* Sélecteurs Année / Mois : largeur adaptée au contenu (le plus long libellé, ex. « septembre 2026 », + flèche) */
+        .cot-filtre-groupe .cot-filter-select { min-width:11rem; padding-right:2.2rem; }
+        .cot-filtre-groupe select[name="periode"] { min-width:16rem; max-width:100%; }
         .cot-filter-select:hover, .cot-filter-select:focus { border-color:rgba(212,175,55,0.7); }
         .cot-stat .v { font-size:1.6rem; font-weight:800; line-height:1.1; }
         .cot-stat .l { color:var(--text-muted); font-size:0.8rem; margin-top:0.2rem; }
@@ -323,12 +354,13 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
         <div class="dashboard-layout">
             <?php if ($__cotAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } ?>
             <div class="admin-content">
-                <h1 class="admin-page-title">💶 Cotisations</h1>
+                <h1 class="admin-page-title">💶 Finance</h1>
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
                 <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <div class="cot-wrap">
+                    <?php echo fr_bloc_html($pdo, 'cotisation', 'Cotisations', 'admin_cotisations.php'); ?>
                     <!-- Bilan annuel (indicateur année, agrégé sur tous les mois écoulés de l'année) -->
                     <details id="cot-details-bilan-annee" class="glass-card cot-bilan-annee" style="margin-bottom:1.4rem;">
                         <summary style="color:var(--white); font-size:1.05rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">📅 Bilan annuel <?php echo (int) $annee; ?> <span class="pl-chevron" style="color:var(--text-muted);">▸</span></summary>
@@ -396,14 +428,50 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                         </div>
                     </details>
 
-                    <!-- Virements automatiques déclarés par les membres (à activer) -->
-                    <?php if (!empty($declarationsVir)): ?>
-                    <div class="glass-card" style="margin-bottom:1.4rem; border-color:rgba(45,140,255,0.5);">
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.4rem;">
-                            <div style="color:var(--white); font-weight:700;">🏦 Virements automatiques déclarés par les membres</div>
-                            <span class="cot-badge cot-info"><?php echo count($declarationsVir); ?> à traiter</span>
+                    <!-- Paiements déclarés par les membres (virement ou liquide) à valider -->
+                    <?php $modesDecl = cotisation_modes_declarables(); ?>
+                    <details id="cot-decl-paiements" class="glass-card cot-grp" style="margin-bottom:1.4rem;<?php echo !empty($paiementsDecl) ? ' border-color:rgba(37,211,102,0.5);' : ''; ?>"<?php echo !empty($paiementsDecl) ? ' open' : ''; ?>>
+                        <summary style="color:var(--white); font-weight:700; font-size:0.95rem; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">💶 Paiements déclarés par les membres (par mois) <span class="cot-badge <?php echo !empty($paiementsDecl) ? 'cot-ok' : 'cot-info'; ?>"><?php echo !empty($paiementsDecl) ? count($paiementsDecl) . ' à valider' : 'aucune déclaration'; ?></span></summary>
+                        <?php if (empty($paiementsDecl)): ?>
+                        <div style="color:var(--text-muted); font-size:0.88rem; text-align:center; padding:0.8rem;">Aucun paiement déclaré en attente. ✅</div>
+                        <?php endif; ?>
+                        <p style="color:var(--text-muted); font-size:0.82rem; margin:0.7rem 0 0.8rem; line-height:1.5;">Le membre indique avoir payé un mois par virement ou en liquide. Validez après avoir vérifié la réception : la cotisation est alors réglée avec le mode déclaré.</p>
+                        <div class="dlist">
+                            <?php foreach ($paiementsDecl as $pdl): $pdlNom = trim($pdl['prenom'] . ' ' . $pdl['nom']); $pdlMois = cotisation_libelle_mois((string) $pdl['periode']); ?>
+                            <div class="drow">
+                                <div class="dcell dgrow">
+                                    <strong style="color:var(--white);"><?php echo htmlspecialchars($pdlNom); ?></strong>
+                                    <div style="color:var(--text-muted); font-size:0.8rem;"><?php echo htmlspecialchars($pdlMois); ?> · <?php echo htmlspecialchars($modesDecl[$pdl['methode']] ?? (string) $pdl['methode']); ?> · 💶 <?php echo number_format((float) $pdl['montant'], 2, ',', ' '); ?> €<?php echo !empty($pdl['declare_le']) ? ' · déclaré le ' . htmlspecialchars(date('d/m/Y', strtotime((string) $pdl['declare_le']))) : ''; ?></div>
+                                </div>
+                                <div class="dcell">
+                                    <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;" data-confirm="Valider le paiement de <?php echo htmlspecialchars($pdlNom, ENT_QUOTES); ?> pour <?php echo htmlspecialchars($pdlMois, ENT_QUOTES); ?> ?">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="paiement_decl_valider">
+                                        <input type="hidden" name="ligne_id" value="<?php echo (int) $pdl['id']; ?>">
+                                        <button type="submit" class="btn btn-sm" style="background:#1f9d55; border-color:#1f9d55; color:#fff;">✅ Valider</button>
+                                    </form>
+                                </div>
+                                <div class="dcell">
+                                    <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0; display:flex; gap:0.4rem; flex-wrap:wrap;" data-confirm="Refuser la déclaration de <?php echo htmlspecialchars($pdlNom, ENT_QUOTES); ?> ? Le membre sera prévenu." data-confirm-danger="1">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="paiement_decl_refuser">
+                                        <input type="hidden" name="ligne_id" value="<?php echo (int) $pdl['id']; ?>">
+                                        <input type="text" name="motif" class="form-input" maxlength="160" placeholder="Motif (facultatif)" style="min-width:140px;">
+                                        <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;">🚫 Refuser</button>
+                                    </form>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
                         </div>
-                        <p style="color:var(--text-muted); font-size:0.82rem; margin:0 0 0.8rem; line-height:1.5;">Le membre indique avoir mis en place un virement permanent, avec le jour du mois. Activez le virement automatique après avoir vérifié la réception du premier virement.</p>
+                    </details>
+
+                    <!-- Virements automatiques déclarés par les membres (à activer) -->
+                    <details id="cot-decl-virements" class="glass-card cot-grp" style="margin-bottom:1.4rem;<?php echo !empty($declarationsVir) ? ' border-color:rgba(45,140,255,0.5);' : ''; ?>"<?php echo !empty($declarationsVir) ? ' open' : ''; ?>>
+                        <summary style="color:var(--white); font-weight:700; font-size:0.95rem; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">🏦 Virements automatiques déclarés par les membres <span class="cot-badge <?php echo !empty($declarationsVir) ? 'cot-info' : 'cot-ok'; ?>"><?php echo !empty($declarationsVir) ? count($declarationsVir) . ' à valider' : 'aucune déclaration'; ?></span></summary>
+                        <p style="color:var(--text-muted); font-size:0.82rem; margin:0.7rem 0 0.8rem; line-height:1.5;">Le membre indique avoir mis en place un virement permanent (date de début, jour du mois). Après avoir vérifié la réception, <strong style="color:#fff;">validez la déclaration : le membre passe de « Gestion mensuelle » à « Virement automatique »</strong>. Une confirmation est demandée.</p>
+                        <?php if (empty($declarationsVir)): ?>
+                        <div style="color:var(--text-muted); font-size:0.88rem; text-align:center; padding:0.8rem;">Aucune déclaration de virement automatique en attente. ✅</div>
+                        <?php endif; ?>
                         <div class="dlist">
                             <?php foreach ($declarationsVir as $dv): $dvNom = trim($dv['prenom'] . ' ' . $dv['nom']); ?>
                             <div class="drow">
@@ -412,11 +480,12 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                     <div style="color:var(--text-muted); font-size:0.8rem;">📅 <?php echo $dv['date'] !== '' ? 'à partir du ' . htmlspecialchars(date('d/m/Y', strtotime($dv['date']))) . ', ' : ''; ?>le <?php echo (int) $dv['jour']; ?> de chaque mois · 💶 <?php echo number_format($dv['montant'], 2, ',', ' '); ?> € · déclaré le <?php echo htmlspecialchars(date('d/m/Y', strtotime($dv['le']))); ?></div>
                                 </div>
                                 <div class="dcell">
-                                    <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;" data-confirm="Activer le virement automatique de <?php echo htmlspecialchars($dvNom, ENT_QUOTES); ?> (<?php echo $dv['date'] !== '' ? 'à partir du ' . htmlspecialchars(date('d/m/Y', strtotime($dv['date']))) . ', ' : ''; ?>le <?php echo (int) $dv['jour']; ?> de chaque mois) ?">
+                                    <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;" class="cot-vd-form" data-nom="<?php echo htmlspecialchars($dvNom, ENT_QUOTES); ?>" data-ancien="<?php echo htmlspecialchars(['mensuel' => 'Gestion mensuelle', 'virement' => 'Virement automatique', 'exempt' => 'Exempté'][$modes[(int) $dv['id']] ?? 'mensuel'] ?? 'Gestion mensuelle', ENT_QUOTES); ?>" data-date="<?php echo htmlspecialchars((string) $dv['date'], ENT_QUOTES); ?>" data-confirm-off="Valider cette déclaration ? Le mode de versement de <?php echo htmlspecialchars($dvNom, ENT_QUOTES); ?> passera de « <?php echo htmlspecialchars(['mensuel' => 'Gestion mensuelle', 'virement' => 'Virement automatique', 'exempt' => 'Exempté'][$modes[(int) $dv['id']] ?? 'mensuel'] ?? 'Gestion mensuelle', ENT_QUOTES); ?> » à « Virement automatique » (<?php echo $dv['date'] !== '' ? 'à partir du ' . htmlspecialchars(date('d/m/Y', strtotime($dv['date']))) . ', ' : ''; ?>le <?php echo (int) $dv['jour']; ?> de chaque mois). Le membre sera prévenu.">
                                         <?php echo csrf_field(); ?>
                                         <input type="hidden" name="action" value="virement_decl_valider">
                                         <input type="hidden" name="membre_id" value="<?php echo (int) $dv['id']; ?>">
-                                        <button type="submit" class="btn btn-sm" style="background:#1f9d55; border-color:#1f9d55; color:#fff;">✅ Activer</button>
+                                        <input type="hidden" name="date_debut" value="">
+                                        <button type="button" class="btn btn-sm cot-vd-btn" style="background:#1f9d55; border-color:#1f9d55; color:#fff;">✅ Valider</button>
                                     </form>
                                 </div>
                                 <div class="dcell">
@@ -431,8 +500,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                             </div>
                             <?php endforeach; ?>
                         </div>
-                    </div>
-                    <?php endif; ?>
+                    </details>
 
                     <!-- Virements automatiques : confirmation de réception -->
                     <?php if (!empty($virements)): ?>
@@ -492,9 +560,9 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                     <?php endif; ?>
 
                     <!-- Membres : mode + pointage -->
-                    <div class="glass-card" style="overflow:visible;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.7rem;">
-                            <div style="color:var(--white); font-weight:700;">👥 Membres — <?php echo htmlspecialchars(cotisation_libelle_mois($periode)); ?></div>
+                    <details id="cot-membres" class="glass-card cot-grp" open>
+                        <summary style="color:var(--white); font-weight:700; font-size:0.95rem; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">👥 Membres — <?php echo htmlspecialchars(cotisation_libelle_mois($periode)); ?></summary>
+                        <div style="display:flex; justify-content:flex-start; align-items:center; gap:0.6rem; flex-wrap:wrap; margin:0.7rem 0;">
                             <span id="cot-count" style="color:var(--text-muted); font-size:0.82rem;"></span><?php if ($nbCapAValider > 0): ?><span class="cot-badge cot-att" title="Membres qui n'ont pas encore validé leur capacité mensuelle">⏳ <?php echo (int) $nbCapAValider; ?> capacité(s) à valider</span><?php endif; ?>
                         </div>
                         <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.8rem;">
@@ -533,16 +601,8 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                     <span><?php echo htmlspecialchars(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? ''))); ?></span><?php $capM = cotisation_capacite($pdo, $mid); if ($mmode !== 'exempt' && !cotisation_capacite_validee($pdo, $mid)): ?> <span class="cot-badge cot-att" title="Le membre n'a pas encore validé sa capacité mensuelle (par défaut : tarif standard)">⏳ capacité à valider</span><?php endif; ?><?php if ($capM !== null): ?> <span class="cot-badge cot-info" title="Capacité mensuelle déclarée par le membre : elle remplace le tarif standard">💶 <?php echo number_format($capM, 2, ',', ' '); ?> €/mois</span><?php endif; ?>
                                 </div>
                                 <div class="cot-cell">
-                                    <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;">
-                                        <?php echo csrf_field(); ?>
-                                        <input type="hidden" name="action" value="set_mode">
-                                        <input type="hidden" name="membre_id" value="<?php echo $mid; ?>">
-                                        <select name="mode" class="cot-mode-select" data-prev="<?php echo htmlspecialchars($mmode, ENT_QUOTES); ?>" data-nom="<?php echo htmlspecialchars(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? '')), ENT_QUOTES); ?>" title="Mode de cotisation">
-                                            <option value="mensuel" <?php echo $mmode === 'mensuel' ? 'selected' : ''; ?>>Mensuel</option>
-                                            <option value="virement" <?php echo $mmode === 'virement' ? 'selected' : ''; ?>>Virement automatique</option>
-                                            <option value="exempt" <?php echo $mmode === 'exempt' ? 'selected' : ''; ?>>Exempt</option>
-                                        </select>
-                                    </form>
+                                    <?php /* Le type de versement se définit dans le bloc « Type de versement des membres » (ici : simple rappel) */ ?>
+                                    <span class="cot-badge cot-info" title="Type de versement (à modifier dans « Type de versement des membres »)"><?php echo $mmode === 'virement' ? '🏦 Virement auto' : ($mmode === 'exempt' ? '🎗️ Exempté' : '📅 Mensuel'); ?></span>
                                 </div>
                                 <div class="cot-cell">
                                     <?php if ($mmodeEff === 'exempt'): ?>
@@ -555,6 +615,8 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                         <?php endif; ?>
                                     <?php elseif ($paye): ?>
                                         <span class="cot-badge cot-ok">✅ Réglée<?php echo !empty($row['methode']) ? ' (' . htmlspecialchars((string) $row['methode']) . ')' : ''; ?></span>
+                                    <?php elseif ($row && ($row['statut'] ?? '') === 'declare'): ?>
+                                        <span class="cot-badge cot-info">📨 Paiement déclaré<?php echo !empty($row['methode']) ? ' (' . htmlspecialchars((string) $row['methode']) . ')' : ''; ?> — à valider</span>
                                     <?php elseif ($enRetard): ?>
                                         <span class="cot-badge cot-retard">🔴 En retard</span>
                                     <?php else: ?>
@@ -573,6 +635,8 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                             <input type="hidden" name="periode" value="<?php echo htmlspecialchars($periode); ?>">
                                             <button type="submit" class="btn btn-secondary btn-sm" style="border-color:rgba(191,33,33,0.5); color:#fca5a5;">↩️ Annuler</button>
                                         </form>
+                                        <?php elseif (!empty($periodeFuture)): ?>
+                                        <span style="color:var(--text-muted); font-size:0.8rem;" title="Seuls le mois en cours et les mois passés peuvent être validés">🔒 Mois à venir</span>
                                         <?php else: ?>
                                         <form action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0; display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;" data-confirm="Valider le paiement de la cotisation de <?php echo htmlspecialchars(trim(($m['prenom'] ?? '') . ' ' . ($m['nom'] ?? '')), ENT_QUOTES); ?> pour <?php echo htmlspecialchars(cotisation_libelle_mois($periode), ENT_QUOTES); ?> ?">
                                             <?php echo csrf_field(); ?>
@@ -623,14 +687,74 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                             $cotLst = $cotGroupes[$cotK] ?? [];
                             if (empty($cotLst)) { continue; }
                         ?>
-                        <details id="cot-grp-<?php echo $cotK; ?>" class="glass-card cot-grp" style="margin-top:0.6rem;">
+                        <details id="cot-grp-<?php echo $cotK; ?>" class="glass-card cot-grp cot-sg">
                             <summary style="color:var(--white); font-weight:700; font-size:0.95rem; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;"><?php echo $cotLib; ?> <span class="cot-grp-n" style="color:var(--text-muted); font-weight:600; font-size:0.82rem;">(<?php echo count($cotLst); ?>)</span></summary>
                             <div class="cot-list" style="margin-top:0.7rem;">
                                 <?php foreach ($cotLst as $cotHtml) { echo $cotHtml; } ?>
                             </div>
                         </details>
                         <?php endforeach; ?>
-                    </div>
+                    </details>
+
+                    <!-- Type de versement des membres (défini par la Finance) -->
+                    <?php
+                        $nbType = ['mensuel' => 0, 'virement' => 0, 'exempt' => 0];
+                        foreach ($membres as $mT) { $kT = $modes[(int) $mT['id']] ?? 'mensuel'; if (!isset($nbType[$kT])) { $kT = 'mensuel'; } $nbType[$kT]++; }
+                        $typesLib = ['mensuel' => '📅 Gestion mensuelle', 'virement' => '🏦 Virement automatique', 'exempt' => '🎗️ Exempté'];
+                    ?>
+                    <details id="cot-types" class="glass-card cot-grp" style="margin-top:1.5rem;">
+                        <summary style="color:var(--white); font-weight:700; font-size:0.95rem; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">💳 Paramétrage de mode de paiement <span style="color:var(--text-muted); font-weight:600; font-size:0.82rem;">(<?php echo count($membres); ?>)</span></summary>
+                        <div style="color:var(--text-muted); font-size:0.86rem; line-height:1.55; margin:0.7rem 0;">Définissez le mode de paiement de chaque membre (regroupés par mode) : <strong style="color:#8ec5ff;">virement automatique</strong>, <strong style="color:#fff;">gestion mensuelle</strong> (il règle chaque mois) ou <strong style="color:#ffd873;">exempté</strong>. Un changement demande confirmation.</div>
+                        <div class="cot-tchoix" id="cot-types-filtre" role="group" aria-label="Filtrer par type de versement" style="margin-bottom:0.8rem;">
+                            <button type="button" class="cot-tbtn actif" data-f="all">Tous (<?php echo count($membres); ?>)</button>
+                            <?php foreach ($typesLib as $kT => $lT): ?><button type="button" class="cot-tbtn" data-f="<?php echo $kT; ?>"><?php echo $lT; ?> (<span class="cot-tn" data-k="<?php echo $kT; ?>"><?php echo (int) $nbType[$kT]; ?></span>)</button><?php endforeach; ?>
+                        </div>
+                        <input type="text" id="cot-types-search" placeholder="🔍 Rechercher un membre…" style="width:100%; box-sizing:border-box; margin-bottom:0.8rem; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:12px; padding:0.5rem 1rem; font-size:0.9rem;">
+                        <div id="cot-types-vide" style="display:none; color:var(--text-muted); font-size:0.88rem; text-align:center; padding:0.8rem;">Aucun membre ne correspond.</div>
+                        <?php
+                            // Lignes de membres, regroupées par mode de paiement actuel
+                            $rowsT = ['mensuel' => [], 'virement' => [], 'exempt' => []];
+                            foreach ($membres as $mT):
+                                $midT = (int) $mT['id'];
+                                $modeT = $modes[$midT] ?? 'mensuel'; if (!isset($typesLib[$modeT])) { $modeT = 'mensuel'; }
+                                $nomT = trim(($mT['prenom'] ?? '') . ' ' . ($mT['nom'] ?? ''));
+                                $jourT = $modeT === 'virement' ? cotisation_virement_jour($pdo, $midT) : null;
+                                ob_start();
+                        ?>
+                            <form class="drow cot-type-row" action="admin_cotisations.php?annee=<?php echo (int) $annee; ?>&periode=<?php echo htmlspecialchars($periode); ?>" method="POST" style="margin:0;" data-nom="<?php echo htmlspecialchars($nomT, ENT_QUOTES); ?>" data-mode="<?php echo htmlspecialchars($modeT, ENT_QUOTES); ?>" data-search="<?php echo htmlspecialchars(mb_strtolower($nomT), ENT_QUOTES); ?>">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="set_mode">
+                                <input type="hidden" name="membre_id" value="<?php echo $midT; ?>">
+                                <input type="hidden" name="mode" value="<?php echo htmlspecialchars($modeT, ENT_QUOTES); ?>">
+                                <?php
+                                    $phT = trim((string) ($mT['photo_path'] ?? ''));
+                                    $iniT = mb_strtoupper(mb_substr((string) ($mT['prenom'] ?? ''), 0, 1) . mb_substr((string) ($mT['nom'] ?? ''), 0, 1));
+                                ?>
+                                <div class="dcell dgrow" style="display:flex; align-items:center; gap:0.7rem; min-width:0;">
+                                    <?php if ($phT !== ''): ?><img class="cot-av" src="uploads/<?php echo htmlspecialchars($phT); ?>" alt="" loading="lazy"><?php else: ?><span class="cot-av cot-av-ph"><?php echo htmlspecialchars($iniT); ?></span><?php endif; ?>
+                                    <div style="min-width:0;">
+                                        <strong style="color:#fff;"><?php echo htmlspecialchars($nomT); ?></strong>
+                                        <?php if ($jourT !== null): ?><div style="color:var(--text-muted); font-size:0.78rem;">🏦 Virement le <?php echo (int) $jourT; ?> de chaque mois</div><?php endif; ?>
+                                    </div>
+                                </div>
+                                <div class="dcell">
+                                    <div class="cot-tchoix" role="radiogroup" aria-label="Mode de paiement de <?php echo htmlspecialchars($nomT, ENT_QUOTES); ?>">
+                                        <?php foreach ($typesLib as $kT => $lT): ?>
+                                        <button type="button" class="cot-tbtn<?php echo $modeT === $kT ? ' actif' : ''; ?>" data-mode="<?php echo $kT; ?>" role="radio" aria-checked="<?php echo $modeT === $kT ? 'true' : 'false'; ?>"><?php echo $lT; ?></button>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            </form>
+                        <?php $rowsT[$modeT][] = ob_get_clean(); endforeach; ?>
+                        <?php foreach ($typesLib as $kT => $lT): if (empty($rowsT[$kT])) { continue; } ?>
+                        <details id="cot-tg-<?php echo $kT; ?>" class="glass-card cot-grp cot-tg" data-g="<?php echo $kT; ?>">
+                            <summary style="color:var(--white); font-weight:700; font-size:0.95rem; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;"><?php echo $lT; ?> <span class="cot-grp-n" style="color:var(--text-muted); font-weight:600; font-size:0.82rem;">(<?php echo count($rowsT[$kT]); ?>)</span></summary>
+                            <div class="dlist" style="margin-top:0.7rem;">
+                                <?php foreach ($rowsT[$kT] as $htmlT) { echo $htmlT; } ?>
+                            </div>
+                        </details>
+                        <?php endforeach; ?>
+                    </details>
 
                     <!-- Réglages (en bas) -->
                     <?php $paramsOuvert = (($_GET['panel'] ?? '') === 'params'); ?>
@@ -727,7 +851,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                 });
                 // Groupes par statut : masqués s'ils n'ont aucun membre affiché, comptes mis à jour,
                 // ouverts automatiquement quand une recherche ou un statut est choisi
-                Array.prototype.forEach.call(document.querySelectorAll('.cot-grp'), function (g) {
+                Array.prototype.forEach.call(document.querySelectorAll('.cot-sg'), function (g) {
                     var vis = Array.prototype.filter.call(g.querySelectorAll('.cot-row'), function (r) { return r.style.display !== 'none'; }).length;
                     g.style.display = vis ? '' : 'none';
                     var c = g.querySelector('.cot-grp-n');
@@ -759,43 +883,95 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                 });
             } catch (e) { /* stockage indisponible : comportement par défaut */ }
         })();
-        // Confirmation avant changement de mode de cotisation (mensuel / virement / exempt)
+        // Zone « Type de versement des membres » : boutons de choix + confirmation (jour du mois demandé pour le virement automatique)
         (function () {
-            var labels = { mensuel: 'Mensuel', virement: 'Virement automatique', exempt: 'Exempt' };
-            document.querySelectorAll('.cot-mode-select').forEach(function (sel) {
-                sel.addEventListener('change', function () {
-                    var nouveau = sel.value;
-                    var ancien = sel.getAttribute('data-prev') || 'mensuel';
-                    var nom = sel.getAttribute('data-nom') || 'ce membre';
+            var labels = { mensuel: 'Gestion mensuelle', virement: 'Virement automatique', exempt: 'Exempté' };
+            function esc(t) { var d = document.createElement('div'); d.textContent = (t == null ? '' : t); return d.innerHTML; }
+            function dateAuj() { var n = new Date(); return n.getFullYear() + '-' + ('0' + (n.getMonth() + 1)).slice(-2) + '-' + ('0' + n.getDate()).slice(-2); }
+            // Validation d'une déclaration de virement : la Finance sélectionne la date de mise en place (par défaut : celle déclarée)
+            document.querySelectorAll('.cot-vd-btn').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    var f = b.closest('form');
+                    var nom = f.getAttribute('data-nom') || 'ce membre';
+                    var ancien = f.getAttribute('data-ancien') || 'Gestion mensuelle';
+                    var dDecl = f.getAttribute('data-date') || '';
+                    var msg = 'Valider la déclaration de <strong>' + esc(nom) + '</strong> ? Son mode de versement passera de <strong>' + esc(ancien) + '</strong> à <strong>Virement automatique</strong>.';
+                    msg += '<br><br><label style="display:block; font-size:0.9rem;">📅 Date de mise en place du virement :<br><input type="date" id="cot-vdd-input" value="' + esc(dDecl !== '' ? dDecl : dateAuj()) + '" style="margin-top:0.35rem; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.25); color:inherit; border-radius:8px; padding:0.35rem 0.5rem; color-scheme:dark;"></label>';
+                    msg += '<br><span style="color:var(--text-muted); font-size:0.85rem;">Le jour de cette date est repris chaque mois. Le membre sera prévenu.</span>';
+                    var go = function () {
+                        var vd = document.getElementById('cot-vdd-input');
+                        var dVal = vd ? vd.value : '';
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(dVal)) {
+                            if (window.modernAlert) { window.modernAlert('Sélectionnez la date de mise en place du virement automatique.'); }
+                            return;
+                        }
+                        f.querySelector('input[name="date_debut"]').value = dVal;
+                        f.submit();
+                    };
+                    if (window.modernConfirm) { window.modernConfirm(msg, go, { titre: '🏦 Virement automatique', bouton: 'Valider' }); } else { go(); }
+                });
+            });
+            document.querySelectorAll('.cot-type-row .cot-tbtn').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    var f = b.closest('form');
+                    var nouveau = b.getAttribute('data-mode');
+                    var ancien = f.getAttribute('data-mode') || 'mensuel';
                     if (nouveau === ancien) { return; }
-                    // On revient visuellement à l'ancienne valeur tant que ce n'est pas confirmé
-                    sel.value = ancien;
-                    var msg = 'Changer le mode de cotisation de <strong>' + nom + '</strong> de <strong>' + (labels[ancien] || ancien) + '</strong> à <strong>' + (labels[nouveau] || nouveau) + '</strong> ?';
+                    var nom = f.getAttribute('data-nom') || 'ce membre';
+                    var msg = 'Changer le type de versement de <strong>' + esc(nom) + '</strong> : <strong>' + esc(labels[ancien] || ancien) + '</strong> → <strong>' + esc(labels[nouveau] || nouveau) + '</strong> ?';
                     if (nouveau === 'virement') {
-                        msg += '<br><br><label style="display:block; font-size:0.9rem;">📅 Jour du mois du virement automatique :<br><input type="number" id="cot-vj-input" min="1" max="31" value="5" style="margin-top:0.35rem; width:90px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.25); color:inherit; border-radius:8px; padding:0.35rem 0.5rem;"></label>';
-                        msg += '<br><span style="color:var(--text-muted); font-size:0.85rem;">Le virement automatique ne sera pris en compte qu\'à partir des mois à venir : les mois déjà écoulés resteront à régulariser normalement.</span>';
+                        msg += '<br><br><label style="display:block; font-size:0.9rem;">📅 Date de mise en place du virement automatique :<br><input type="date" id="cot-tvd-input" value="' + dateAuj() + '" style="margin-top:0.35rem; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.25); color:inherit; border-radius:8px; padding:0.35rem 0.5rem; color-scheme:dark;"></label>';
+                        msg += '<br><span style="color:var(--text-muted); font-size:0.85rem;">Le jour de cette date est repris chaque mois : le virement couvre les mois à partir de celui de cette date.</span>';
                     }
                     var go = function () {
                         if (nouveau === 'virement') {
-                            var vj = document.getElementById('cot-vj-input');
-                            var jourVal = vj ? parseInt(vj.value, 10) : 0;
-                            if (!(jourVal >= 1 && jourVal <= 31)) {
-                                if (window.modernAlert) { window.modernAlert('Indiquez un jour du mois entre 1 et 31.'); }
+                            var vd = document.getElementById('cot-tvd-input');
+                            var dVal = vd ? vd.value : '';
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(dVal)) {
+                                if (window.modernAlert) { window.modernAlert('Sélectionnez la date de mise en place du virement automatique.'); }
                                 return;
                             }
-                            var hid = sel.form.querySelector('input[name="jour"]');
-                            if (!hid) { hid = document.createElement('input'); hid.type = 'hidden'; hid.name = 'jour'; sel.form.appendChild(hid); }
-                            hid.value = String(jourVal);
+                            var hd = f.querySelector('input[name="date_debut"]');
+                            if (!hd) { hd = document.createElement('input'); hd.type = 'hidden'; hd.name = 'date_debut'; f.appendChild(hd); }
+                            hd.value = dVal;
+                            var hid = f.querySelector('input[name="jour"]');
+                            if (!hid) { hid = document.createElement('input'); hid.type = 'hidden'; hid.name = 'jour'; f.appendChild(hid); }
+                            hid.value = String(parseInt(dVal.slice(8, 10), 10));
                         }
-                        sel.value = nouveau;
-                        sel.setAttribute('data-prev', nouveau);
-                        sel.form.submit();
+                        f.querySelector('input[name="mode"]').value = nouveau;
+                        f.submit();
                     };
-                    if (window.modernConfirm) {
-                        window.modernConfirm(msg, go, { titre: '💶 Changer le mode', bouton: 'Confirmer' });
-                    } else {
-                        go();
-                    }
+                    if (window.modernConfirm) { window.modernConfirm(msg, go, { titre: '🧾 Type de versement', bouton: 'Confirmer' }); } else { go(); }
+                });
+            });
+            // Filtre : recherche par nom + type de versement
+            var rech = document.getElementById('cot-types-search');
+            var filtreType = 'all';
+            function filtrerTypes() {
+                var q = rech ? rech.value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim() : '';
+                var vus = 0;
+                document.querySelectorAll('.cot-type-row').forEach(function (r) {
+                    var n = (r.getAttribute('data-search') || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                    var ok = (q === '' || n.indexOf(q) !== -1) && (filtreType === 'all' || r.getAttribute('data-mode') === filtreType);
+                    r.style.display = ok ? '' : 'none';
+                    if (ok) { vus++; }
+                });
+                document.querySelectorAll('.cot-tg').forEach(function (g) {
+                    var n = 0;
+                    g.querySelectorAll('.cot-type-row').forEach(function (r) { if (r.style.display !== 'none') { n++; } });
+                    g.style.display = n === 0 ? 'none' : '';
+                    if (n > 0 && (q !== '' || filtreType !== 'all')) { g.open = true; }
+                    var c = g.querySelector('.cot-grp-n'); if (c) { c.textContent = '(' + n + ')'; }
+                });
+                var vide = document.getElementById('cot-types-vide');
+                if (vide) { vide.style.display = vus === 0 ? '' : 'none'; }
+            }
+            if (rech) { rech.addEventListener('input', filtrerTypes); }
+            document.querySelectorAll('#cot-types-filtre .cot-tbtn').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    filtreType = b.getAttribute('data-f');
+                    document.querySelectorAll('#cot-types-filtre .cot-tbtn').forEach(function (x) { x.classList.toggle('actif', x === b); });
+                    filtrerTypes();
                 });
             });
         })();

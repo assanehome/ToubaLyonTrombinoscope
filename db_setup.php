@@ -917,6 +917,16 @@ try {
             $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('fr_init_magal', '1')");
         }
     } catch (Exception $e) { /* ignoré */ }
+    // Responsables des cotisations (comme Lecture Coran / Wadial Magal) : reprise unique des responsables de la commission Finance / Trésorerie
+    try {
+        $frCot = $pdo->query("SELECT 1 FROM app_settings WHERE cle = 'fr_init_cotisation'")->fetchColumn();
+        if ($frCot === false) {
+            $pdo->exec("INSERT IGNORE INTO fonction_responsables (fonction, membre_id)
+                        SELECT DISTINCT 'cotisation', cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id
+                        WHERE LOWER(c.nom) LIKE '%finance%' OR LOWER(c.nom) LIKE '%trésor%' OR LOWER(c.nom) LIKE '%tresor%'");
+            $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('fr_init_cotisation', '1')");
+        }
+    } catch (Exception $e) { /* ignoré */ }
     // Membres autorisés par les responsables de commission à créer des besoins et des tâches du Wadial Magal pour leur commission
     $pdo->exec("CREATE TABLE IF NOT EXISTS magal_contributeurs (
         commission_id INT NOT NULL,
@@ -1136,6 +1146,9 @@ try {
     try {
         $pdo->query("SELECT virement_jour FROM cotisation_config LIMIT 1");
     } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_jour TINYINT NULL DEFAULT NULL");
+    }
+
     // Capacité de cotisation mensuelle déclarée par le membre (€) : remplace le tarif standard pour ses cotisations
     try {
         $pdo->query("SELECT montant_mensuel FROM cotisation_config LIMIT 1");
@@ -1160,7 +1173,11 @@ try {
     } catch (Exception $e) {
         $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_decl_date DATE NULL DEFAULT NULL, ADD COLUMN virement_debut DATE NULL DEFAULT NULL");
     }
-        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_jour TINYINT NULL DEFAULT NULL");
+    // Virement automatique signalé « non reçu » par la Finance (le membre doit le remettre en place)
+    try {
+        $pdo->query("SELECT virement_non_recu_le FROM cotisation_config LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisation_config ADD COLUMN virement_non_recu_le DATETIME NULL DEFAULT NULL, ADD COLUMN virement_non_recu_periode CHAR(7) NULL DEFAULT NULL");
     }
 
     // Cotisations : un enregistrement par membre et par mois (période AAAA-MM).
@@ -1179,6 +1196,12 @@ try {
         INDEX idx_periode (periode),
         INDEX idx_statut (statut)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    // Paiement déclaré par le membre (statut « declare », en attente de validation par la Finance)
+    try {
+        $pdo->query("SELECT declare_le FROM cotisations LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE cotisations ADD COLUMN declare_le DATETIME NULL DEFAULT NULL");
+    }
     // Valeur par défaut de la cotisation mensuelle (en euros), modifiable en réglages
     try {
         $st = $pdo->prepare("SELECT COUNT(*) FROM app_settings WHERE cle = 'cotisation_montant'");
