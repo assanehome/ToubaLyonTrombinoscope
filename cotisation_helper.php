@@ -414,7 +414,7 @@ function cotisation_virement_non_recu(PDO $pdo, int $membreId, string $periode):
         $membreId,
         'cotisation',
         '⚠️ Virement non reçu',
-        'Nous n\'avons pas reçu votre virement de ' . $libelle . ' (' . $montant . ' €). Le virement automatique est désactivé : réglez votre cotisation ou remettez le virement en place depuis « Mes cotisations ».',
+        'Nous n\'avons pas reçu votre virement de ' . $libelle . ' (' . $montant . ' €). Vous repassez en gestion mensuelle : réglez votre cotisation ou remettez le virement automatique en place (RIB et déclaration dans « Mes cotisations »).',
         'cotisation.php'
     );
     try {
@@ -426,8 +426,8 @@ function cotisation_virement_non_recu(PDO $pdo, int $membreId, string $periode):
             $inner = '<h1 style="margin:0 0 18px;font-size:20px;color:#b91c1c;">Virement non reçu</h1>'
                 . '<p style="margin:0 0 14px;">Àssalaamu haleykum ' . htmlspecialchars($nom) . ',</p>'
                 . '<p style="margin:0 0 14px;">Nous n\'avons pas reçu votre virement automatique de <strong>' . htmlspecialchars($libelle) . '</strong> (' . htmlspecialchars($montant) . ' €).</p>'
-                . '<p style="margin:0 0 14px;">Le virement automatique a donc été <strong>désactivé</strong> sur votre compte. Merci de régler votre cotisation en ligne, ou de nous contacter si vous pensez qu\'il s\'agit d\'une erreur.</p>'
-                . dahira_email_button(rtrim(dahira_base_url(), '/') . '/cotisation.php', 'Régler ma cotisation');
+                . '<p style="margin:0 0 14px;">Le virement automatique a donc été <strong>désactivé</strong> et vous repassez en <strong>gestion mensuelle</strong>. Merci de régler votre cotisation, ou de <strong>remettre le virement en place</strong> : le RIB du Dahira et la déclaration à la Finance sont à nouveau disponibles dans « Mes cotisations ». Contactez-nous si vous pensez qu\'il s\'agit d\'une erreur.</p>'
+                . dahira_email_button(rtrim(dahira_base_url(), '/') . '/cotisation.php', 'Remettre en place le virement');
             @send_smtp_mail($m['email'], $nom, '⚠️ Virement non reçu — ' . $libelle, dahira_email_wrap($inner, 'Cotisation'));
         }
     } catch (Exception $e) { /* e-mail best-effort */ }

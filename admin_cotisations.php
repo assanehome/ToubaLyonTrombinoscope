@@ -56,14 +56,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $success = "Mode de cotisation mis à jour."
                         . ($mode === 'virement' ? " Virement automatique prévu le " . $jour . " de chaque mois, à partir des mois à venir." : "");
                 }
-            } elseif ($action === 'set_virement_jour') {
-                $mid = (int) ($_POST['membre_id'] ?? 0);
-                $jour = (int) ($_POST['jour'] ?? 0);
-                if ($mid > 0 && cotisation_set_virement_jour($pdo, $mid, $jour)) {
-                    $success = "Date du virement automatique mise à jour (le " . $jour . " de chaque mois).";
-                } else {
-                    $error = "Jour invalide (entre 1 et 31).";
-                }
             } elseif ($action === 'virement_recu' || $action === 'virement_non_recu') {
                 $mid = (int) ($_POST['membre_id'] ?? 0);
                 $per = (string) ($_POST['periode'] ?? '');
@@ -73,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $success = cotisation_virement_confirmer($pdo, $mid, $per) ? "Virement confirmé : cotisation de " . cotisation_libelle_mois($per) . " réglée." : "Ce membre n'est plus en virement automatique.";
                 } else {
                     if (cotisation_virement_non_recu($pdo, $mid, $per)) {
-                        $success = "Virement non reçu : le membre a été prévenu et le virement automatique est désactivé.";
+                        $success = "Virement non reçu : le membre passe en gestion mensuelle, il est prévenu et les informations de mise en place du virement automatique lui sont réaffichées.";
                     } else {
                         $error = "Ce membre n'est plus en virement automatique.";
                     }
@@ -264,6 +256,16 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
     <script src="password-toggle.js" defer></script>
     <style>
         .cot-wrap { max-width: 1000px; margin: 2rem auto; }
+        /* Mobile : une action par ligne, sur toute la largeur (comme dans le reste de l'application) */
+        @media (max-width:640px){
+            .cot-wrap .drow > .dcell:not(.dgrow), .cot-wrap .cot-actrow > form { flex:1 1 100%; width:100%; box-sizing:border-box; }
+            .cot-wrap .drow form, .cot-wrap .cot-actrow form { width:100%; display:flex; flex-wrap:wrap; gap:0.45rem; box-sizing:border-box; }
+            .cot-wrap .drow .btn, .cot-wrap .cot-actrow .btn { width:100%; justify-content:center; box-sizing:border-box; }
+            .cot-wrap .drow input[name="motif"], .cot-wrap .drow input.form-input { flex:1 1 100%; width:100%; min-width:0; box-sizing:border-box; }
+            .cot-wrap .cot-actrow .cot-badge { flex:1 1 100%; text-align:center; justify-content:center; }
+            .cot-wrap .cot-type-row .cot-tchoix { flex-direction:column; width:100%; }
+            .cot-wrap .cot-type-row .cot-tbtn { width:100%; justify-content:center; box-sizing:border-box; padding:0.6rem 0.9rem; }
+        }
         /* Type de versement : boutons de choix */
         .cot-tchoix { display:flex; gap:0.4rem; flex-wrap:wrap; }
         .cot-tbtn { display:inline-flex; align-items:center; gap:0.4rem; padding:0.45rem 0.9rem; border-radius:999px; border:1.5px solid rgba(212,175,55,0.38); background:rgba(255,255,255,0.03); color:var(--white); font-weight:700; font-size:0.82rem; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; transition:background .15s, border-color .15s, color .15s, box-shadow .15s; }
@@ -516,18 +518,11 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                             $vDatePrevue = $v['jour'] !== null ? sprintf('%02d/%s', $v['jour'], substr($periode, 5, 2)) : null;
                             $vActionUrl = 'admin_cotisations.php?annee=' . (int) $annee . '&periode=' . htmlspecialchars($periode);
                         ?>
-                            <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.55rem 0.8rem;">
+                            <div class="cot-actrow" style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); border-radius:10px; padding:0.55rem 0.8rem;">
                                 <div style="flex:1; min-width:150px;">
                                     <div style="color:var(--white); font-weight:600;"><?php echo htmlspecialchars($vNom); ?></div>
                                     <div style="color:var(--text-muted); font-size:0.78rem;"><?php echo $vDatePrevue !== null ? '📅 Prévu le ' . htmlspecialchars($vDatePrevue) : '📅 Date non définie'; ?></div>
                                 </div>
-                                <form action="<?php echo $vActionUrl; ?>" method="POST" style="margin:0; display:flex; align-items:center; gap:0.3rem;">
-                                    <?php echo csrf_field(); ?>
-                                    <input type="hidden" name="action" value="set_virement_jour">
-                                    <input type="hidden" name="membre_id" value="<?php echo (int) $v['id']; ?>">
-                                    <input type="number" name="jour" min="1" max="31" value="<?php echo $v['jour'] !== null ? (int) $v['jour'] : ''; ?>" placeholder="Jour" title="Jour du mois du virement" style="width:62px; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.3rem 0.4rem;" required>
-                                    <button type="submit" class="btn btn-secondary btn-sm" title="Enregistrer la date">💾</button>
-                                </form>
                                 <?php if ($v['recu']): ?>
                                     <span class="cot-badge cot-ok">✅ Reçu</span>
                                     <form action="<?php echo $vActionUrl; ?>" method="POST" style="margin:0;" data-confirm="Annuler la réception du virement de <?php echo htmlspecialchars($vNom, ENT_QUOTES); ?> pour <?php echo htmlspecialchars(cotisation_libelle_mois($periode), ENT_QUOTES); ?> ? Il repassera à confirmer." data-confirm-danger="1">
@@ -545,7 +540,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                                         <input type="hidden" name="periode" value="<?php echo htmlspecialchars($periode); ?>">
                                         <button type="submit" class="btn btn-sm" style="background:#1f9d55; border-color:#1f9d55; color:#fff;">✅ Bien reçu</button>
                                     </form>
-                                    <form action="<?php echo $vActionUrl; ?>" method="POST" style="margin:0;" data-confirm="Virement de <?php echo htmlspecialchars($vNom, ENT_QUOTES); ?> non reçu ? Le membre sera prévenu et le virement automatique sera désactivé." data-confirm-danger="1">
+                                    <form action="<?php echo $vActionUrl; ?>" method="POST" style="margin:0;" data-confirm="Virement de <?php echo htmlspecialchars($vNom, ENT_QUOTES); ?> non reçu ? Le membre repasse en gestion mensuelle, est prévenu (notification et e-mail) et les informations de mise en place du virement automatique lui sont réaffichées." data-confirm-danger="1">
                                         <?php echo csrf_field(); ?>
                                         <input type="hidden" name="action" value="virement_non_recu">
                                         <input type="hidden" name="membre_id" value="<?php echo (int) $v['id']; ?>">
@@ -873,6 +868,10 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                 document.querySelectorAll('details[id]').forEach(function (d) {
                     // « Membres — mois sélectionné » : toujours ouvert à l'arrivée sur la page (pas de mémoire de fermeture)
                     if (d.id === 'cot-membres') { try { sessionStorage.removeItem('cotAdminOpen_cot-membres'); } catch (e) {} d.open = true; return; }
+                    // Déclarations en attente (paiements / virements automatiques) : toujours ouvertes quand il y en a (> 0)
+                    if ((d.id === 'cot-decl-paiements' || d.id === 'cot-decl-virements') && d.hasAttribute('open')) { d.open = true; return; }
+                    // « Paramétrage de mode de paiement » et ses sous-groupes : toujours fermés à l'arrivée sur la page (pas de mémoire)
+                    if (d.id === 'cot-types' || d.id.indexOf('cot-tg-') === 0) { try { sessionStorage.removeItem('cotAdminOpen_' + d.id); } catch (e) {} d.open = false; return; }
                     var key = 'cotAdminOpen_' + d.id;
                     var stored = sessionStorage.getItem(key);
                     // Un choix déjà mémorisé (ouvert ou fermé) prévaut sur l'état par défaut du HTML ;
