@@ -9,6 +9,11 @@
 if (session_status() === PHP_SESSION_NONE) {
     require_once __DIR__ . '/session_config.php'; session_start();
 }
+// Session administrateur (y compris un membre administrateur qui bascule côté membre) : uniquement les menus d'administration, jamais ceux des membres
+if (!empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
+    include __DIR__ . '/admin_menu.php';
+    return;
+}
 require_once __DIR__ . '/member_menu_data.php';
 
 $__cur = basename($_SERVER['PHP_SELF']);

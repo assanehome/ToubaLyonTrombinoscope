@@ -14,6 +14,10 @@ require_once __DIR__ . '/dahira_emails.php';
 require_once __DIR__ . '/notification_helper.php';
 require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_wa_link(), dahira_wa_button()
 require_once __DIR__ . '/actualites_helper.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables des actualités (comme Lecture Coran)
+
+// Ajout / retrait d'un responsable (appels AJAX de la fenêtre de sélection)
+fr_traiter_post($pdo, 'actualites', true, (int) $__actuMemberId, !empty($__actuAdmin), 'Actualités');
 
 $error = '';
 $success = '';
@@ -289,6 +293,8 @@ foreach ($membresListe as $mm) { $membresIndex[(int) $mm['id']] = trim(($mm['pre
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
                 <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+
+                <?php echo fr_bloc_html($pdo, 'actualites', 'Actualités', 'actualites.php'); ?>
 
                 <button type="button" class="btn btn-primary" id="ac-new-btn" style="margin-bottom:1.2rem;">➕ Nouvelle actualité</button>
 

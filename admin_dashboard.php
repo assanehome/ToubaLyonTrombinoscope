@@ -4,6 +4,9 @@
  */
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/dahira_emails.php';
+require_once __DIR__ . '/email_unique_helper.php';
+require_once __DIR__ . '/notification_helper.php';
+require_once __DIR__ . '/profil_modification_helper.php'; // modifications de profil à valider (affichées dans « Demandes en attente »)
 
 require_once __DIR__ . '/session_config.php'; session_start();
 
@@ -58,7 +61,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'] ?? '';
         $member_id = intval($_POST['member_id'] ?? 0);
 
-        if ($member_id > 0) {
+        if (in_array($action, ['modif_valider', 'modif_refuser'], true)) {
+            // Modification de profil d'un membre validé : à valider (ou refuser) depuis « Demandes en attente »
+            try {
+                $modifId = (int) ($_POST['modif_id'] ?? 0);
+                $res = ($action === 'modif_valider')
+                    ? profil_modif_valider($pdo, $modifId)
+                    : profil_modif_refuser($pdo, $modifId, trim((string) ($_POST['motif'] ?? '')));
+                if ($res['ok']) { $success = $res['msg']; } else { $error = $res['msg']; }
+            } catch (Exception $e) {
+                error_log('Touba Lyon admin_dashboard (modification profil): ' . $e->getMessage());
+                $error = "Une erreur technique est survenue. Veuillez réessayer plus tard.";
+            }
+        } elseif ($member_id > 0) {
             try {
                 // Fetch member to confirm identity and get photo filename
                 $stmt = $pdo->prepare("SELECT * FROM membres WHERE id = ?");
@@ -137,6 +152,16 @@ try {
     // List of approved members (TOUS les validés, y compris les adhésions Dahira approuvées)
     $stmt = $pdo->query("SELECT * FROM membres WHERE status = 'approved' ORDER BY created_at DESC");
     $approvedMembers = $stmt->fetchAll();
+
+    // Modifications de profil en attente de validation (le membre reste « en attente » côté administration avec un message)
+    $modifsAttente = [];
+    try {
+        $modifsAttente = $pdo->query("SELECT mo.*, m.civilite, m.prenom, m.nom, m.email, m.telephone, m.adresse, m.code_postal, m.commune, m.statut, m.secteur_activite,
+                                             m.profession, m.annee_integration, m.souhait_commission, m.commentaires, m.photo_path AS photo_actuelle
+                                      FROM membre_modifications mo JOIN membres m ON m.id = mo.membre_id
+                                      WHERE mo.statut = 'attente' ORDER BY mo.id ASC")->fetchAll();
+    } catch (Exception $e) { $modifsAttente = []; }
+    $nbModifs = count($modifsAttente);
 
     // Nombre d'inscriptions Dahira (adhésions) pour le lien dédié
     $adhesionsCount = (int) $pdo->query("SELECT COUNT(*) FROM membres WHERE type_adhesion IS NOT NULL AND status <> 'email_a_verifier'")->fetchColumn();
@@ -228,6 +253,9 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
         .adh-toggle .chev { transition:transform 0.2s ease; }
         .adh-toggle.open .chev { transform:rotate(180deg); }
         .adh-filters-adv.is-hidden { display:none; }
+        /* Mode Trombinoscope : filtre par texte uniquement, affiché par défaut (ni pastilles, ni listes, ni bouton « Filtres ») */
+        body.trombi-only #adh-toggle, body.trombi-only .dash-chips, body.trombi-only #adh-reset, body.trombi-only #adh-panel > :not(#adh-search):not(.adh-count) { display:none !important; }
+        body.trombi-only #adh-panel { display:flex !important; }
         /* Indicateurs compacts (moins de place) */
         .stats-grid { gap:0.6rem !important; margin-bottom:1rem !important; }
         .stats-grid > * { flex:1 1 calc(33.333% - 0.6rem) !important; min-width:0 !important; max-width:none !important; }
@@ -289,25 +317,6 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             <?php include __DIR__ . '/admin_menu.php'; ?>
             <div class="dashboard-main">
 
-        <?php // Membre venu administrer : le chemin du retour reste sous les yeux ?>
-        <?php if (!empty($_SESSION['admin_is_member']) && !empty($_SESSION['player_id'])): ?>
-            <div class="glass-card" style="margin-bottom: 1.25rem; padding: 0.9rem 1.15rem; display: flex;
-                        align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
-                        border-color: rgba(45, 106, 79, 0.45);">
-                <div style="font-size: 0.86rem; color: #fff; line-height: 1.5;">
-                    🛡️ Mode administration
-                    <span style="color: var(--text-muted);">· votre espace membre vous attend.</span>
-                </div>
-                <form action="basculer_admin.php" method="POST" style="margin: 0;">
-                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES); ?>">
-                    <input type="hidden" name="vers" value="membre">
-                    <button type="submit" class="btn btn-secondary btn-sm" style="white-space: nowrap;">
-                        ↩ Revenir à l'espace membre
-                    </button>
-                </form>
-            </div>
-        <?php endif; ?>
-
         <!-- Stats Section -->
         <div class="stats-grid">
             <div class="stat-card stat-total">
@@ -316,7 +325,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             </div>
             <div class="stat-card stat-pending">
                 <span class="stat-title">En attente</span>
-                <span class="stat-value"><?php echo $counts['pending']; ?></span>
+                <span class="stat-value"><?php echo $counts['pending'] + $nbModifs; ?></span>
             </div>
             <div class="stat-card stat-approved">
                 <span class="stat-title">Validés</span>
@@ -332,33 +341,19 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
 
 
 
-        <!-- Pastilles rapides par civilité (comme sur le Trombinoscope public) -->
-        <div class="dash-chips">
-            <button type="button" class="dash-chip active" data-civ="all">Tous</button>
-            <button type="button" class="dash-chip" data-civ="Goor Yalla">Goor Yalla</button>
-            <button type="button" class="dash-chip" data-civ="Sokhna">Sokhna</button>
-        </div>
-
-        <!-- Filtres combinés (groupe replié par défaut) -->
-        <button type="button" id="adh-toggle" class="adh-toggle">🔎 Filtres <span class="chev">▾</span></button>
-        <div class="adh-filters-adv is-hidden" id="adh-panel">
+        <!-- Filtres : recherche par texte et par statut, affichés par défaut -->
+        <div class="adh-filters-adv" id="adh-panel">
             <input type="text" id="adh-search" autocomplete="off" placeholder="🔍 Nom, prénom ou email…">
-            <?php echo filter_select('f-commission', 'Commission', $fltCommissions); ?>
-            <?php echo filter_select('f-secteur', 'Secteur', $fltSecteurs); ?>
-            <?php echo filter_select('f-type', 'Type', $fltTypes); ?>
             <?php echo filter_select('f-statut', 'Statut', $fltStatuts); ?>
-            <?php echo filter_select('f-genre', 'Genre', $fltGenres); ?>
-            <?php if (!empty($fltAnnees)) echo filter_select('f-annee', 'Année', $fltAnnees); ?>
             <button type="button" id="adh-reset">✕ Réinitialiser</button>
             <span class="adh-count" id="adh-count"></span>
         </div>
-
         <!-- Tabs Navigation -->
         <div class="dashboard-tabs">
             <button class="tab-btn active" onclick="switchTab(event, 'pending-tab')">
                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 <span>Demandes en attente</span>
-                <span class="sidebar-badge"><?php echo count($pendingMembers); ?></span>
+                <span class="sidebar-badge"><?php echo count($pendingMembers) + $nbModifs; ?></span>
             </button>
             <button class="tab-btn" onclick="switchTab(event, 'validated-tab')">
                 <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
@@ -368,6 +363,67 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
         </div>
 
         <div id="pending-tab" class="tab-content">
+            <?php if (!empty($modifsAttente)):
+                $mdChamps = profil_champs();
+                $mdVignette = function ($f) {
+                    $f = trim((string) $f);
+                    return $f !== ''
+                        ? '<img src="uploads/' . htmlspecialchars(rawurlencode($f), ENT_QUOTES) . '" alt="" style="width:56px; height:56px; border-radius:50%; object-fit:cover; border:2px solid var(--accent);">'
+                        : '<span style="display:inline-flex; width:56px; height:56px; border-radius:50%; align-items:center; justify-content:center; background:rgba(212,175,55,0.12); color:var(--gold); font-size:1.3rem;">👤</span>';
+                };
+            ?>
+            <details class="glass-card" style="margin-bottom:1.2rem; border-color:rgba(212,175,55,0.5);" open>
+                <summary style="color:var(--white); font-weight:700; cursor:pointer; list-style:none; display:flex; align-items:center; gap:0.5rem;">✏️ Modifications de profil à valider <span class="badge badge-pending"><?php echo $nbModifs; ?></span></summary>
+                <p style="color:var(--text-muted); font-size:0.85rem; margin:0.7rem 0; line-height:1.5;">Ces membres ont modifié leur profil : les modifications sont <strong style="color:#ffd873;">à valider</strong>. Tant qu'elles ne sont pas validées, les données en vigueur restent les anciennes.</p>
+                <?php foreach ($modifsAttente as $md):
+                    $mdNouv = json_decode((string) $md['donnees'], true); if (!is_array($mdNouv)) { $mdNouv = []; }
+                    $mdNom = trim(($md['prenom'] ?? '') . ' ' . ($md['nom'] ?? ''));
+                ?>
+                <div style="border:1px solid rgba(212,175,55,0.38); border-radius:12px; background:rgba(255,255,255,0.03); padding:0.9rem 1rem; margin-bottom:0.8rem;">
+                    <div style="display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap; margin-bottom:0.6rem;">
+                        <?php echo $mdVignette($md['photo_actuelle']); ?>
+                        <div style="flex:1; min-width:180px;">
+                            <div style="color:#fff; font-weight:800;">👤 <?php echo htmlspecialchars($mdNom); ?></div>
+                            <div style="color:#ffd873; font-size:0.82rem; font-weight:700;">✏️ Modification à valider · demandée le <?php echo htmlspecialchars(date('d/m/Y à H:i', strtotime((string) $md['created_at']))); ?></div>
+                        </div>
+                    </div>
+                    <?php if (!empty($md['photo_path'])): ?>
+                    <div style="display:flex; align-items:center; gap:0.7rem; flex-wrap:wrap; margin-bottom:0.6rem; color:var(--text-muted); font-size:0.82rem;">
+                        <span>Photo actuelle</span><?php echo $mdVignette($md['photo_actuelle']); ?>
+                        <span style="font-size:1.3rem;">→</span>
+                        <span style="color:#7bd8a6; font-weight:700;">Nouvelle photo</span><?php echo $mdVignette($md['photo_path']); ?>
+                    </div>
+                    <?php endif; ?>
+                    <?php if (!empty($mdNouv)): ?>
+                    <div class="dlist" style="margin-bottom:0.7rem;">
+                        <?php foreach ($mdNouv as $mk => $mv): if (!isset($mdChamps[$mk])) { continue; } $mdAnc = trim((string) ($md[$mk] ?? '')); ?>
+                        <div class="drow">
+                            <div class="dcell dgrow"><?php echo htmlspecialchars($mdChamps[$mk]); ?></div>
+                            <div class="dcell" style="color:var(--text-muted); text-decoration:line-through; text-decoration-color:rgba(252,165,165,0.6);"><?php echo $mdAnc !== '' ? htmlspecialchars($mdAnc) : '—'; ?></div>
+                            <div class="dcell" style="color:#7bd8a6; font-weight:700;"><?php echo trim((string) $mv) !== '' ? htmlspecialchars((string) $mv) : '—'; ?></div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                    <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:flex-end;">
+                        <form method="POST" action="admin_dashboard.php" style="margin:0;" data-confirm="Valider ces modifications ? Elles seront appliquées au profil de <?php echo htmlspecialchars($mdNom, ENT_QUOTES); ?>.">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES); ?>">
+                            <input type="hidden" name="action" value="modif_valider">
+                            <input type="hidden" name="modif_id" value="<?php echo (int) $md['id']; ?>">
+                            <button type="submit" class="btn btn-primary btn-sm">✅ Valider</button>
+                        </form>
+                        <form method="POST" action="admin_dashboard.php" style="margin:0; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-end;" data-confirm="Refuser ces modifications ? Le membre sera prévenu et ses données resteront inchangées." data-confirm-danger="1">
+                            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES); ?>">
+                            <input type="hidden" name="action" value="modif_refuser">
+                            <input type="hidden" name="modif_id" value="<?php echo (int) $md['id']; ?>">
+                            <input type="text" name="motif" class="form-input" maxlength="255" placeholder="Motif du refus (facultatif)" style="flex:1 1 200px; min-width:0;">
+                            <button type="submit" class="btn btn-secondary btn-sm" style="border-color:var(--danger); color:#fca5a5;">🚫 Refuser</button>
+                        </form>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </details>
+            <?php endif; ?>
             <!-- Pending Registrations Section -->
             <section class="dashboard-section">
             <div class="section-header">
@@ -964,9 +1020,12 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             hide('.dashboard-tabs');
             var pend = document.getElementById('pending-tab'); if (pend) pend.style.display = 'none';
             var vHead = document.querySelector('#validated-tab .section-header'); if (vHead) vHead.style.display = 'none';
-            // Filtres masqués par défaut en mode Trombinoscope
-            var panel = document.getElementById('adh-panel'); if (panel) panel.classList.add('is-hidden');
-            var tog = document.getElementById('adh-toggle'); if (tog) tog.classList.remove('open');
+            // Filtre par texte seulement, affiché par défaut (les autres filtres sont remis à zéro et masqués)
+            document.body.classList.add('trombi-only');
+            ['f-commission', 'f-secteur', 'f-type', 'f-statut', 'f-genre', 'f-annee'].forEach(function (id) { var sl = document.getElementById(id); if (sl) sl.value = ''; });
+            var allChip = document.querySelector('.dash-chip[data-civ="all"]'); if (allChip) allChip.click();
+            var panel = document.getElementById('adh-panel'); if (panel) panel.classList.remove('is-hidden');
+            if (window.applyDashFilters) window.applyDashFilters();
             // Activer le lien "Trombinoscope" dans les DEUX menus : la barre
             // latérale (bureau) et le tiroir de l'en-tête (mobile).
             document.querySelectorAll('.admin-menu-links a, .hdr-nav-admin a').forEach(function (a) {
@@ -1147,5 +1206,6 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
             window.applyDashFilters();
         })();
     </script>
+    <?php include __DIR__ . '/modern_popup.php'; ?>
 </body>
 </html>

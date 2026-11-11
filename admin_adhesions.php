@@ -185,7 +185,7 @@ function filter_select($id, $label, $options) {
             <div class="dashboard-main">
         <div class="admin-welcome-banner glass-card" style="margin-top:2rem; margin-bottom:1rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
             <span>Inscriptions au Dahira — <strong class="gold-text"><?php echo count($adhesions); ?></strong> demande(s)</span>
-            <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
+            <?php if (empty($_SESSION['admin_is_member'])): ?><a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a><?php endif; ?>
         </div>
 
         <section class="dashboard-section">

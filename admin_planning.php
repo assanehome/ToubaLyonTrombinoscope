@@ -13,6 +13,10 @@ require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/dahira_emails.php';
 require_once __DIR__ . '/planning_dahira_helper.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables du planning (comme Lecture Coran)
+
+// Ajout / retrait d'un responsable (appels AJAX de la fenêtre de sélection)
+fr_traiter_post($pdo, 'planning', true, (int) $__plMemberId, !empty($__plAdmin), 'Planning Dahira');
 
 $error = '';
 $success = '';
@@ -516,6 +520,8 @@ $nbMembres = count(dahira_destinataires($pdo, $commissionId));
 
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
                 <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
+
+                <?php echo fr_bloc_html($pdo, 'planning', 'Planning Dahira', 'admin_planning.php'); ?>
 
                 <!-- Indicateurs (groupe replié fermé par défaut, filtrables par année) -->
                 <details class="glass-card" style="margin-bottom:1.5rem;">

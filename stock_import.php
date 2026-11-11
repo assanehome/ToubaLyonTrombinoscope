@@ -97,9 +97,114 @@ function imp_date(string $v): ?string
 }
 
 $rapport = null;
-$tropGros = ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && empty($_FILES) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0);
+$imgSucces = ''; $imgAvert = ''; $imgErreur = '';
+// --- Import des images seules (PNG / JPG / WEBP ou ZIP) : rattachement aux articles par nom de fichier
+// (nom cité dans le CSV, ou à défaut nom de l'article, ex. « table_pliante.png » → « Table pliante »)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stockEnabled && ($_POST['action'] ?? '') === 'images') {
+    if (!csrf_validate()) { $imgErreur = "Échec de validation de sécurité. Veuillez réessayer."; }
+    elseif (empty($_FILES['images'])) { $imgErreur = "Choisissez au moins une image (PNG, JPG ou WEBP, ou un fichier ZIP)."; }
+    else {
+        $extImg = ['jpg', 'jpeg', 'png', 'webp'];
+        $pool = []; $zipIgnore = false;
+        $pf = $_FILES['images'];
+        if (is_array($pf['name'] ?? null)) {
+            foreach ($pf['name'] as $i => $n) {
+                if (($pf['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) { continue; }
+                $ext = strtolower(pathinfo((string) $n, PATHINFO_EXTENSION));
+                $tmp = $pf['tmp_name'][$i];
+                if ($ext === 'zip') {
+                    if (!$zipOk) { $zipIgnore = true; continue; }
+                    $z = new ZipArchive();
+                    if ($z->open($tmp) === true) {
+                        for ($j = 0; $j < $z->numFiles; $j++) {
+                            $s2 = $z->statIndex($j);
+                            $en = (string) $s2['name'];
+                            if (substr($en, -1) === '/' || stripos($en, '__MACOSX') !== false) { continue; }
+                            $b = strtolower(basename($en));
+                            $e = pathinfo($b, PATHINFO_EXTENSION);
+                            if ($b === '' || $b[0] === '.' || !in_array($e, $extImg, true)) { continue; }
+                            $pool[$b] = ['zip' => $tmp, 'entry' => $en, 'ext' => $e, 'size' => (int) $s2['size']];
+                        }
+                        $z->close();
+                    }
+                } elseif (in_array($ext, $extImg, true)) {
+                    $pool[strtolower(basename((string) $n))] = ['tmp' => $tmp, 'ext' => $ext, 'size' => (int) $pf['size'][$i]];
+                }
+            }
+        }
+        if (empty($pool)) { $imgErreur = "Aucune image exploitable reçue (formats acceptés : PNG, JPG, WEBP" . ($zipOk ? ', ZIP' : '') . ")."; }
+        else {
+            // Articles de la commission : noms de fichiers attendus (CSV) et noms d'articles
+            $articles = []; $parFichier = []; $parNom = [];
+            try {
+                $qa = $pdo->prepare("SELECT id, nom, photo, photos_attendues FROM commission_stock WHERE commission_id = ?");
+                $qa->execute([$cid]);
+                foreach ($qa->fetchAll() as $a) {
+                    $aid = (int) $a['id'];
+                    $articles[$aid] = $a;
+                    foreach (array_filter(explode('|', strtolower((string) ($a['photos_attendues'] ?? '')))) as $nfAtt) { $parFichier[$nfAtt][] = $aid; }
+                    $parNom[imp_cle((string) $a['nom'])][] = $aid;
+                }
+            } catch (Exception $e) { $articles = []; }
+            $updPhotoI = $pdo->prepare("UPDATE commission_stock SET photo = ? WHERE id = ?");
+            $insAlbumI = $pdo->prepare("INSERT INTO commission_stock_photos (item_id, photo) VALUES (?, ?)");
+            $majAttI = $pdo->prepare("UPDATE commission_stock SET photos_attendues = ? WHERE id = ?");
+            $nbAttachees = 0; $sansArticle = []; $imgErr = [];
+            foreach ($pool as $k => $p) {
+                $cibles = $parFichier[$k] ?? [];
+                if (empty($cibles)) {
+                    $base = imp_cle(pathinfo($k, PATHINFO_FILENAME));
+                    $cibles = $parNom[$base] ?? [];
+                }
+                if (empty($cibles)) { $sansArticle[] = $k; continue; }
+                if ($p['size'] > 5 * 1024 * 1024) { $imgErr[$k] = 'plus de 5 Mo'; continue; }
+                foreach (array_values(array_unique($cibles)) as $aid) {
+                    $dest = uniqid('stock_', true) . '.' . $p['ext'];
+                    $chemin = __DIR__ . '/uploads/' . $dest;
+                    $ok = false;
+                    if (isset($p['tmp'])) {
+                        $ok = @copy($p['tmp'], $chemin);
+                        if ($ok && @getimagesize($chemin) === false) { @unlink($chemin); $ok = false; }
+                    } else {
+                        $z = new ZipArchive();
+                        if ($z->open($p['zip']) === true) {
+                            $d = $z->getFromName($p['entry']);
+                            $z->close();
+                            if ($d !== false && @getimagesizefromstring($d) !== false) { $ok = (file_put_contents($chemin, $d) !== false); }
+                        }
+                    }
+                    if (!$ok) { $imgErr[$k] = 'image illisible'; continue; }
+                    try {
+                        $a = $articles[$aid];
+                        if (trim((string) ($a['photo'] ?? '')) === '') { $updPhotoI->execute([$dest, $aid]); $articles[$aid]['photo'] = $dest; }
+                        else { $insAlbumI->execute([$aid, $dest]); }
+                        // le nom n'est plus « attendu » pour cet article
+                        $reste = array_values(array_filter(explode('|', strtolower((string) ($a['photos_attendues'] ?? ''))), function ($x) use ($k) { return $x !== '' && $x !== $k; }));
+                        $majAttI->execute([empty($reste) ? null : implode('|', $reste), $aid]);
+                        $articles[$aid]['photos_attendues'] = implode('|', $reste);
+                        $nbAttachees++;
+                    } catch (Exception $e) { @unlink($chemin); $imgErr[$k] = 'erreur technique'; }
+                }
+            }
+            $imgSucces = $nbAttachees > 0 ? "$nbAttachees image(s) rattachée(s) aux articles." : "Aucune image n'a pu être rattachée.";
+            $msgs = [];
+            if (!empty($sansArticle)) { $msgs[] = "Aucun article ne correspond à : " . implode(', ', array_slice($sansArticle, 0, 15)) . (count($sansArticle) > 15 ? '…' : '') . ". Le nom du fichier doit être celui cité dans le CSV (colonne photo / album) ou le nom de l'article."; }
+            if (!empty($imgErr)) { $l = []; foreach ($imgErr as $k => $v) { $l[] = "$k ($v)"; } $msgs[] = "Images non importées : " . implode(', ', array_slice($l, 0, 15)) . '.'; }
+            if ($zipIgnore) { $msgs[] = "Les fichiers ZIP n'ont pas été lus (extension ZIP indisponible sur le serveur) : envoyez les images directement."; }
+            $imgAvert = implode(' ', $msgs);
+        }
+    }
+}
+// Articles qui attendent encore une image (cités dans le CSV)
+$nbAttendent = 0; $exAttendus = [];
+try {
+    $qw = $pdo->prepare("SELECT nom, photos_attendues FROM commission_stock WHERE commission_id = ? AND photos_attendues IS NOT NULL AND photos_attendues <> '' ORDER BY nom ASC");
+    $qw->execute([$cid]);
+    foreach ($qw->fetchAll() as $w) { $nbAttendent++; if (count($exAttendus) < 8) { $exAttendus[] = $w['nom'] . ' (' . str_replace('|', ', ', $w['photos_attendues']) . ')'; } }
+} catch (Exception $e) { $nbAttendent = 0; }
+$tropGros =($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && empty($_FILES) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0);
 if ($tropGros) { $error = "Envoi trop volumineux pour le serveur : réduisez le nombre ou le poids des photos (ou envoyez-les en plusieurs fois)."; }
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stockEnabled && !$tropGros) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stockEnabled && !$tropGros && ($_POST['action'] ?? '') !== 'images') {
     if (!csrf_validate()) { $error = "Échec de validation de sécurité. Veuillez réessayer."; }
     else {
         $f = $_FILES['fichier'] ?? null;
@@ -187,6 +292,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stockEnabled && !$tropGros) {
                 $ins = $pdo->prepare("INSERT INTO commission_stock (commission_id, nom, description, quantite, statut, lieu, date_achat, prix_achat, etat, photo) VALUES (?,?,?,?,?,?,?,?,?,?)");
                 $upd = $pdo->prepare("UPDATE commission_stock SET quantite = ?, statut = ?, lieu = COALESCE(?, lieu), etat = ?, description = COALESCE(?, description), prix_achat = COALESCE(?, prix_achat), date_achat = COALESCE(?, date_achat) WHERE id = ?");
                 $updPhoto = $pdo->prepare("UPDATE commission_stock SET photo = ? WHERE id = ?");
+                $majAttendues = $pdo->prepare("UPDATE commission_stock SET photos_attendues = ? WHERE id = ?");
                 $insAlbum = $pdo->prepare("INSERT INTO commission_stock_photos (item_id, photo) VALUES (?, ?)");
                 $pdo->beginTransaction();
                 foreach ($lignes as $ligne) {
@@ -207,11 +313,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stockEnabled && !$tropGros) {
                     $noms = array_values(array_filter(array_map('trim', preg_split('/\|/', ($r['photo'] ?? '') . '|' . ($r['album'] ?? '')))));
                     $existe->execute([$cid, $nom]);
                     $id = (int) $existe->fetchColumn();
+                    $attendues = [];
                     if ($id > 0) {
                         if ($mode === 'maj') {
                             $upd->execute([$qte, $statut, $lieu, $etat, $desc, $prix, $da, $id]);
                             $sauvees = [];
-                            foreach ($noms as $nf) { $s = $sauverPhoto($nf); if ($s !== null) { $sauvees[] = $s; } }
+                            foreach ($noms as $nf) { $s = $sauverPhoto($nf); if ($s !== null) { $sauvees[] = $s; } else { $attendues[] = strtolower(basename($nf)); } }
+                            if (!empty($attendues)) { $majAttendues->execute([implode('|', $attendues), $id]); }
                             if (!empty($sauvees)) {
                                 $updPhoto->execute([$sauvees[0], $id]);
                                 foreach (array_slice($sauvees, 1) as $s) { $insAlbum->execute([$id, $s]); }
@@ -220,9 +328,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stockEnabled && !$tropGros) {
                         } else { $ignores++; }
                     } else {
                         $sauvees = [];
-                        foreach ($noms as $nf) { $s = $sauverPhoto($nf); if ($s !== null) { $sauvees[] = $s; } }
+                        foreach ($noms as $nf) { $s = $sauverPhoto($nf); if ($s !== null) { $sauvees[] = $s; } else { $attendues[] = strtolower(basename($nf)); } }
                         $ins->execute([$cid, $nom, $desc, $qte, $statut, $lieu, $da, $prix, $etat, $sauvees[0] ?? null]);
                         $nid = (int) $pdo->lastInsertId();
+                        if (!empty($attendues)) { $majAttendues->execute([implode('|', $attendues), $nid]); }
                         foreach (array_slice($sauvees, 1) as $s) { $insAlbum->execute([$nid, $s]); }
                         $nouveaux++;
                         if ($lieu !== null) { try { $pdo->prepare("INSERT IGNORE INTO stock_lieux (nom) VALUES (?)")->execute([$lieu]); } catch (Exception $e) {} }
@@ -231,7 +340,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $stockEnabled && !$tropGros) {
                 $pdo->commit();
                 $success = "Import terminé : $nouveaux article(s) ajouté(s), $maj mis à jour, $ignores ignoré(s)" . ($nbPhotos > 0 ? ", $nbPhotos photo(s) rattachée(s)." : '.');
                 $msgs = [];
-                if (!empty($manquantes)) { $msgs[] = "Photos citées dans le CSV mais non envoyées : " . implode(', ', array_slice(array_keys($manquantes), 0, 15)) . (count($manquantes) > 15 ? '…' : '') . '.'; }
+                if (!empty($manquantes)) { $msgs[] = "Photos citées dans le CSV mais non envoyées : " . implode(', ', array_slice(array_keys($manquantes), 0, 15)) . (count($manquantes) > 15 ? '…' : '') . '. Utilisez « Importer les images » ci-dessous : elles seront rattachées aux articles par leur nom de fichier.'; }
                 if (!empty($photoErr)) { $l = []; foreach ($photoErr as $k => $v) { $l[] = "$k ($v)"; } $msgs[] = "Photos non importées : " . implode(', ', array_slice($l, 0, 15)) . '.'; }
                 if ($zipIgnore) { $msgs[] = "Les fichiers ZIP n'ont pas été lus (extension ZIP indisponible sur le serveur) : envoyez les images directement."; }
                 $avert = implode(' ', $msgs);
@@ -297,6 +406,29 @@ $maxFichiers = (int) ini_get('max_file_uploads');
                         <button type="submit" class="btn btn-primary">📥 Importer</button>
                     </form>
                 </div>
+                <!-- Import des images seules : rattachées aux articles par leur nom de fichier -->
+                <details id="images" class="glass-card" style="margin-top:1.2rem;"<?php echo ($nbAttendent > 0 || $imgSucces !== '' || $imgErreur !== '' || $imgAvert !== '') ? ' open' : ''; ?>>
+                    <summary>📷 Importer les images des articles<?php if ($nbAttendent > 0): ?> <span style="color:#ffd873; font-weight:600; font-size:0.82rem;">· <?php echo (int) $nbAttendent; ?> article(s) en attente d'image</span><?php endif; ?></summary>
+                    <?php if ($imgSucces !== ''): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin:0.8rem 0;"><?php echo $h($imgSucces); ?></div><?php endif; ?>
+                    <?php if ($imgAvert !== ''): ?><div style="background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.45);color:#ffd873;padding:0.8rem 1rem;border-radius:10px;margin:0.8rem 0;">⚠️ <?php echo $h($imgAvert); ?></div><?php endif; ?>
+                    <?php if ($imgErreur !== ''): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin:0.8rem 0;"><?php echo $h($imgErreur); ?></div><?php endif; ?>
+                    <p style="color:var(--text-muted); font-size:0.88rem; margin:0.8rem 0; line-height:1.55;">
+                        Après l'import du CSV, envoyez ici les <strong>images PNG</strong> (ou JPG / WEBP) des articles : chaque image est rattachée à son article par son <strong>nom de fichier</strong>
+                        (celui cité dans la colonne <em>photo</em> ou <em>album</em> du CSV, ou à défaut le nom de l'article, ex. <em>table_pliante.png</em>).
+                        <?php if ($nbAttendent > 0): ?><br><strong style="color:#ffd873;"><?php echo (int) $nbAttendent; ?> article(s)</strong> attendent encore une image : <?php echo $h(implode(' · ', $exAttendus)); ?><?php echo $nbAttendent > count($exAttendus) ? '…' : ''; ?><?php endif; ?>
+                    </p>
+                    <form method="POST" action="stock_import.php?id=<?php echo $cid; ?>#images" enctype="multipart/form-data">
+                        <?php echo $csrf; ?>
+                        <input type="hidden" name="commission_id" value="<?php echo $cid; ?>">
+                        <input type="hidden" name="action" value="images">
+                        <div class="form-group"><label class="form-label">Images des articles <span style="color:var(--danger)">*</span></label>
+                            <input type="file" name="images[]" accept=".png,.jpg,.jpeg,.webp<?php echo $zipOk ? ',.zip' : ''; ?>" class="form-input" multiple required>
+                            <small style="color:var(--text-muted); display:block; margin-top:0.3rem; line-height:1.5;">
+                                5 Mo maximum par image. <?php echo $zipOk ? "Vous pouvez aussi envoyer un seul fichier <strong>.zip</strong> contenant toutes les images." : "Jusqu'à " . max(1, $maxFichiers) . " fichiers par envoi."; ?>
+                            </small></div>
+                        <button type="submit" class="btn btn-primary">📷 Importer les images</button>
+                    </form>
+                </details>
                 <?php endif; ?>
             </div>
             </div>

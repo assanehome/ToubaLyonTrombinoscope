@@ -57,6 +57,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         exit;
     }
 
+    if ($action === 'tout_supprimer') {
+        troba_notifications_delete_all($pdo, $membre_id);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
     http_response_code(400);
     echo json_encode(['ok' => false, 'error' => 'action inconnue']);
     exit;

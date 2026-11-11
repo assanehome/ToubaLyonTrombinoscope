@@ -8,7 +8,7 @@
  */
 require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_param(), dahira_set_param()
 require_once __DIR__ . '/notification_helper.php';     // troba_notify_membre()
-require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables des cotisations (fonction « cotisation »)
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables Finance (fonction « cotisation »)
 require_once __DIR__ . '/dahira_emails.php';           // dahira_base_url(), dahira_email_wrap(), send_smtp_mail()
 
 /** Montant de la cotisation mensuelle par défaut (euros), tant qu'aucun montant n'est défini pour une année donnée. */
@@ -1182,7 +1182,7 @@ function cotisation_responsables_ids(PDO $pdo): array
 }
 
 /**
- * Ce qui attend la Finance (accueil des responsables des cotisations) : paiements déclarés à valider,
+ * Ce qui attend la Finance (accueil des responsables Finance) : paiements déclarés à valider,
  * virements automatiques déclarés à activer, virements du mois à confirmer dont le jour est arrivé.
  */
 function cotisation_a_traiter(PDO $pdo): array
@@ -1210,4 +1210,24 @@ function cotisation_virement_non_recu_info(PDO $pdo, int $membreId): ?array
         if ($r) { return ['periode' => (string) ($r['virement_non_recu_periode'] ?? ''), 'le' => (string) $r['virement_non_recu_le']]; }
     } catch (Exception $e) { /* aucun signalement */ }
     return null;
+}
+
+
+/** Le membre a-t-il fermé (« Vu ») le message de félicitations de ce mois ? */
+function cotisation_merci_vu(PDO $pdo, int $membreId, string $periode): bool
+{
+    try {
+        $st = $pdo->prepare("SELECT 1 FROM app_settings WHERE cle = ?");
+        $st->execute(['cotmerci_' . $membreId . '_' . str_replace('-', '', $periode)]);
+        return $st->fetchColumn() !== false;
+    } catch (Exception $e) { return false; }
+}
+
+/** Mémorise que le membre a fermé le message de félicitations de ce mois (il ne réapparaît pas avant le mois suivant). */
+function cotisation_merci_marquer_vu(PDO $pdo, int $membreId, string $periode): void
+{
+    if ($membreId <= 0 || !preg_match('/^\d{4}-\d{2}$/', $periode)) { return; }
+    try {
+        $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES (?, '1')")->execute(['cotmerci_' . $membreId . '_' . str_replace('-', '', $periode)]);
+    } catch (Exception $e) { /* sans effet */ }
 }

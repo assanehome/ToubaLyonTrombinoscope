@@ -57,13 +57,26 @@ function troba_member_gestion_items(?PDO $pdo = null): array
 {
     $isInteg  = !empty($_SESSION['is_integrateur']);
     $isKourel = !empty($_SESSION['is_gestion_kourel']);
+    if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
+        try {
+            require_once __DIR__ . '/kourel_access.php';
+            $isKourel = member_is_kourel_manager($pdo, (int) $_SESSION['player_id']); // responsable désigné des Kurels ou d'un Kurel
+        } catch (Throwable $e) { /* repli sur la session */ }
+    }
     $isCom    = !empty($_SESSION['is_gestion_commission']);
     $items = [];
 
-    if (!empty($_SESSION['is_suivi_integration'])) {
-        // Responsable de la commission Intégration : suivi complet (portée admin).
-        $items['admin_reponses.php']     = '📊 Suivi intégration Admin';
-        $items['admin_integrateurs.php'] = '👤 Gérer les intégrateurs';
+    // Responsable désigné du Suivi intégration (sans lien avec une commission)
+    $isSuivi = false;
+    if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
+        try {
+            require_once __DIR__ . '/fonction_responsables_helper.php';
+            $isSuivi = fr_est_responsable($pdo, 'integration', (int) $_SESSION['player_id']);
+        } catch (Throwable $e) { $isSuivi = false; }
+    }
+    if ($isSuivi) {
+        // Suivi complet (portée admin) : définition des intégrateurs et des responsables dans la page
+        $items['admin_reponses.php'] = '📊 Suivi intégration Admin';
     } elseif ($isInteg) {
         // Intégrateur : suivi limité à ses inscrits assignés.
         $items['admin_reponses.php'] = '📊 Suivi intégration';
@@ -81,25 +94,20 @@ function troba_member_gestion_items(?PDO $pdo = null): array
             try {
                 $stockOn = ((int) $pdo->query("SELECT COUNT(*) FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = $pid AND COALESCE(c.stock_enabled,0) = 1")->fetchColumn()) > 0;
             } catch (Throwable $e) { $stockOn = false; }
-            try {
-                require_once __DIR__ . '/fonction_responsables_helper.php';
-                if (fr_est_responsable($pdo, 'coran', $pid)) { $items['wird_admin.php'] = '📖 Lecture Coran'; }
-                if (fr_est_responsable($pdo, 'guddi', $pid)) { $items['admin_guddi.php'] = '💎 Guddi Àjjuma'; }
-
-            } catch (Throwable $e) {}
-            try {
-                $secreN = (int) $pdo->query("SELECT COUNT(*) FROM commissions c JOIN commission_gestionnaires cg ON cg.commission_id = c.id WHERE cg.membre_id = $pid AND (LOWER(c.nom) LIKE '%secrétariat général%' OR LOWER(c.nom) LIKE '%secretariat general%')")->fetchColumn();
-                if ($secreN > 0) {
-                    $items['admin_planning.php'] = '📅 Planning Dahira';
-                    $items['actualites.php'] = '📰 Actualités';
-                }
-            } catch (Throwable $e) {}
-            try {
-                $finN = fr_est_responsable($pdo, 'cotisation', (int) $pid) ? 1 : 0; // responsables désignés des cotisations
-                if ($finN > 0) { $items['admin_cotisations.php'] = '💶 Finance'; }
-            } catch (Throwable $e) {}
             if ($stockOn) { $items['stock_index.php'] = '📦 Stock'; }
         }
+    }
+    // Fonctions à responsables désignés (Lecture Coran, Guddi, Actualités, Planning, Finance) : plus de lien avec les commissions
+    if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
+        $pidFr = (int) $_SESSION['player_id'];
+        try {
+            require_once __DIR__ . '/fonction_responsables_helper.php';
+            if (fr_est_responsable($pdo, 'coran', $pidFr)) { $items['wird_admin.php'] = '📖 Lecture Coran'; }
+            if (fr_est_responsable($pdo, 'guddi', $pidFr)) { $items['admin_guddi.php'] = '💎 Guddi Àjjuma'; }
+            if (fr_est_responsable($pdo, 'planning', $pidFr)) { $items['admin_planning.php'] = '📅 Planning Dahira'; }
+            if (fr_est_responsable($pdo, 'actualites', $pidFr)) { $items['actualites.php'] = '📰 Actualités'; }
+            if (fr_est_responsable($pdo, 'cotisation', $pidFr)) { $items['admin_cotisations.php'] = '💶 Finance'; }
+        } catch (Throwable $e) {}
     }
     // Responsables de la commission Logistique : demandes reçues
     if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {

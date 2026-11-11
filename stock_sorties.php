@@ -43,7 +43,7 @@ function so_ligne_html(array $it, int $q): string
     $nom = htmlspecialchars((string) $it['nom'], ENT_QUOTES);
     $dispo = (int) $it['quantite'];
     $img = !empty($it['photo'])
-        ? '<img src="uploads/' . htmlspecialchars(rawurlencode((string) $it['photo']), ENT_QUOTES) . '" alt="" loading="lazy">'
+        ? '<img src="stock_thumb.php?f=' . htmlspecialchars(rawurlencode((string) $it['photo']), ENT_QUOTES) . '&amp;w=96" alt="" loading="lazy">'
         : '<span class="ph">📦</span>';
     return '<div class="so-sel" data-id="' . (int) $it['id'] . '">' . $img
         . '<span class="so-sel-nom">' . $nom . '<small>dispo : ' . $dispo . '</small></span>'
@@ -452,7 +452,7 @@ $empNomAffiche = function (array $s) use ($nomMembre) {
                 return m;
             }
             function photoNode(it, cls, phCls, phTxt) {
-                if (it.photo) { var i = el('img', cls); i.src = 'uploads/' + encodeURIComponent(it.photo); i.alt = ''; i.loading = 'lazy'; return i; }
+                if (it.photo) { var i = el('img', cls); i.src = 'stock_thumb.php?w=96&f=' + encodeURIComponent(it.photo); i.alt = ''; i.loading = 'lazy'; return i; }
                 return el('div', phCls, phTxt || '📦');
             }
             var draft = {}, seulementSel = false;

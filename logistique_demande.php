@@ -31,6 +31,46 @@ $idsAutorises = array_map(function ($c) { return (int) $c['id']; }, $mesCommissi
 $logiId = logistique_commission_id($pdo);
 $respLogi = $logiId > 0 ? stock_responsables_commission($pdo, $logiId) : [];
 
+// « Vu » : clôture une demande exécutée (elle disparaît de l'accueil du demandeur) ;
+// « Réouvrir » : uniquement pour une demande refusée, qui repart aux responsables de la commission Logistique
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), ['logi_vu', 'logi_rouvrir'], true)) {
+    if (!csrf_validate()) { $error = "Échec de validation de sécurité. Veuillez réessayer."; }
+    else {
+        $lid = (int) ($_POST['demande_id'] ?? 0);
+        $vu = (($_POST['action'] ?? '') === 'logi_vu');
+        try {
+            if ($lid > 0 && !empty($idsAutorises)) {
+                $in = implode(',', array_fill(0, count($idsAutorises), '?'));
+                if ($vu) {
+                    $up = $pdo->prepare("UPDATE logistique_demandes SET confirme_le = NOW() WHERE id = ? AND statut IN ('executee','terminee') AND confirme_le IS NULL AND commission_id IN ($in)");
+                } else {
+                    $up = $pdo->prepare("UPDATE logistique_demandes SET statut = 'nouvelle', traite_par = NULL, execute_le = NULL, confirme_le = NULL WHERE id = ? AND statut = 'refusee' AND commission_id IN ($in)");
+                }
+                $up->execute(array_merge([$lid], $idsAutorises));
+                if ($up->rowCount() > 0) {
+                    $qL = $pdo->prepare("SELECT d.traite_par, d.description, c.nom AS commission_nom FROM logistique_demandes d JOIN commissions c ON c.id = d.commission_id WHERE d.id = ?");
+                    $qL->execute([$lid]);
+                    $rL = $qL->fetch();
+                    require_once __DIR__ . '/notification_helper.php';
+                    if ($vu) {
+                        if ($rL && (int) ($rL['traite_par'] ?? 0) > 0 && (int) $rL['traite_par'] !== $moi) {
+                            troba_notify_membre($pdo, (int) $rL['traite_par'], 'commission', '👍 Exécution vue', 'La demande a été marquée comme vue : ' . mb_substr((string) $rL['description'], 0, 120), 'logistique_demandes.php');
+                        }
+                        $_SESSION['logi_flash'] = "Demande clôturée (vue).";
+                    } else {
+                        foreach ($respLogi as $m) {
+                            troba_notify_membre($pdo, (int) $m['id'], 'commission', '🔄 Demande de logistique réouverte', ($rL['commission_nom'] ?? '') . ' : ' . mb_substr((string) ($rL['description'] ?? ''), 0, 90), 'logistique_demandes.php');
+                        }
+                        $_SESSION['logi_flash'] = "Demande réouverte : elle est de nouveau envoyée aux responsables de la commission Logistique.";
+                    }
+                }
+            }
+        } catch (Exception $e) { error_log('Touba Lyon logistique vu/réouverture : ' . $e->getMessage()); }
+        header('Location: logistique_demande.php');
+        exit;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate()) { $error = "Échec de validation de sécurité. Veuillez réessayer."; }
     else {
@@ -116,19 +156,23 @@ $post = $error !== '' ? $_POST : [];
             <div class="lg-wrap">
                 <div class="admin-welcome-banner glass-card" style="margin-bottom:1rem; padding:1.1rem 1.5rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:0.8rem;">
                     <span>🚚 Demande de logistique</span>
-                    <?php if ($__isAdmin || ($moi > 0 && logistique_est_responsable($pdo, $moi))): ?><a href="logistique_demandes.php" class="btn btn-secondary btn-sm">📋 Demandes reçues</a><?php endif; ?>
+                    <span style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                        <?php if (!($__isAdmin && !empty($_SESSION['admin_is_member']))): ?><a href="<?php echo $__isAdmin ? 'admin_dashboard.php' : 'index.php'; ?>" class="btn btn-secondary btn-sm">🏠 Retour à l'accueil</a><?php endif; ?>
+                        <?php if ($__isAdmin || ($moi > 0 && logistique_est_responsable($pdo, $moi))): ?><a href="logistique_demandes.php" class="btn btn-secondary btn-sm">📋 Demandes reçues</a><?php endif; ?>
+                    </span>
                 </div>
                 <?php if ($success !== ''): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo $h($success); ?></div><?php endif; ?>
                 <?php if ($error !== ''): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo $h($error); ?></div><?php endif; ?>
 
                 <?php
-                // Demandes en cours en haut ; exécutées / clôturées dans un groupe fermé en bas
-                $demandesActives = []; $demandesCloturees = [];
-                foreach ($demandes as $dd) { if (in_array($dd['statut'], ['nouvelle', 'prise_en_compte'], true)) { $demandesActives[] = $dd; } else { $demandesCloturees[] = $dd; } }
+                // Un groupe par statut : nouvelles et prises en compte en haut (ouvertes), exécutées / terminées / refusées en bas (fermées)
+                $parStatut = [];
+                foreach ($demandes as $dd) { $parStatut[(string) $dd['statut']][] = $dd; }
+                $statutsHaut = ['nouvelle', 'prise_en_compte'];
+                $statutsBas = ['executee', 'terminee', 'refusee'];
                 ?>
-                <div class="lg-sub" style="margin-top:0;">📜 Demandes en cours (<?php echo count($demandesActives); ?>)</div>
-                <?php if (empty($demandesActives)): ?><p style="color:var(--text-muted);"><?php echo empty($demandes) ? 'Aucune demande pour le moment.' : 'Aucune demande en cours.'; ?></p><?php endif; ?>
-                <?php $carteDemande = function (array $d) use ($h) { ?>
+                <?php if (empty($demandes)): ?><p style="color:var(--text-muted);">Aucune demande pour le moment.</p><?php endif; ?>
+                <?php $carteDemande = function (array $d) use ($h, $csrf) { ?>
                     <div class="lg-card">
                         <div class="lg-top">
                             <span class="lg-titre"><?php echo $h(logistique_types()[$d['type']] ?? $d['type']); ?> · <?php echo $h(logistique_vehicules()[$d['vehicule']] ?? $d['vehicule']); ?></span>
@@ -140,12 +184,32 @@ $post = $error !== '' ? $_POST : [];
                             📍 <?php echo $h($d['depart'] === 'autre' ? $d['depart_autre'] : (logistique_departs()[$d['depart']] ?? $d['depart'])); ?> → <?php echo $h($d['destination']); ?>
                             <?php if (!empty($d['date_besoin'])): ?> · 🗓️ <?php echo $h($d['date_besoin']); ?><?php endif; ?>
                             <?php if (!empty($d['execute_le'])): ?><br>✅ Exécutée le <?php echo $h(date('d/m/Y à H:i', strtotime((string) $d['execute_le']))); ?><?php endif; ?>
-                            <?php if (!empty($d['confirme_le'])): ?> · 👍 Confirmée par vous<?php endif; ?>
+                            <?php if (!empty($d['confirme_le'])): ?> · 👍 Vue / clôturée<?php endif; ?>
                             <?php if (trim((string) ($d['reponse'] ?? '')) !== ''): ?><br>💬 Réponse : <?php echo nl2br($h($d['reponse'])); ?><?php endif; ?>
                         </div>
+                        <?php if (in_array($d['statut'], ['executee', 'terminee'], true) && empty($d['confirme_le'])): ?>
+                        <form method="POST" action="logistique_demande.php" style="margin:0.7rem 0 0;">
+                            <?php echo $csrf; ?>
+                            <input type="hidden" name="action" value="logi_vu">
+                            <input type="hidden" name="demande_id" value="<?php echo (int) $d['id']; ?>">
+                            <button type="submit" class="btn btn-primary btn-sm" style="width:100%; text-align:center;">👍 Vu — clôturer</button>
+                        </form>
+                        <?php elseif ($d['statut'] === 'refusee'): ?>
+                        <form method="POST" action="logistique_demande.php" style="margin:0.7rem 0 0;" data-confirm="Réouvrir cette demande ? Elle sera de nouveau envoyée aux responsables de la commission Logistique.">
+                            <?php echo $csrf; ?>
+                            <input type="hidden" name="action" value="logi_rouvrir">
+                            <input type="hidden" name="demande_id" value="<?php echo (int) $d['id']; ?>">
+                            <button type="submit" class="btn btn-secondary btn-sm" style="width:100%; text-align:center;">↩️ Réouvrir</button>
+                        </form>
+                        <?php endif; ?>
                     </div>
                 <?php }; ?>
-                <?php foreach ($demandesActives as $d) { $carteDemande($d); } ?>
+                <?php foreach ($statutsHaut as $kS): if (empty($parStatut[$kS])): continue; endif; ?>
+                <details class="glass-card" style="margin-top:1rem;" open>
+                    <summary><?php echo $h(logistique_statuts()[$kS] ?? $kS); ?> (<?php echo count($parStatut[$kS]); ?>)</summary>
+                    <?php foreach ($parStatut[$kS] as $d) { $carteDemande($d); } ?>
+                </details>
+                <?php endforeach; ?>
 
                 <details class="glass-card" style="margin-top:1rem;"<?php echo ($error !== '' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') ? ' open' : ''; ?>>
                     <summary>➕ Nouvelle demande</summary>
@@ -194,12 +258,12 @@ $post = $error !== '' ? $_POST : [];
                     </form>
                 </details>
 
-                <?php if (!empty($demandesCloturees)): ?>
+                <?php foreach ($statutsBas as $kS): if (empty($parStatut[$kS])): continue; endif; ?>
                 <details class="glass-card" style="margin-top:1rem;">
-                    <summary>✅ Demandes exécutées / clôturées (<?php echo count($demandesCloturees); ?>)</summary>
-                    <?php foreach ($demandesCloturees as $d) { $carteDemande($d); } ?>
+                    <summary><?php echo $h(logistique_statuts()[$kS] ?? $kS); ?> (<?php echo count($parStatut[$kS]); ?>)</summary>
+                    <?php foreach ($parStatut[$kS] as $d) { $carteDemande($d); } ?>
                 </details>
-                <?php endif; ?>
+                <?php endforeach; ?>
             </div>
             </div>
         </div>

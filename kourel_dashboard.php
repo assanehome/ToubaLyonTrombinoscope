@@ -3,12 +3,16 @@
  * Touba Lyon 2026 - Espace Kurels (modèle « commission complet »).
  *
  * Un Kurel = un groupe avec des MEMBRES et des RESPONSABLES (rôle par Kurel).
- *  - « Admin Kurels » (administrateur ou responsable de la commission « Kurels ») :
+ *  - « Admin Kurels » (administrateur ou responsable désigné des Kurels) :
  *    crée des Kurels, gère leurs membres ET désigne les responsables de chaque Kurel.
  *  - Responsable d'un Kurel : gère les MEMBRES de ses Kurels.
  */
 require_once __DIR__ . '/kourel_guard.php'; // $__isAdmin, $__isKurelAdmin, $__managedKourels, $pdo
 require_once __DIR__ . '/csrf.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables des Kurels (comme Lecture Coran)
+
+// Ajout / retrait d'un responsable (appels AJAX de la fenêtre de sélection)
+fr_traiter_post($pdo, 'kurels', !empty($__isKurelAdmin), (int) ($_SESSION['player_id'] ?? 0), !empty($__isAdmin), 'Kurels');
 require_once __DIR__ . '/dahira_emails.php';        // send_smtp_mail(), dahira_base_url()
 require_once __DIR__ . '/notification_helper.php';  // cloche + Web Push
 require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_param()
@@ -571,11 +575,13 @@ $membersJs = array_map(function ($m) {
             <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>🎵 Espace Kurels — <strong class="gold-text"><?php echo count($kourels); ?></strong> Kurel(s)</span>
                 <?php if ($__isAdmin): ?>
-                    <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
+                    <?php if (empty($_SESSION['admin_is_member'])): ?><a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a><?php endif; ?>
                 <?php else: ?>
                     <a href="trombinoscope.php" class="btn btn-secondary btn-sm">← Trombinoscope</a>
                 <?php endif; ?>
             </div>
+
+            <?php if (!empty($__isKurelAdmin)) { echo fr_bloc_html($pdo, 'kurels', 'Kurels', 'kourel_dashboard.php'); } ?>
 
             <!-- Accès rapide aux deux listes de référence, qui vivent en bas de page -->
             <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1.5rem;">

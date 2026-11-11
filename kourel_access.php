@@ -3,29 +3,22 @@
  * Touba Lyon 2026 - Accès à la gestion des Kurels (modèle « commission complet »).
  *
  * Deux niveaux :
- *  - « Admin Kurels » : responsable de la commission « Kurels » (ou administrateur).
+ *  - « Admin Kurels » : responsable désigné des Kurels (ou administrateur), sans lien avec une commission.
  *    → peut CRÉER des Kurels, gérer leurs membres ET désigner les responsables de chaque Kurel.
  *  - « Responsable d'un Kurel » : figure dans kourel_gestionnaires pour ce Kurel.
  *    → peut gérer les MEMBRES de ses Kurels.
  */
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables désignés (fonction « kurels »)
+
 if (!function_exists('member_is_kourel_admin')) {
-    /** Responsable de la commission « Kurels » (droit de créer/gérer tous les Kurels). */
+    /** Responsable désigné des Kurels (droit de créer/gérer tous les Kurels). */
     function member_is_kourel_admin($pdo, $memberId)
     {
         $memberId = (int) $memberId;
         if ($memberId <= 0) {
             return false;
         }
-        try {
-            $cnt = (int) $pdo->query(
-                "SELECT COUNT(*) FROM commission_gestionnaires cg
-                 JOIN commissions c ON c.id = cg.commission_id
-                 WHERE cg.membre_id = $memberId AND LOWER(c.nom) LIKE '%kurel%'"
-            )->fetchColumn();
-            return $cnt > 0;
-        } catch (Exception $e) {
-            return false;
-        }
+        return fr_est_responsable($pdo, 'kurels', $memberId);
     }
 }
 

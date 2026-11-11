@@ -10,6 +10,7 @@ require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/send_mail.php';
 require_once __DIR__ . '/contact.php';
 require_once __DIR__ . '/dahira_emails.php';
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables du suivi intégration (comme Lecture Coran)
 
 if (session_status() === PHP_SESSION_NONE) {
     require_once __DIR__ . '/session_config.php'; session_start();
@@ -34,20 +35,18 @@ if (!$isAdmin && !empty($_SESSION['player_id'])) {
         // ignore : traité comme non-intégrateur
     }
 }
-// Responsable de la commission « Intégration » : accès complet au suivi (comme admin).
+// Responsable désigné du Suivi intégration : accès complet au suivi (comme admin), sans lien avec une commission.
 $isSuiviManager = false;
 if (!$isAdmin && !empty($_SESSION['player_id'])) {
-    try {
-        $isSuiviManager = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE cg.membre_id = " . (int) $_SESSION['player_id'] . " AND LOWER(c.nom) LIKE '%gration%'")->fetchColumn() > 0);
-    } catch (Exception $e) {
-        $isSuiviManager = false;
-    }
+    $isSuiviManager = fr_est_responsable($pdo, 'integration', (int) $_SESSION['player_id']);
     $_SESSION['is_suivi_integration'] = $isSuiviManager;
     if ($isSuiviManager && $integrateurNom === '') {
         $integrateurNom = trim($_SESSION['player_name'] ?? '');
     }
 }
 $canAll = $isAdmin || $isSuiviManager;
+// Ajout / retrait d'un responsable du suivi (appels AJAX de la fenêtre de sélection)
+fr_traiter_post($pdo, 'integration', $canAll, (int) ($_SESSION['player_id'] ?? 0), $isAdmin, 'Suivi intégration');
 // Accès : administrateurs, responsables de la commission « Intégration » (portée complète),
 // et intégrateurs (portée limitée à leurs inscrits assignés).
 if (!$isAdmin && !$isSuiviManager && !$isIntegrateur) {
@@ -185,7 +184,7 @@ try {
     $sql = "SELECT m.*, TRIM(CONCAT(COALESCE(i.prenom,''), ' ', i.nom)) AS integrateur_nom
             FROM membres m
             LEFT JOIN membres i ON m.integrateur_id = i.id
-            WHERE m.type_adhesion IS NOT NULL AND m.status <> 'email_a_verifier'";
+            WHERE m.type_adhesion IS NOT NULL AND m.status NOT IN ('email_a_verifier', 'approved')"; // uniquement les membres en attente
     if ($isIntegrateur && !$canAll) {
         $sql .= " AND m.integrateur_id = " . $integId;
     }
@@ -510,7 +509,13 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
         <div class="dashboard-layout">
             <?php if ($isAdmin) { include __DIR__ . '/admin_menu.php'; } else { include __DIR__ . '/member_menu.php'; } ?>
             <div class="dashboard-main">
-        <div class="rep-search" style="margin-top:2rem;">
+        <h1 class="admin-page-title" style="margin-top:2rem;">📊 Suivi intégration</h1>
+        <?php if ($canAll): ?>
+        <div style="margin-top:0;">
+            <?php echo fr_bloc_html($pdo, 'integration', 'Suivi intégration', 'admin_reponses.php'); ?>
+        </div>
+        <?php endif; ?>
+        <div class="rep-search" style="margin-top:<?php echo $canAll ? '0.5rem' : '0'; ?>;">
             <input type="text" id="rep-search-input" placeholder="🔍 Rechercher par nom, prénom ou email…">
         </div>
 
@@ -537,7 +542,7 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
         <?php if (empty($rows)): ?>
             <div class="empty-state">
                 <div class="empty-state-icon">📝</div>
-                <p><?php echo ($isIntegrateur && !$canAll) ? "Aucun inscrit ne vous a encore été assigné." : "Aucune réponse pour le moment."; ?></p>
+                <p><?php echo ($isIntegrateur && !$canAll) ? "Aucun inscrit en attente ne vous est assigné." : "Aucun membre en attente."; ?></p>
             </div>
         <?php else: ?>
             <?php
@@ -568,6 +573,50 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
             <div class="empty-state" id="rep-noresult" style="display:none;">
                 <div class="empty-state-icon">🔍</div><p>Aucun membre ne correspond à votre recherche.</p>
             </div>
+        <?php endif; ?>
+
+        <?php if ($canAll):
+            // Liste des intégrateurs (en bas de page) : qui sont-ils, combien d'inscrits leur sont assignés
+            $integList = array_values(array_filter($roleMembers, function ($m) { return !empty($m['is_integrateur']); }));
+            $nbAssignes = [];
+            try {
+                foreach ($pdo->query("SELECT integrateur_id, COUNT(*) AS n FROM membres WHERE integrateur_id IS NOT NULL GROUP BY integrateur_id")->fetchAll() as $ra) { $nbAssignes[(int) $ra['integrateur_id']] = (int) $ra['n']; }
+            } catch (Exception $e) { $nbAssignes = []; }
+            $nbEnAttenteInteg = [];
+            foreach ($rows as $rr) { if (!empty($rr['integrateur_id'])) { $kI = (int) $rr['integrateur_id']; $nbEnAttenteInteg[$kI] = ($nbEnAttenteInteg[$kI] ?? 0) + 1; } }
+        ?>
+        <details id="rep-integrateurs" class="glass-card" style="margin-top:1.5rem;">
+            <summary>🧭 Intégrateurs (<?php echo count($integList); ?>)</summary>
+            <div style="margin:0.8rem 0;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openRoleModal()">👤 Définir les intégrateurs</button>
+            </div>
+            <?php if (empty($integList)): ?>
+                <p style="color:var(--text-muted); font-size:0.88rem; margin:0;">Aucun intégrateur défini pour le moment.</p>
+            <?php else: ?>
+            <div class="dlist">
+                <?php foreach ($integList as $im):
+                    $iId = (int) $im['id'];
+                    $iNom = trim(($im['prenom'] ?? '') . ' ' . ($im['nom'] ?? ''));
+                    $iIni = strtoupper(mb_substr((string) ($im['prenom'] ?? ''), 0, 1) . mb_substr((string) ($im['nom'] ?? ''), 0, 1));
+                    $iPhoto = trim((string) ($im['photo_path'] ?? ''));
+                ?>
+                <div class="drow">
+                    <div class="dcell">
+                        <?php if ($iPhoto !== ''): ?>
+                            <img src="uploads/<?php echo h(rawurlencode($iPhoto)); ?>" alt="" style="width:38px; height:38px; border-radius:50%; object-fit:cover; border:2px solid var(--accent); display:block;">
+                        <?php else: ?>
+                            <span style="width:38px; height:38px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#d4af37,#b8902f); color:#0c241a; font-weight:800; font-size:0.75rem;"><?php echo h($iIni !== '' ? $iIni : '?'); ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="dcell dgrow">
+                        <strong style="color:#fff;"><?php echo h($iNom); ?></strong>
+                        <div style="color:var(--text-muted); font-size:0.8rem;">🕓 <?php echo (int) ($nbEnAttenteInteg[$iId] ?? 0); ?> en attente · 👥 <?php echo (int) ($nbAssignes[$iId] ?? 0); ?> inscrit(s) assigné(s) au total</div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </details>
         <?php endif; ?>
             </div>
         </div>

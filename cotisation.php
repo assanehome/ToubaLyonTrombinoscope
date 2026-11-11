@@ -74,6 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array(($_POST['action'] ?? ''), 
     }
 }
 
+// « Vu » sur le message de félicitations : il disparaît jusqu'au mois suivant
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cot_merci_vu') {
+    if (csrf_validate()) { cotisation_merci_marquer_vu($pdo, $membreId, cotisation_periode_courante()); }
+    header('Location: cotisation.php');
+    exit;
+}
+
 // Capacité de cotisation mensuelle : le membre indique le montant qu'il peut verser chaque mois
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_capacite') {
     if (!csrf_validate()) {
@@ -316,10 +323,15 @@ foreach ($moisRetard as $mr) { $totalRetard += cotisation_montant_membre($pdo, $
                                 <?php endif; ?>
                             </div>
                         <?php elseif ($modeEff === 'virement'): ?>
-                            <?php if ((int) date('j') <= 15): ?>
+                            <?php if ((int) date('j') <= 15 && !cotisation_merci_vu($pdo, $membreId, $periode)): ?>
                             <div style="margin-top:0.9rem; padding:0.9rem 1.1rem; border-radius:10px; border:1px solid rgba(37,211,102,0.45); background:rgba(37,211,102,0.1);">
                                 <div style="color:#fff; font-weight:800;">🎉 Félicitations et merci !</div>
                                 <div style="color:var(--text-muted); font-size:0.86rem; margin-top:0.2rem;">Votre cotisation est assurée par <strong style="color:#7bd8a6;">virement automatique</strong>. Jërëjëf pour votre engagement et votre régularité. 🤲</div>
+                                <form action="cotisation.php" method="POST" style="margin:0.7rem 0 0;">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="action" value="cot_merci_vu">
+                                    <button type="submit" class="btn btn-secondary btn-sm">👍 Vu</button>
+                                </form>
                             </div>
                             <?php else: ?>
                             <div style="color:var(--text-muted); font-size:0.86rem; margin-top:0.8rem;">Votre cotisation est prélevée par virement automatique : rien à faire de votre côté. Jërëjëf 🤲</div>

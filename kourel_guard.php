@@ -4,7 +4,7 @@
  *
  * Autorise :
  *   - les ADMINISTRATEURS,
- *   - les responsables de la commission « Kurels » ($__isKurelAdmin) : créer/gérer tous les Kurels,
+ *   - les responsables désignés des Kurels ($__isKurelAdmin) : créer/gérer tous les Kurels,
  *   - les responsables d'un Kurel donné ($__managedKourels) : gérer les membres de leurs Kurels.
  * Expose : $__isAdmin, $__isKurelAdmin, $__managedKourels.
  */

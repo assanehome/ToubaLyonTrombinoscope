@@ -65,7 +65,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $action = $_POST['action'] ?? '';
         try {
-            if ($action === 'add_photos') {
+            if ($action === 'update_item') {
+                // Modification de l'article (mode modification de la fiche)
+                $nom = trim((string) ($_POST['nom'] ?? ''));
+                $desc = trim((string) ($_POST['description'] ?? ''));
+                $qte = max(0, (int) ($_POST['quantite'] ?? 0));
+                $statut = in_array($_POST['statut'] ?? '', $STOCK_STATUTS, true) ? $_POST['statut'] : 'Disponible';
+                $lieu = trim((string) ($_POST['lieu'] ?? ''));
+                $dateAchat = trim((string) ($_POST['date_achat'] ?? ''));
+                if (!preg_match('/^\d{4}-\d{2}$/', $dateAchat)) { $dateAchat = ''; }
+                $prixRaw = str_replace(',', '.', trim((string) ($_POST['prix_achat'] ?? '')));
+                $prix = ($prixRaw !== '' && is_numeric($prixRaw)) ? (float) $prixRaw : null;
+                if ($nom === '') {
+                    $error = "Le nom de l'article est obligatoire.";
+                } else {
+                    $photo = si_upload($_FILES['photo'] ?? null, $error);
+                    if ($error === '') {
+                        if ($photo !== null) {
+                            $pdo->prepare("UPDATE commission_stock SET nom=?, description=?, quantite=?, statut=?, lieu=?, date_achat=?, prix_achat=?, photo=? WHERE id=? AND commission_id=?")
+                                ->execute([$nom, $desc !== '' ? $desc : null, $qte, $statut, $lieu !== '' ? $lieu : null, $dateAchat !== '' ? $dateAchat : null, $prix, $photo, $iid, $cid]);
+                        } else {
+                            $pdo->prepare("UPDATE commission_stock SET nom=?, description=?, quantite=?, statut=?, lieu=?, date_achat=?, prix_achat=? WHERE id=? AND commission_id=?")
+                                ->execute([$nom, $desc !== '' ? $desc : null, $qte, $statut, $lieu !== '' ? $lieu : null, $dateAchat !== '' ? $dateAchat : null, $prix, $iid, $cid]);
+                        }
+                        if ($lieu !== '') { try { $pdo->prepare("INSERT IGNORE INTO stock_lieux (nom) VALUES (?)")->execute([$lieu]); } catch (Exception $e) {} }
+                        header('Location: stock_item.php?id=' . $iid . '&maj=1');
+                        exit;
+                    }
+                }
+            } elseif ($action === 'add_photos') {
                 $names = si_uploads($_FILES['album'] ?? null, $error);
                 if ($error === '' && !empty($names)) {
                     $ins = $pdo->prepare("INSERT INTO commission_stock_photos (item_id, photo) VALUES (?, ?)");
@@ -96,6 +124,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// Mode modification : ?edit=1, ou retour sur le formulaire après une erreur d'enregistrement
+$edit = (($_GET['edit'] ?? '') === '1') || ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_item' && $error !== '');
+if (!empty($_GET['maj']) && $success === '') { $success = "Article mis à jour."; }
+$lieux = [];
+try { $lieux = $pdo->query("SELECT nom FROM stock_lieux ORDER BY nom ASC")->fetchAll(PDO::FETCH_COLUMN); } catch (Exception $e) { $lieux = []; }
+if (!empty($item['lieu']) && !in_array($item['lieu'], $lieux, true)) { $lieux[] = $item['lieu']; }
+$valNom = ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '') ? (string) ($_POST['nom'] ?? $item['nom']) : (string) $item['nom'];
 $album = [];
 try { $st = $pdo->prepare("SELECT id, photo FROM commission_stock_photos WHERE item_id = ? ORDER BY id ASC"); $st->execute([$iid]); $album = $st->fetchAll(); } catch (Exception $e) { $album = []; }
 
@@ -142,18 +177,50 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
         <div class="si-wrap">
             <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.1rem 1.75rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>📦 <strong class="gold-text"><?php echo htmlspecialchars($item['nom']); ?></strong> — <?php echo htmlspecialchars($comNom); ?></span>
-                <a href="commission_stock.php?id=<?php echo $cid; ?>" class="btn btn-secondary btn-sm">← Retour au stock</a>
+                <span style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <?php if ($edit): ?>
+                        <a href="stock_item.php?id=<?php echo $iid; ?>" class="btn btn-secondary btn-sm">↩ Annuler la modification</a>
+                    <?php else: ?>
+                        <a href="stock_item.php?id=<?php echo $iid; ?>&amp;edit=1" class="btn btn-primary btn-sm">✏️ Modifier</a>
+                    <?php endif; ?>
+                    <a href="commission_stock.php?id=<?php echo $cid; ?>" class="btn btn-secondary btn-sm">← Retour au stock</a>
+                </span>
             </div>
 
             <div class="glass-card" style="border-radius:12px; padding:1.5rem; margin-bottom:1.5rem;">
                 <div class="si-top">
                     <div>
                         <?php if (!empty($item['photo'])): ?>
-                            <img src="uploads/<?php echo htmlspecialchars($item['photo']); ?>" alt="" class="si-cover" style="cursor:zoom-in;" onclick="stockZoom('uploads/<?php echo htmlspecialchars($item['photo'], ENT_QUOTES); ?>')">
+                            <img src="stock_thumb.php?f=<?php echo htmlspecialchars(rawurlencode((string) $item['photo'])); ?>&amp;w=640" alt="" class="si-cover" style="cursor:zoom-in;" decoding="async" onclick="stockZoom('uploads/<?php echo htmlspecialchars($item['photo'], ENT_QUOTES); ?>')">
                         <?php else: ?>
                             <div class="si-cover-ph">📦</div>
                         <?php endif; ?>
                     </div>
+                    <?php if ($edit): ?>
+                    <form action="stock_item.php?id=<?php echo $iid; ?>&amp;edit=1" method="POST" enctype="multipart/form-data" style="min-width:0;">
+                        <?php echo csrf_field(); ?>
+                        <input type="hidden" name="action" value="update_item">
+                        <input type="hidden" name="item_id" value="<?php echo $iid; ?>">
+                        <div class="form-group"><label class="form-label">Nom <span style="color:var(--danger)">*</span></label><input type="text" name="nom" class="form-input" required maxlength="150" value="<?php echo htmlspecialchars($valNom, ENT_QUOTES); ?>"></div>
+                        <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:110px;"><label class="form-label">Quantité</label><input type="number" name="quantite" class="form-input" min="0" inputmode="numeric" value="<?php echo (int) $item['quantite']; ?>"></div>
+                            <div class="form-group" style="flex:1; min-width:130px;"><label class="form-label">Statut</label>
+                                <select name="statut" class="form-input"><?php foreach ($STOCK_STATUTS as $stS): ?><option value="<?php echo htmlspecialchars($stS, ENT_QUOTES); ?>"<?php echo $item['statut'] === $stS ? ' selected' : ''; ?>><?php echo htmlspecialchars($stS); ?></option><?php endforeach; ?></select></div>
+                            <div class="form-group" style="flex:1; min-width:150px;"><label class="form-label">Lieu de stockage</label>
+                                <select name="lieu" class="form-input"><option value="">—</option><?php foreach ($lieux as $lg): ?><option value="<?php echo htmlspecialchars($lg, ENT_QUOTES); ?>"<?php echo (string) ($item['lieu'] ?? '') === $lg ? ' selected' : ''; ?>><?php echo htmlspecialchars($lg); ?></option><?php endforeach; ?></select></div>
+                        </div>
+                        <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+                            <div class="form-group" style="flex:1; min-width:140px;"><label class="form-label">Date d'achat</label><input type="month" name="date_achat" class="form-input" value="<?php echo htmlspecialchars((string) ($item['date_achat'] ?? ''), ENT_QUOTES); ?>"></div>
+                            <div class="form-group" style="flex:1; min-width:140px;"><label class="form-label">Prix d'achat ou valeur estimée €</label><input type="number" name="prix_achat" class="form-input" min="0" step="0.01" inputmode="decimal" value="<?php echo $item['prix_achat'] !== null ? htmlspecialchars((string) $item['prix_achat'], ENT_QUOTES) : ''; ?>"></div>
+                        </div>
+                        <div class="form-group"><label class="form-label">Description</label><input type="text" name="description" class="form-input" value="<?php echo htmlspecialchars((string) ($item['description'] ?? ''), ENT_QUOTES); ?>"></div>
+                        <div class="form-group"><label class="form-label">Remplacer la photo de couverture (facultatif)</label><input type="file" name="photo" accept="image/*" class="form-input"></div>
+                        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+                            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                            <a href="stock_item.php?id=<?php echo $iid; ?>" class="btn btn-secondary">↩ Annuler</a>
+                        </div>
+                    </form>
+                    <?php else: ?>
                     <div class="si-rows">
                         <div class="si-row"><span class="k">Statut</span><span class="v"><span class="si-badge" style="<?php echo stock_status_style($item['statut']); ?>"><?php echo htmlspecialchars($item['statut']); ?></span></span></div>
                         <div class="si-row"><span class="k">Quantité</span><span class="v"><?php echo (int)$item['quantite']; ?> en stock</span></div>
@@ -162,6 +229,7 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
                         <div class="si-row"><span class="k">Prix d'achat</span><span class="v"><?php echo ($item['prix_achat'] !== null) ? '💶 ' . htmlspecialchars(number_format((float)$item['prix_achat'], 2, ',', ' ')) . ' €' : '—'; ?></span></div>
                         <div class="si-row"><span class="k">Description</span><span class="v" style="max-width:60%;"><?php echo !empty($item['description']) ? htmlspecialchars($item['description']) : '—'; ?></span></div>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -188,7 +256,7 @@ if (!empty($item['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $item['date
                             <?php $isCover = (!empty($item['photo']) && $item['photo'] === $ph['photo']); ?>
                             <div class="si-ph-card glass-card">
                                 <?php if ($isCover): ?><span class="si-cover-tag">Couverture</span><?php endif; ?>
-                                <img src="uploads/<?php echo htmlspecialchars($ph['photo']); ?>" alt="" style="cursor:zoom-in;" onclick="stockZoom('uploads/<?php echo htmlspecialchars($ph['photo'], ENT_QUOTES); ?>')">
+                                <img src="stock_thumb.php?f=<?php echo htmlspecialchars(rawurlencode((string) $ph['photo'])); ?>&amp;w=320" alt="" loading="lazy" decoding="async" style="cursor:zoom-in;" onclick="stockZoom('uploads/<?php echo htmlspecialchars($ph['photo'], ENT_QUOTES); ?>')">
                                 <div class="si-ph-actions">
                                     <?php if (!$isCover): ?>
                                     <form action="stock_item.php" method="POST" style="margin:0; flex:1; display:flex;">

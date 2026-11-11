@@ -15,11 +15,8 @@ if (session_status() === PHP_SESSION_NONE) {
 $isAdmin = !empty($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
 $isSuiviManager = false;
 if (!$isAdmin && !empty($_SESSION['player_id'])) {
-    try {
-        $isSuiviManager = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE cg.membre_id = " . (int) $_SESSION['player_id'] . " AND LOWER(c.nom) LIKE '%gration%'")->fetchColumn() > 0);
-    } catch (Exception $e) {
-        $isSuiviManager = false;
-    }
+    require_once __DIR__ . '/fonction_responsables_helper.php';
+    $isSuiviManager = fr_est_responsable($pdo, 'integration', (int) $_SESSION['player_id']); // responsable désigné du suivi intégration
     $_SESSION['is_suivi_integration'] = $isSuiviManager;
 }
 if (!$isAdmin && !$isSuiviManager) {
@@ -126,7 +123,7 @@ try {
         <div class="integ-wrap">
             <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>Intégrateurs — <strong class="gold-text"><?php echo $nbInteg; ?></strong> membre(s) avec le rôle</span>
-                <a href="<?php echo $isAdmin ? 'admin_dashboard.php' : 'admin_reponses.php'; ?>" class="btn btn-secondary btn-sm">← <?php echo $isAdmin ? 'Tableau de bord' : 'Suivi intégration'; ?></a>
+                <?php if (!($isAdmin && !empty($_SESSION['admin_is_member']))): ?><a href="<?php echo $isAdmin ? 'admin_dashboard.php' : 'admin_reponses.php'; ?>" class="btn btn-secondary btn-sm">← <?php echo $isAdmin ? 'Tableau de bord' : 'Suivi intégration'; ?></a><?php endif; ?>
             </div>
 
             <div class="form-card" style="max-width:none; margin-bottom:1.5rem;">

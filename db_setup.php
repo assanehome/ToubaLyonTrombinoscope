@@ -421,6 +421,12 @@ try {
     } catch (Exception $e) {
         $pdo->exec("ALTER TABLE commission_stock ADD COLUMN date_achat VARCHAR(7) DEFAULT NULL, ADD COLUMN prix_achat DECIMAL(10,2) DEFAULT NULL");
     }
+    // Noms des fichiers d'images cités dans le CSV d'import mais pas encore envoyés (séparés par « | ») : l'import d'images les rattache ensuite
+    try {
+        $pdo->query("SELECT photos_attendues FROM commission_stock LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE commission_stock ADD COLUMN photos_attendues TEXT NULL DEFAULT NULL");
+    }
     // Album photos d'un article de stock (plusieurs photos par article)
     $pdo->exec("CREATE TABLE IF NOT EXISTS commission_stock_photos (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -925,6 +931,40 @@ try {
                         SELECT DISTINCT 'cotisation', cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id
                         WHERE LOWER(c.nom) LIKE '%finance%' OR LOWER(c.nom) LIKE '%trésor%' OR LOWER(c.nom) LIKE '%tresor%'");
             $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('fr_init_cotisation', '1')");
+        }
+    } catch (Exception $e) { /* ignoré */ }
+    // Responsables des Actualités et du Planning Dahira (comme Lecture Coran / Cotisations) : reprise unique des responsables du Secrétariat Général
+    foreach (['actualites', 'planning'] as $frFct) {
+        try {
+            $frDeja = $pdo->prepare("SELECT 1 FROM app_settings WHERE cle = ?");
+            $frDeja->execute(['fr_init_' . $frFct]);
+            if ($frDeja->fetchColumn() === false) {
+                $frSec = $pdo->prepare("INSERT IGNORE INTO fonction_responsables (fonction, membre_id)
+                                        SELECT DISTINCT ?, cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id
+                                        WHERE LOWER(c.nom) LIKE '%secrétariat général%' OR LOWER(c.nom) LIKE '%secretariat general%'");
+                $frSec->execute([$frFct]);
+                $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES (?, '1')")->execute(['fr_init_' . $frFct]);
+            }
+        } catch (Exception $e) { /* ignoré */ }
+    }
+    // Responsables du Suivi intégration (comme Lecture Coran / Finance) : reprise unique des responsables de la commission Intégration
+    try {
+        $frInteg = $pdo->query("SELECT 1 FROM app_settings WHERE cle = 'fr_init_integration'")->fetchColumn();
+        if ($frInteg === false) {
+            $pdo->exec("INSERT IGNORE INTO fonction_responsables (fonction, membre_id)
+                        SELECT DISTINCT 'integration', cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id
+                        WHERE LOWER(c.nom) LIKE '%gration%'");
+            $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('fr_init_integration', '1')");
+        }
+    } catch (Exception $e) { /* ignoré */ }
+    // Responsables des Kurels (« Admin Kurels », comme Lecture Coran / Finance) : reprise unique des responsables de la commission Kurels
+    try {
+        $frKur = $pdo->query("SELECT 1 FROM app_settings WHERE cle = 'fr_init_kurels'")->fetchColumn();
+        if ($frKur === false) {
+            $pdo->exec("INSERT IGNORE INTO fonction_responsables (fonction, membre_id)
+                        SELECT DISTINCT 'kurels', cg.membre_id FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id
+                        WHERE LOWER(c.nom) LIKE '%kurel%'");
+            $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('fr_init_kurels', '1')");
         }
     } catch (Exception $e) { /* ignoré */ }
     // Membres autorisés par les responsables de commission à créer des besoins et des tâches du Wadial Magal pour leur commission

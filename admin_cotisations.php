@@ -1,19 +1,19 @@
 <?php
 /**
- * Touba Lyon 2026 - 💶 Cotisations (administration)
+ * Touba Lyon 2026 - 💶 Finance (administration)
  *
  * Réglages (montant, clés Stripe), mode de cotisation par membre
  * (mensuel / virement automatique / exempt), bilan mensuel et pointage.
  * Réservé aux administrateurs.
  */
-require_once __DIR__ . '/cotisation_guard.php'; // admins + responsables commission Finance
+require_once __DIR__ . '/cotisation_guard.php'; // admins + responsables Finance
 require_once __DIR__ . '/db_setup.php';
 require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/cotisation_helper.php';
-require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables des cotisations (comme Lecture Coran)
+require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables Finance (comme Lecture Coran)
 
 // Ajout / retrait d'un responsable (appels AJAX de la fenêtre de sélection)
-fr_traiter_post($pdo, 'cotisation', true, (int) $__cotMemberId, !empty($__cotAdmin), 'Cotisations');
+fr_traiter_post($pdo, 'cotisation', true, (int) $__cotMemberId, !empty($__cotAdmin), 'Finance');
 
 $error = '';
 $success = '';
@@ -362,7 +362,7 @@ $pkVal = trim(dahira_param($pdo, 'stripe_pk', ''));
                 <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin:1rem 0;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
                 <div class="cot-wrap">
-                    <?php echo fr_bloc_html($pdo, 'cotisation', 'Cotisations', 'admin_cotisations.php'); ?>
+                    <?php echo fr_bloc_html($pdo, 'cotisation', 'Finance', 'admin_cotisations.php'); ?>
                     <!-- Bilan annuel (indicateur année, agrégé sur tous les mois écoulés de l'année) -->
                     <details id="cot-details-bilan-annee" class="glass-card cot-bilan-annee" style="margin-bottom:1.4rem;">
                         <summary style="color:var(--white); font-size:1.05rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">📅 Bilan annuel <?php echo (int) $annee; ?> <span class="pl-chevron" style="color:var(--text-muted);">▸</span></summary>

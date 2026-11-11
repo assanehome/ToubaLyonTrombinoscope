@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['is_integrateur'] = !empty($member['is_integrateur']);
                     $_SESSION['is_gestion_kourel'] = member_is_kourel_manager($pdo, (int) $member['id']);
                     try { $_SESSION['is_gestion_commission'] = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires WHERE membre_id = " . (int) $member['id'])->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_gestion_commission'] = false; }
-                    try { $_SESSION['is_suivi_integration'] = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE cg.membre_id = " . (int) $member['id'] . " AND LOWER(c.nom) LIKE '%gration%'")->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_suivi_integration'] = false; }
+                    try { $_SESSION['is_suivi_integration'] = ((int) $pdo->query("SELECT COUNT(*) FROM fonction_responsables WHERE fonction = 'integration' AND membre_id = " . (int) $member['id'])->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_suivi_integration'] = false; }
 
                     $__dest = 'index.php';
                     if (!empty($_SESSION['after_login'])) { $__dest = $_SESSION['after_login']; unset($_SESSION['after_login']); }
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['is_integrateur'] = !empty($member['is_integrateur']);
                     $_SESSION['is_gestion_kourel'] = member_is_kourel_manager($pdo, (int) $member['id']);
                     try { $_SESSION['is_gestion_commission'] = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires WHERE membre_id = " . (int) $member['id'])->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_gestion_commission'] = false; }
-                    try { $_SESSION['is_suivi_integration'] = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires cg JOIN commissions c ON c.id = cg.commission_id WHERE cg.membre_id = " . (int) $member['id'] . " AND LOWER(c.nom) LIKE '%gration%'")->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_suivi_integration'] = false; }
+                    try { $_SESSION['is_suivi_integration'] = ((int) $pdo->query("SELECT COUNT(*) FROM fonction_responsables WHERE fonction = 'integration' AND membre_id = " . (int) $member['id'])->fetchColumn() > 0); } catch (Exception $e) { $_SESSION['is_suivi_integration'] = false; }
                     header('Location: profile.php');
                     exit;
                 } else {

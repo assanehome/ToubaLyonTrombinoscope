@@ -1083,7 +1083,7 @@ $membersJs = array_map(function ($m) {
             <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
                 <span>📋 Espaces commissions — <strong class="gold-text"><?php echo count($commissions); ?></strong> commission(s)</span>
                 <?php if ($__isAdmin): ?>
-                    <a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a>
+                    <?php if (empty($_SESSION['admin_is_member'])): ?><a href="admin_dashboard.php" class="btn btn-secondary btn-sm">← Tableau de bord</a><?php endif; ?>
                 <?php else: ?>
                     <span style="display:flex; gap:0.5rem; flex-wrap:wrap;"><a href="sondage_gestion.php" class="btn btn-primary btn-sm">📊 Sondages</a><a href="trombinoscope.php" class="btn btn-secondary btn-sm">← Trombinoscope</a></span>
                 <?php endif; ?>

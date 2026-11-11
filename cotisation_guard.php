@@ -1,10 +1,10 @@
 <?php
 /**
- * Touba Lyon 2026 - Garde d'accès de la gestion des cotisations.
+ * Touba Lyon 2026 - Garde d'accès de la Finance (gestion des cotisations).
  *
  * Autorise l'accès :
  *   - aux ADMINISTRATEURS connectés ;
- *   - aux MEMBRES connectés désignés RESPONSABLES des cotisations (fonction « cotisation »,
+ *   - aux MEMBRES connectés désignés RESPONSABLES Finance (fonction « cotisation »,
  *     comme pour la Lecture Coran ou le Wadial Magal) — table fonction_responsables.
  *
  * À inclure EN TOUT PREMIER dans admin_cotisations.php.
@@ -23,5 +23,5 @@ $__cotFinance = (!$__cotAdmin && $__cotMemberId > 0) ? fr_est_responsable($pdo, 
 
 if (!$__cotAdmin && !$__cotFinance) {
     http_response_code(403);
-    die('Accès refusé. Cette page est réservée aux administrateurs et aux responsables des cotisations.');
+    die('Accès refusé. Cette page est réservée aux administrateurs et aux responsables Finance.');
 }

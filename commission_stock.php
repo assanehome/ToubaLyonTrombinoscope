@@ -226,6 +226,12 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
         .stock-qty button:hover { border-color: var(--accent); }
         .stock-row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.25rem; }
         .stock-row-actions .btn { padding: 0.32rem 0.6rem; font-size: 0.72rem; }
+        /* Mobile : un bouton par ligne, sur toute la largeur (cartes et liste des articles) */
+        @media (max-width: 640px) {
+            .stock-row-actions, .stk-list .li-actions { flex-direction: column; align-items: stretch; }
+            .stock-row-actions > *, .stock-row-actions form, .stk-list .li-actions > * { width: 100%; box-sizing: border-box; }
+            .stock-row-actions .btn, .stk-list .li-actions .btn { width: 100%; justify-content: center; padding: 0.55rem 0.8rem; font-size: 0.85rem; box-sizing: border-box; }
+        }
         .stock-select { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 8px; color: #fff; font-size: 0.78rem; padding: 0.3rem 0.5rem; color-scheme: dark; }
         .stock-select option { background-color: #0c241a; }
         /* miniature d'upload (photo / album) */
@@ -245,6 +251,10 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
             #stock-add-section .form-group, .stock-modal-body .form-group { min-width: 0 !important; flex-basis: auto !important; }
         }
         /* indicateurs */
+        /* Boutons d'action : même format pour tous (taille, forme, titre court) ; un par ligne sur téléphone */
+        .stock-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.25rem; }
+        .stock-actions .btn { flex: 0 1 auto; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; justify-content: center; }
+        @media (max-width: 640px) { .stock-actions .btn { flex: 1 1 100%; } }
         .stk-stats { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem; }
         .stk-stats > * { flex: 1 1 120px; min-width: 0; }
         .stk-stat { border-radius: 10px; padding: 0.85rem 1rem; text-align: center; }
@@ -292,24 +302,28 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
 
         <div class="stock-wrap">
             <div class="admin-welcome-banner glass-card" style="margin-bottom:1.5rem; padding:1.25rem 2rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:1rem;">
-                <span>📦 Stock — <strong class="gold-text"><?php echo htmlspecialchars($commission['nom']); ?></strong> — <?php echo count($items); ?> article(s), <?php echo (int)$totalQty; ?> en stock</span>
+                <span>📦 Stock — <strong class="gold-text"><?php echo htmlspecialchars($commission['nom']); ?></strong></span>
                 <a href="commission_dashboard.php" class="btn btn-secondary btn-sm">← Espaces commissions</a>
             </div>
             <?php if (!empty($stockEnabled)): ?>
-            <div style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom:1.2rem;">
-                <a href="stock_sorties.php?id=<?php echo (int) $cid; ?>" class="btn btn-secondary btn-sm">📤 Sorties d'équipement (événement / prêt)</a>
-                <a href="stock_inventaire.php?id=<?php echo (int) $cid; ?>" class="btn btn-secondary btn-sm">📋 Inventaire</a>
-                <a href="stock_import.php?id=<?php echo (int) $cid; ?>" class="btn btn-secondary btn-sm">📥 Importer un fichier</a>
+            <div class="stock-actions">
+                <button type="button" class="btn btn-primary" onclick="toggleAddStock()">➕ Ajouter un article</button>
+                <a href="stock_sorties.php?id=<?php echo (int) $cid; ?>" class="btn btn-primary" title="Sorties d'équipement (événement / prêt)">📤 Sorties d'équipement</a>
+                <a href="stock_inventaire.php?id=<?php echo (int) $cid; ?>" class="btn btn-primary">📋 Inventaire</a>
             </div>
+            <details id="stk-import-grp" class="glass-card" style="margin-bottom:1.25rem;">
+                <summary>📥 Import</summary>
+                <div class="stock-actions" style="margin:0.8rem 0 0;">
+                    <a href="stock_import.php?id=<?php echo (int) $cid; ?>" class="btn btn-secondary">📥 Importer un fichier</a>
+                    <a href="stock_import.php?id=<?php echo (int) $cid; ?>#images" class="btn btn-secondary">📷 Importer les images</a>
+                    <a href="stock_import.php?id=<?php echo (int) $cid; ?>&amp;modele=1" class="btn btn-secondary" data-ajax-off title="Fichier CSV d'exemple : en-têtes et colonnes attendus">⬇️ Télécharger le modèle d'import</a>
+                </div>
+            </details>
             <?php endif; ?>
 
             <?php if (!$stockEnabled): ?>
                 <div class="empty-state"><div class="empty-state-icon">📦</div><p>La gestion de stock n'est pas activée pour cette commission.</p></div>
             <?php else: ?>
-
-            <div style="margin-bottom:1.25rem;">
-                <button type="button" class="btn btn-primary" onclick="toggleAddStock()">➕ Ajouter un article</button>
-            </div>
 
             <div id="stock-add-section" style="display:none;">
             <!-- Ajouter un article -->
@@ -385,10 +399,9 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
             <?php if (empty($items)): ?>
                 <div class="empty-state"><div class="empty-state-icon">📦</div><p>Aucun article en stock. Ajoutez-en un ci-dessus.</p></div>
             <?php else: ?>
-                <div style="margin-bottom:0.75rem;">
-                    <button type="button" class="btn btn-secondary btn-sm" id="stk-indics-toggle" onclick="toggleIndics()">📊 Masquer les indicateurs</button>
-                </div>
-                <div id="stk-indics">
+                <details id="stk-indics-grp" class="glass-card" style="margin-bottom:1rem;">
+                <summary>📊 Indicateurs</summary>
+                <div id="stk-indics" style="margin-top:0.8rem;">
                 <!-- Indicateurs : quantités -->
                 <div class="stk-stats">
                     <div class="glass-card stk-stat"><div class="n"><?php echo count($items); ?></div><div class="l">Articles</div></div>
@@ -415,6 +428,7 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
                 </div>
                 <?php endif; ?>
                 </div><!-- /stk-indics -->
+                </details>
 
                 <!-- Filtres + choix de la vue -->
                 <div class="stk-toolbar">
@@ -451,7 +465,7 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
                         ?>
                         <div class="glass-card stock-card stk-filterable" data-search="<?php echo $itSearch; ?>" data-statut="<?php echo htmlspecialchars($it['statut'], ENT_QUOTES); ?>" data-lieu="<?php echo htmlspecialchars($it['lieu'] ?? '', ENT_QUOTES); ?>" data-annee="<?php echo htmlspecialchars($itAnnee, ENT_QUOTES); ?>" data-prix="<?php echo $it['prix_achat'] !== null ? (float)$it['prix_achat'] : ''; ?>" data-qte="<?php echo (int)$it['quantite']; ?>">
                             <?php if (!empty($it['photo'])): ?>
-                                <img src="uploads/<?php echo htmlspecialchars($it['photo']); ?>" alt="" class="stock-photo">
+                                <img src="stock_thumb.php?f=<?php echo htmlspecialchars(rawurlencode((string) $it['photo'])); ?>&w=480" data-full="uploads/<?php echo htmlspecialchars(rawurlencode((string) $it['photo'])); ?>" alt="" class="stock-photo photo-zoomable" loading="lazy" decoding="async">
                             <?php else: ?>
                                 <div class="stock-photo-ph">📦</div>
                             <?php endif; ?>
@@ -469,7 +483,7 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
                                 <?php endif; ?>
                                 <div class="stock-row-actions">
                                     <a href="stock_item.php?id=<?php echo (int)$it['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">👁️ Détails</a>
-                                    <button type="button" class="btn btn-secondary btn-sm" onclick='openStockEdit(<?php echo $itJson; ?>)'>✏️ Modifier</button>
+                                    <a href="stock_item.php?id=<?php echo (int)$it['id']; ?>&amp;edit=1" class="btn btn-secondary btn-sm">✏️ Modifier</a>
                                     <form action="commission_stock.php?id=<?php echo $cid; ?>" method="POST" style="margin:0;" id="stock-del-form-<?php echo (int)$it['id']; ?>">
                                         <?php echo csrf_field(); ?>
                                         <input type="hidden" name="action" value="delete_item">
@@ -502,7 +516,7 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
                                     if (!empty($it['date_achat']) && preg_match('/^(\d{4})-(\d{2})$/', $it['date_achat'], $m2)) { $liDate = $m2[2] . '/' . $m2[1]; $liAnnee = $m2[1]; }
                                 ?>
                                 <div class="drow stk-filterable" data-search="<?php echo $liSearch; ?>" data-statut="<?php echo htmlspecialchars($it['statut'], ENT_QUOTES); ?>" data-lieu="<?php echo htmlspecialchars($it['lieu'] ?? '', ENT_QUOTES); ?>" data-annee="<?php echo htmlspecialchars($liAnnee, ENT_QUOTES); ?>" data-prix="<?php echo $it['prix_achat'] !== null ? (float)$it['prix_achat'] : ''; ?>" data-qte="<?php echo (int)$it['quantite']; ?>">
-                                    <div class="dcell"><?php if (!empty($it['photo'])): ?><img src="uploads/<?php echo htmlspecialchars($it['photo']); ?>" alt="" class="li-photo"><?php else: ?><span style="font-size:1.4rem;">📦</span><?php endif; ?></div>
+                                    <div class="dcell"><?php if (!empty($it['photo'])): ?><img src="stock_thumb.php?f=<?php echo htmlspecialchars(rawurlencode((string) $it['photo'])); ?>&w=96" data-full="uploads/<?php echo htmlspecialchars(rawurlencode((string) $it['photo'])); ?>" alt="" class="li-photo photo-zoomable" loading="lazy" decoding="async"><?php else: ?><span style="font-size:1.4rem;">📦</span><?php endif; ?></div>
                                     <div class="dcell dgrow" style="font-weight:600;"><?php echo htmlspecialchars($it['nom']); ?></div>
                                     <div class="dcell"><span class="stock-badge" style="<?php echo stock_status_style($it['statut']); ?>"><?php echo htmlspecialchars($it['statut']); ?></span></div>
                                     <div class="dcell"><?php echo !empty($it['lieu']) ? '📍 ' . htmlspecialchars($it['lieu']) : '—'; ?></div>
@@ -512,7 +526,7 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
                                     <div class="dcell">
                                         <div class="li-actions">
                                             <a href="stock_item.php?id=<?php echo (int)$it['id']; ?>" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">👁️</a>
-                                            <button type="button" class="btn btn-secondary btn-sm" onclick='openStockEdit(<?php echo $liJson; ?>)'>✏️</button>
+                                            <a href="stock_item.php?id=<?php echo (int)$it['id']; ?>&amp;edit=1" class="btn btn-secondary btn-sm" title="Modifier">✏️</a>
                                             <button type="button" class="btn btn-danger btn-sm" onclick="confirmDeleteItem(<?php echo (int)$it['id']; ?>, <?php echo htmlspecialchars(json_encode($it['nom']), ENT_QUOTES); ?>)">🗑️</button>
                                         </div>
                                     </div>
@@ -530,56 +544,6 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
             </div>
         </div>
     </main>
-
-    <!-- Modale de modification d'un article -->
-    <div id="stock-modal">
-        <div class="stock-modal-card">
-            <div class="stock-modal-head">
-                <h3>✏️ Modifier l'article</h3>
-                <button type="button" class="x" onclick="closeStockEdit()" aria-label="Fermer">&times;</button>
-            </div>
-            <form action="commission_stock.php?id=<?php echo $cid; ?>" method="POST" enctype="multipart/form-data">
-                <?php echo csrf_field(); ?>
-                <input type="hidden" name="action" value="update_item">
-                <input type="hidden" name="commission_id" value="<?php echo $cid; ?>">
-                <input type="hidden" name="item_id" id="se-id" value="">
-                <div class="stock-modal-body">
-                <div class="form-group"><label class="form-label">Nom <span style="color:var(--danger)">*</span></label><input type="text" name="nom" id="se-nom" class="form-input" required></div>
-                <div style="display:flex; gap:1rem; flex-wrap:wrap;">
-                    <div class="form-group" style="flex:1; min-width:110px;"><label class="form-label">Quantité</label><input type="number" name="quantite" id="se-qte" class="form-input" min="0" inputmode="numeric" pattern="[0-9]*"></div>
-                    <div class="form-group" style="flex:1; min-width:130px;"><label class="form-label">Statut</label>
-                        <select name="statut" id="se-statut" class="form-input">
-                            <?php foreach ($STOCK_STATUTS as $s): ?><option value="<?php echo $s; ?>"><?php echo $s; ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group" style="flex:1; min-width:150px;"><label class="form-label">Lieu de stockage</label>
-                        <select name="lieu" id="se-lieu" class="form-input">
-                            <option value="">—</option>
-                            <?php foreach ($lieux as $lg): ?><option value="<?php echo htmlspecialchars($lg, ENT_QUOTES); ?>"><?php echo htmlspecialchars($lg); ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-                <div style="display:flex; gap:1rem; flex-wrap:wrap;">
-                    <div class="form-group" style="flex:1; min-width:140px;"><label class="form-label">Date d'achat</label><input type="month" name="date_achat" id="se-date" class="form-input"></div>
-                    <div class="form-group" style="flex:1; min-width:140px;"><label class="form-label">Prix d'achat ou valeur estimée €</label><input type="number" name="prix_achat" id="se-prix" class="form-input" min="0" step="0.01" inputmode="decimal"></div>
-                </div>
-                <div class="form-group"><label class="form-label">Description</label><input type="text" name="description" id="se-desc" class="form-input"></div>
-                <div class="form-group">
-                    <label class="form-label">Remplacer la photo (facultatif)</label>
-                    <div class="photo-tile" onclick="this.querySelector('input').click()">
-                        <img id="edit-preview" alt="" style="display:none;">
-                        <div class="ph" id="edit-ph"><span style="font-size:1.7rem;">📷</span><span>Changer la photo</span></div>
-                        <input type="file" name="photo" accept="image/*" onchange="tilePreview(this,'edit-preview','edit-ph')">
-                    </div>
-                </div>
-                </div><!-- /stock-modal-body -->
-                <div class="stock-modal-foot">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeStockEdit()">Annuler</button>
-                    <button type="submit" class="btn btn-primary btn-sm">Enregistrer</button>
-                </div>
-            </form>
-        </div>
-    </div>
 
     <!-- Confirmation de suppression d'un article (popup moderne) -->
     <div id="stock-del-modal" class="modal-overlay">
@@ -619,21 +583,6 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
             for (var i = 0; i < n && i < 12 && strip; i++) { var im = document.createElement('img'); im.src = URL.createObjectURL(input.files[i]); strip.appendChild(im); }
             if (cnt) cnt.textContent = n > 0 ? (n + ' photo(s) sélectionnée(s)') : '';
         }
-        function openStockEdit(it){
-            document.getElementById('se-id').value = it.id;
-            document.getElementById('se-nom').value = it.nom || '';
-            document.getElementById('se-qte').value = it.quantite || 0;
-            document.getElementById('se-desc').value = it.description || '';
-            document.getElementById('se-statut').value = it.statut || 'Disponible';
-            var lieuSel = document.getElementById('se-lieu'); if (lieuSel) lieuSel.value = it.lieu || '';
-            var dEl = document.getElementById('se-date'); if (dEl) dEl.value = it.date_achat || '';
-            var pEl = document.getElementById('se-prix'); if (pEl) pEl.value = it.prix_achat || '';
-            var ep = document.getElementById('edit-preview'); if (ep) { ep.style.display = 'none'; ep.removeAttribute('src'); }
-            var eph = document.getElementById('edit-ph'); if (eph) eph.style.display = 'flex';
-            document.getElementById('stock-modal').classList.add('active');
-        }
-        function closeStockEdit(){ document.getElementById('stock-modal').classList.remove('active'); }
-        document.getElementById('stock-modal').addEventListener('click', function (e) { if (e.target === this) closeStockEdit(); });
 
         // Section d'ajout : déplacée en bas de la page, ouverte via le bouton du haut.
         (function () { var s = document.getElementById('stock-add-section'); var w = document.querySelector('.stock-wrap'); if (s && w) { w.appendChild(s); } })();
@@ -654,25 +603,6 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
         function closeDelItem(){ var m = document.getElementById('stock-del-modal'); m.classList.remove('active'); m.style.display = 'none'; stockDelId = null; }
         function doDeleteItem(){ if (stockDelId != null) { var f = document.getElementById('stock-del-form-' + stockDelId); if (f) f.submit(); } }
         document.getElementById('stock-del-modal').addEventListener('click', function (e) { if (e.target === this) closeDelItem(); });
-
-        // Ouvrir / fermer les indicateurs
-        function toggleIndics(){
-            var d = document.getElementById('stk-indics'); var b = document.getElementById('stk-indics-toggle');
-            if (!d) return;
-            var hidden = (d.style.display === 'none');
-            d.style.display = hidden ? '' : 'none';
-            if (b) b.textContent = hidden ? '📊 Masquer les indicateurs' : '📊 Afficher les indicateurs';
-            try { localStorage.setItem('stk_indics', hidden ? '1' : '0'); } catch (e) {}
-        }
-        (function () {
-            try {
-                if (localStorage.getItem('stk_indics') === '0') {
-                    var d = document.getElementById('stk-indics'); var b = document.getElementById('stk-indics-toggle');
-                    if (d) d.style.display = 'none';
-                    if (b) b.textContent = '📊 Afficher les indicateurs';
-                }
-            } catch (e) {}
-        })();
 
         // Bascule Grille / Liste
         function stkView(mode){
@@ -721,8 +651,8 @@ foreach ($items as $it) { $totalQty += (int) $it['quantite']; }
             if (selS) selS.addEventListener('change', window.stkFilter);
             if (selL) selL.addEventListener('change', window.stkFilter);
             if (selA) selA.addEventListener('change', window.stkFilter);
-            var saved = null; try { saved = localStorage.getItem('stk_view'); } catch (e) {}
-            if (saved === 'list') { stkView('list'); } else { window.stkFilter(); }
+            // Grille par défaut à chaque ouverture ; la vue « Liste » reste disponible à la demande
+            window.stkFilter();
         })();
 
         // Recalcule dynamiquement les indicateurs selon les articles actuellement

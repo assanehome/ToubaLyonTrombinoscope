@@ -405,21 +405,6 @@ $trobaCsrf = csrf_token();
 
 <div class="hdr-backdrop" id="hdr-backdrop" aria-hidden="true"></div>
 
-<?php // Bouton de retour vers l'accueil de l'espace membre (sur toutes les pages membre) ?>
-<?php if ($isPlayer && !$isAdmin && !in_array($currentPage, ['index.php', 'login.php', 'admin_login.php'], true)): ?>
-<div class="home-return-bar">
-    <a href="index.php" class="btn btn-secondary btn-sm home-return-btn">🏠 Retour à l'espace membre</a>
-</div>
-<style>
-    .home-return-bar { max-width: 1100px; margin: 0.9rem auto 0; padding: 0 1rem; }
-    .home-return-btn { border-color: var(--accent); color: var(--accent); white-space: nowrap; }
-    @media (max-width: 600px) {
-        .home-return-bar { display: flex; justify-content: center; }
-        .home-return-btn { width: 100%; max-width: 360px; justify-content: center; text-align: center; }
-    }
-</style>
-<?php endif; ?>
-
 <?php if ($notifCloche): ?>
 <!-- Bandeau d'invitation aux notifications push (comme Daara) -->
 <div class="notif-invite" id="trobaInvitePush" hidden>

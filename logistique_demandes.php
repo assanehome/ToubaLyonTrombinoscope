@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int) ($_POST['demande_id'] ?? 0);
         $statut = (string) ($_POST['statut'] ?? '');
         $reponse = trim((string) ($_POST['reponse'] ?? ''));
-        if (!in_array($statut, ['prise_en_compte', 'executee', 'terminee', 'refusee'], true)) { $error = "Statut invalide."; }
+        if (!in_array($statut, ['nouvelle', 'prise_en_compte', 'executee', 'terminee', 'refusee'], true)) { $error = "Statut invalide."; }
         elseif ($statut === 'refusee' && $reponse === '') { $error = "Indiquez un motif pour refuser la demande."; }
         else {
             try {
@@ -37,6 +37,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $q->execute([$id]);
                 $d = $q->fetch();
                 if (!$d) { $error = "Demande introuvable."; }
+                elseif ($statut === 'nouvelle' && $d['statut'] !== 'refusee') { $error = "Seule une demande refusée peut être réouverte."; }
+                elseif ($statut === 'nouvelle') {
+                    // Réouverture d'une demande refusée : elle repart en « Nouvelle » (le motif du refus est conservé), le demandeur est prévenu
+                    $pdo->prepare("UPDATE logistique_demandes SET statut = 'nouvelle', traite_par = NULL, execute_le = NULL, confirme_le = NULL WHERE id = ? AND statut = 'refusee'")->execute([$id]);
+                    if ((int) $d['demandeur_id'] > 0) {
+                        troba_notify_membre($pdo, (int) $d['demandeur_id'], 'commission', '🚚 Demande de logistique réouverte', mb_substr($d['description'], 0, 80), 'logistique_demande.php');
+                    }
+                    $_SESSION['logi_flash'] = "Demande réouverte : elle repasse en « Nouvelle » et le demandeur est prévenu.";
+                    header('Location: logistique_demandes.php');
+                    exit;
+                }
                 else {
                     $pdo->prepare("UPDATE logistique_demandes SET statut = ?, reponse = ?, traite_par = ?, execute_le = IF(? = 'executee', NOW(), execute_le) WHERE id = ?")->execute([$statut, $reponse !== '' ? $reponse : null, $moi > 0 ? $moi : null, $statut, $id]);
                     $lib = logistique_statuts()[$statut];
@@ -96,6 +107,7 @@ $csrf = csrf_field();
             <div class="lg-wrap">
                 <div class="admin-welcome-banner glass-card" style="margin-bottom:1rem; padding:1.1rem 1.5rem; display:flex; justify-content:space-between; align-items:center; border-radius:12px; flex-wrap:wrap; gap:0.8rem;">
                     <span>📋 Demandes de logistique — <strong class="gold-text"><?php echo count($demandes); ?></strong></span>
+                    <?php if (!($__isAdmin && !empty($_SESSION['admin_is_member']))): ?><a href="<?php echo $__isAdmin ? 'admin_dashboard.php' : 'index.php'; ?>" class="btn btn-secondary btn-sm">🏠 Retour à l'accueil</a><?php endif; ?>
                 </div>
                 <?php if ($success !== ''): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo $h($success); ?></div><?php endif; ?>
                 <?php if ($error !== ''): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:10px;margin-bottom:1rem;"><?php echo $h($error); ?></div><?php endif; ?>
@@ -118,6 +130,13 @@ $csrf = csrf_field();
                                     <?php if (!empty($d['execute_le'])): ?><br>✅ Exécution validée le <?php echo $h(date('d/m/Y à H:i', strtotime((string) $d['execute_le']))); ?><?php endif; ?>
                                     <?php if (trim((string) ($d['reponse'] ?? '')) !== ''): ?><br>💬 <?php echo nl2br($h($d['reponse'])); ?><?php endif; ?>
                                 </div>
+                                <?php if ($d['statut'] === 'refusee'): ?>
+                                <form method="POST" action="logistique_demandes.php" class="lg-act" data-confirm="Réouvrir cette demande ? Elle repassera en « Nouvelle » et le demandeur sera prévenu.">
+                                    <?php echo $csrf; ?>
+                                    <input type="hidden" name="demande_id" value="<?php echo (int) $d['id']; ?>">
+                                    <button type="submit" name="statut" value="nouvelle" class="btn btn-secondary btn-sm">↩️ Réouvrir</button>
+                                </form>
+                                <?php endif; ?>
                                 <?php if ($d['statut'] === 'nouvelle' || $d['statut'] === 'prise_en_compte'): ?>
                                 <form method="POST" action="logistique_demandes.php" class="lg-act">
                                     <?php echo $csrf; ?>

@@ -40,6 +40,16 @@ if (isset($_SESSION['player_id'])) {
 }
 
 // Confirmation, par le demandeur, de l'exécution d'une demande de logistique : elle disparaît ensuite de son accueil
+// « Vu » sur le message de félicitations de la cotisation : il disparaît jusqu'au mois suivant
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cot_merci_vu') {
+    if (csrf_validate() && isset($_SESSION['player_id'])) {
+        require_once __DIR__ . '/cotisation_helper.php';
+        cotisation_merci_marquer_vu($pdo, (int) $_SESSION['player_id'], cotisation_periode_courante());
+    }
+    header('Location: index.php');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'logi_confirmer') {
     if (csrf_validate() && isset($_SESSION['player_id'])) {
         try {
@@ -402,7 +412,7 @@ try {
             $cotisationMontantAff = cotisation_montant_membre($pdo, $mid, $per);
         } elseif ($modeCotEff === 'virement' && (int) date('j') <= 15) {
             // Remerciement aux membres en virement automatique, jusqu'au 15 du mois
-            $cotisationMerciVirement = true;
+            $cotisationMerciVirement = !cotisation_merci_vu($pdo, $mid, $per);
         }
     }
 } catch (Throwable $e) { $cotisationAlerte = false; }
@@ -551,6 +561,8 @@ try {
         .dash-notif-item .ni-body { flex: 1; min-width: 0; }
         .dash-notif-item .ni-titre { color: var(--white); font-weight: 700; font-size: 0.88rem; }
         .dash-notif-item .ni-texte { color: var(--text-muted); font-size: 0.82rem; line-height: 1.4; margin-top: 0.15rem; white-space: pre-line; word-break: break-word; }
+        .dash-notif-item .ni-suppr { flex-shrink: 0; align-self: center; background: transparent; border: 1px solid transparent; color: var(--text-muted); border-radius: 8px; padding: 0.25rem 0.45rem; font-size: 0.95rem; line-height: 1; cursor: pointer; transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
+        .dash-notif-item .ni-suppr:hover { color: #fca5a5; border-color: rgba(191,33,33,0.5); background: rgba(191,33,33,0.1); }
         .dash-notif-item .ni-date { color: rgba(255,255,255,0.32); font-size: 0.7rem; margin-top: 0.25rem; }
         .dash-notif-item.non-lu { border-left: 3px solid var(--accent); }
         /* ── Groupe dépliable « Mes notifications » ── */
@@ -700,12 +712,12 @@ try {
         </div>
         <?php endif; ?>
 
-        <!-- Cotisations à traiter (responsables de la commission Finance) -->
+        <!-- Finance : à traiter (responsables Finance) -->
         <?php if (!empty($cotATraiter) && $cotATraiter['total'] > 0): ?>
         <div class="glass-card renc-wrap idx-reveal" style="margin-bottom: 1.5rem; padding: 1.2rem 1.4rem;">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.8rem;">
-                <div style="color:#fff; font-weight:800; font-size:1.05rem;">💶 Cotisations à traiter <span class="badge badge-approved"><?php echo (int) $cotATraiter['total']; ?></span></div>
-                <a href="admin_cotisations.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Ouvrir les cotisations →</a>
+                <div style="color:#fff; font-weight:800; font-size:1.05rem;">💶 Finance : à traiter <span class="badge badge-approved"><?php echo (int) $cotATraiter['total']; ?></span></div>
+                <a href="admin_cotisations.php" style="color:var(--accent); font-size:0.85rem; font-weight:700; text-decoration:none;">Ouvrir Finance →</a>
             </div>
             <div class="dlist">
                 <?php if ($cotATraiter['paiements'] > 0): ?><div class="drow"><div class="dcell dgrow">💶 <?php echo (int) $cotATraiter['paiements']; ?> paiement(s) déclaré(s) par des membres à valider</div></div><?php endif; ?>
@@ -818,6 +830,11 @@ try {
                             <div style="color:#fff; font-weight:800; font-size:1rem;">Félicitations et merci ! 🙏</div>
                             <div style="color:var(--text-muted); font-size:0.86rem; margin-top:0.15rem;">Votre cotisation de <?php echo htmlspecialchars($cotisationMoisAff); ?> est assurée par <strong style="color:#7bd8a6;">virement automatique</strong>. Jërëjëf pour votre engagement et votre régularité. 🤲</div>
                         </div>
+                        <form method="POST" action="index.php" style="margin:0;">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="cot_merci_vu">
+                            <button type="submit" class="btn btn-secondary btn-sm">👍 Vu</button>
+                        </form>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -1198,7 +1215,10 @@ try {
                 <span class="nt-chev">▾</span>
             </button>
             <div class="dash-notif-body open" id="dash-notif-body">
-                <div class="dash-notif-list" id="dash-notif-list" style="margin-top:0.9rem;">
+                <div id="dash-notif-tout" style="display:flex; justify-content:flex-end; margin-top:0.9rem;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="dashToutSupprNotifs()" style="border-color:rgba(191,33,33,0.5); color:#fca5a5;">🗑️ Tout supprimer</button>
+                </div>
+                <div class="dash-notif-list" id="dash-notif-list" style="margin-top:0.6rem;">
                 <?php foreach ($dashNotifs as $n): ?>
                     <?php
                         $nId    = (int)$n['id'];
@@ -1222,6 +1242,7 @@ try {
                             <?php if ($nTexte !== ''): ?><div class="ni-texte"><?php echo nl2br(htmlspecialchars($nTexte)); ?></div><?php endif; ?>
                             <?php if ($nDate !== ''): ?><div class="ni-date">🕐 <?php echo htmlspecialchars($nDate); ?></div><?php endif; ?>
                         </div>
+                        <button type="button" class="ni-suppr" title="Supprimer cette notification" aria-label="Supprimer cette notification" onclick="event.preventDefault(); event.stopPropagation(); dashSupprNotif(this.closest('.dash-notif-item'));">🗑️</button>
                     </a>
                 <?php endforeach; ?>
                 </div>
@@ -1315,6 +1336,7 @@ try {
                             p.style.cssText = 'color:var(--text-muted); font-size:0.85rem; margin:0; text-align:center;';
                             p.textContent = 'Aucune notification pour le moment.';
                             wrap.appendChild(p);
+                            var tout1 = document.getElementById('dash-notif-tout'); if (tout1) { tout1.style.display = 'none'; }
                         }
                     } else if (window.modernAlert) {
                         window.modernAlert('Erreur lors de la suppression.', 'Erreur');
@@ -1323,6 +1345,36 @@ try {
                 .catch(function () {
                     if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.', 'Erreur'); }
                 });
+        }
+        // Tout supprimer : confirmation puis suppression de toutes les notifications du membre
+        function dashToutSupprNotifs() {
+            var go = function () {
+                var token = presenceToken;
+                if (token === '') {
+                    try { token = document.querySelector('meta[name="csrf-token"]').getAttribute('content'); } catch (e) {}
+                }
+                var corps = new URLSearchParams();
+                corps.set('action', 'tout_supprimer');
+                corps.set('csrf_token', token);
+                fetch('notifications.php', { method: 'POST', body: corps })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d.ok) { if (window.modernAlert) { window.modernAlert('Erreur lors de la suppression.', 'Erreur'); } return; }
+                        var wrap = document.getElementById('dash-notif-list');
+                        if (wrap) {
+                            wrap.innerHTML = '';
+                            var p = document.createElement('p');
+                            p.style.cssText = 'color:var(--text-muted); font-size:0.85rem; margin:0; text-align:center;';
+                            p.textContent = 'Aucune notification pour le moment.';
+                            wrap.appendChild(p);
+                        }
+                        var tout = document.getElementById('dash-notif-tout'); if (tout) { tout.style.display = 'none'; }
+                        var cnt = document.querySelector('.dash-notif-count'); if (cnt) { cnt.style.display = 'none'; }
+                    })
+                    .catch(function () { if (window.modernAlert) { window.modernAlert('Une erreur est survenue. Réessayez.', 'Erreur'); } });
+            };
+            var conf = window.modernDanger || window.modernConfirm;
+            if (conf) { conf('Supprimer toutes vos notifications ? Cette action est définitive.', go, { titre: '🗑️ Tout supprimer', bouton: 'Tout supprimer' }); } else { go(); }
         }
         function validerPresence(type, id, btn) {
             if (presenceToken === '') {
