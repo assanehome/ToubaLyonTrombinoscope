@@ -81,9 +81,9 @@ $updatedAt = (string)($seance['updated_at'] ?? '');
 $createdAt = (string)($seance['created_at'] ?? '');
 $estModifie = ($updatedAt !== '' && $createdAt !== '' && $updatedAt > $createdAt) || ($updatedAt !== '' && $createdAt === '');
 // Lien de participation (Zoom) : celui de la séance, sinon le lien par défaut des paramètres
-$lienZoom = (string)($seance['lien'] ?? '');
-if ($lienZoom === '') { $lienZoom = dahira_param($pdo, 'guddi_lien_defaut', ''); }
-$lienZoom = trim($lienZoom);
+// Le lien de la réunion est celui des paramètres du Guddi Àjjuma (comme dans les messages) : un ancien lien copié dans la séance ne prime plus.
+$lienZoom = guddi_lien_normalise(dahira_param($pdo, 'guddi_lien_defaut', ''));
+if ($lienZoom === '') { $lienZoom = guddi_lien_normalise((string)($seance['lien'] ?? '')); }
 
 // Nombre de participants : présences validées par les membres (sinon saisie manuelle)
 $nbPresences = 0;
@@ -94,7 +94,7 @@ try {
 } catch (Exception $e) {
     $nbPresences = 0;
 }
-$nbPartIndicateur = $nbPresences > 0 ? $nbPresences : (int) ($nbParticipants ?? 0);
+$nbPartIndicateur = ((int) ($seance['nb_manuel'] ?? 0) === 1 && $nbParticipants !== null) ? (int) $nbParticipants : ($nbPresences > 0 ? $nbPresences : (int) ($nbParticipants ?? 0));
 
 // Présence du membre connecté
 $presenceFaite = false;
@@ -218,6 +218,76 @@ if ($membreId > 0) {
                 <?php if (!empty($success)): ?><div class="alert-success" style="background:rgba(37,211,102,0.12);border:1px solid rgba(37,211,102,0.4);color:#7bd8a6;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($success); ?></div><?php endif; ?>
                 <?php if (!empty($error)): ?><div class="alert-danger" style="background:rgba(191,33,33,0.12);border:1px solid rgba(191,33,33,0.4);color:#fca5a5;padding:0.8rem 1rem;border-radius:8px;margin-bottom:1rem;"><?php echo htmlspecialchars($error); ?></div><?php endif; ?>
 
+                <?php ob_start(); ?>
+                    <!-- Informations -->
+                    <div class="gd-grid gd-anim gd-anim-4">
+                        <div class="glass-card gd-item">
+                            <div class="k">🎯 Thème</div>
+                            <div class="v"><?php echo $theme !== '' ? htmlspecialchars($theme) : '—'; ?></div>
+                        </div>
+                        <div class="glass-card gd-item">
+                            <div class="k">🎤 Présentateur</div>
+                            <div class="v"><?php echo $presentateur !== '' ? htmlspecialchars($presentateur) : '—'; ?></div>
+                        </div>
+                        <?php if ($mode === 'presentiel' && $lieuDahira !== ''): ?>
+                        <div class="glass-card gd-item">
+                            <div class="k">📍 Lieu</div>
+                            <div class="v"><?php echo htmlspecialchars($lieuDahira); ?></div>
+                        </div>
+                        <?php endif; ?>
+                        <div class="glass-card gd-item">
+                            <div class="k">📖 Livre étudié</div>
+                            <div class="v"><?php echo $livre !== '' ? htmlspecialchars($livre) : '—'; ?></div>
+                            <?php if ((int) ($seance['pdf_page_debut'] ?? 0) > 0): ?>
+                            <div style="margin-top:0.35rem; font-size:0.85rem; color:var(--accent); font-weight:600;">📄 Page de début pour cette séance : <?php echo (int) $seance['pdf_page_debut']; ?></div>
+                            <?php endif; ?>
+                            <?php if ($pdfPath !== ''):
+                                // Le PDF s'ouvre dans la liseuse du site, comme le Coran, sur la page de début de la séance si elle est définie :
+                                // pages, zoom et glissement au doigt, sans quitter Touba Lyon.
+                                $gdLiseuse = 'pdf_viewer.php?file=' . urlencode('uploads/' . $pdfPath)
+                                    . ($livre !== '' ? '&titre=' . urlencode($livre) : '')
+                                    . ((int) ($seance['pdf_page_debut'] ?? 0) > 0 ? '&page=' . (int) $seance['pdf_page_debut'] : '')
+                                    . '&retour=' . urlencode('guddi_detail.php?id=' . $id); ?>
+                            <div style="margin-top:0.6rem;">
+                                <a href="<?php echo htmlspecialchars($gdLiseuse); ?>" class="btn btn-secondary btn-sm"
+                                   style="border-color:var(--accent); color:var(--accent); font-size:0.78rem; padding:0.25rem 0.6rem;">📖 Lire le PDF</a>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="glass-card gd-item">
+                            <div class="k">👥 Participants</div>
+                            <div class="v"><?php echo $nbPartIndicateur > 0 ? (int)$nbPartIndicateur : '—'; ?></div>
+                        </div>
+                    </div>
+
+                    <?php // Détails complémentaires (texte simple) saisis pour la séance ?>
+                    <?php $detailsSafe = guddi_details_texte((string)($seance['details_html'] ?? '')); ?>
+                    <?php if ($detailsSafe !== ''): ?>
+                    <div class="glass-card gd-anim gd-anim-4" style="margin-bottom:1.4rem;">
+                        <h3 style="color:var(--white); margin:0 0 0.7rem;">📝 Détails</h3>
+                        <div style="color:var(--white); font-size:0.95rem; line-height:1.6; word-break:break-word;"><?php echo $detailsSafe; ?></div>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php // L'enregistrement de la séance, déposé à la clôture ?>
+                    <?php $audioPath = trim((string)($seance['audio_path'] ?? '')); ?>
+                    <?php if ($audioPath !== ''): ?>
+                    <div class="glass-card gd-anim gd-anim-5" style="margin-bottom:1.4rem;">
+                        <h3 style="color:var(--white); margin:0 0 0.7rem;">🎧 Écouter l'enregistrement de la séance</h3>
+                        <audio controls preload="none" controlsList="nodownload noplaybackrate" oncontextmenu="return false;" src="<?php echo htmlspecialchars(guddi_audio_lecture_url((int) $id)); ?>" style="width:100%;"></audio>
+                        <?php if ($__guAdmin): ?>
+                        <form action="admin_guddi.php" method="POST" style="margin:0.7rem 0 0;" data-confirm="Supprimer l'enregistrement de cette séance ? Le fichier sera effacé du serveur et les membres ne pourront plus l'écouter." data-confirm-danger="1">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="delete_audio">
+                            <input type="hidden" name="id" value="<?php echo (int) $id; ?>">
+                            <button type="submit" class="btn btn-secondary btn-sm" style="border-color:rgba(220,80,80,0.45); color:#f3a6a6;">🗑️ Supprimer l'enregistrement</button>
+                        </form>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
+
+                <?php $gdBlocs = ob_get_clean(); ?>
+
                 <div class="gd-wrap">
                     <!-- En-tête -->
                     <div class="gd-hero gd-anim gd-anim-1">
@@ -240,6 +310,8 @@ if ($membreId > 0) {
                             <?php endif; ?>
                         </div>
                     </div>
+
+                    <?php if ($cloture) { echo $gdBlocs; } // séance clôturée : détails et lecteur de l'enregistrement en haut ?>
 
                     <!-- Indicateur de participation (basé sur les présences validées) -->
                     <div class="gd-anim gd-anim-2" style="display:flex; flex-wrap:wrap; --fx-min:140px; gap:0.75rem; margin-bottom:1.4rem;">
@@ -269,7 +341,7 @@ if ($membreId > 0) {
                     <?php endif; ?>
 
                     <!-- Participer : lien Zoom (mode distance) -->
-                    <?php if ($mode === 'distance' && $lienZoom !== ''): ?>
+                    <?php if (!$cloture && $mode === 'distance' && $lienZoom !== ''): ?>
                     <div class="glass-card gd-anim gd-anim-3" style="margin-bottom:1.4rem; border:2px solid rgba(45,140,255,0.5);">
                         <h3 style="color:var(--white); margin-bottom:0.8rem;"><?php echo $cloture ? '💻 Revoir / participer' : '💻 Participer à cette séance'; ?></h3>
                         <a class="gd-zoom-btn" href="<?php echo htmlspecialchars($lienZoom); ?>" target="_blank" rel="noopener">
@@ -280,68 +352,7 @@ if ($membreId > 0) {
                     </div>
                     <?php endif; ?>
 
-                    <!-- Informations -->
-                    <div class="gd-grid gd-anim gd-anim-4">
-                        <div class="glass-card gd-item">
-                            <div class="k">🎯 Thème</div>
-                            <div class="v"><?php echo $theme !== '' ? htmlspecialchars($theme) : '—'; ?></div>
-                        </div>
-                        <div class="glass-card gd-item">
-                            <div class="k">🎤 Présentateur</div>
-                            <div class="v"><?php echo $presentateur !== '' ? htmlspecialchars($presentateur) : '—'; ?></div>
-                        </div>
-                        <?php if ($mode === 'presentiel' && $lieuDahira !== ''): ?>
-                        <div class="glass-card gd-item">
-                            <div class="k">📍 Lieu</div>
-                            <div class="v"><?php echo htmlspecialchars($lieuDahira); ?></div>
-                        </div>
-                        <?php endif; ?>
-                        <div class="glass-card gd-item">
-                            <div class="k">📖 Livre étudié</div>
-                            <div class="v"><?php echo $livre !== '' ? htmlspecialchars($livre) : '—'; ?></div>
-                        </div>
-                        <div class="glass-card gd-item">
-                            <div class="k">👥 Participants</div>
-                            <div class="v"><?php echo $nbPartIndicateur > 0 ? (int)$nbPartIndicateur : '—'; ?></div>
-                        </div>
-                        <div class="glass-card gd-item">
-                            <div class="k">📄 Livre étudié (PDF)</div>
-                            <div class="v">
-                                <?php if ($pdfPath !== ''):
-                                    // Le PDF s'ouvre dans la liseuse du site, comme le Coran :
-                                    // pages, zoom et glissement au doigt, sans quitter Touba Lyon.
-                                    $gdLiseuse = 'pdf_viewer.php?file=' . urlencode('uploads/' . $pdfPath)
-                                        . ($livre !== '' ? '&titre=' . urlencode($livre) : '')
-                                        . '&retour=' . urlencode('guddi_detail.php?id=' . $id); ?>
-                                    <a href="<?php echo htmlspecialchars($gdLiseuse); ?>" class="btn btn-secondary btn-sm"
-                                       style="border-color:var(--accent); color:var(--accent); font-size:0.78rem; padding:0.25rem 0.6rem;">📖 Lire le PDF</a>
-                                <?php else: ?>
-                                    —
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-
-                    <?php // Détails complémentaires (texte simple) saisis pour la séance ?>
-                    <?php $detailsSafe = guddi_details_texte((string)($seance['details_html'] ?? '')); ?>
-                    <?php if ($detailsSafe !== ''): ?>
-                    <div class="glass-card gd-anim gd-anim-4" style="margin-bottom:1.4rem;">
-                        <h3 style="color:var(--white); margin:0 0 0.7rem;">📝 Détails</h3>
-                        <div style="color:var(--white); font-size:0.95rem; line-height:1.6; word-break:break-word;"><?php echo $detailsSafe; ?></div>
-                    </div>
-                    <?php endif; ?>
-
-                    <?php // L'enregistrement de la séance, déposé à la clôture ?>
-                    <?php $audioPath = trim((string)($seance['audio_path'] ?? '')); ?>
-                    <?php if ($audioPath !== ''): ?>
-                    <div class="glass-card gd-anim gd-anim-5" style="margin-bottom:1.4rem;">
-                        <h3 style="color:var(--white); margin:0 0 0.7rem;">🎧 Enregistrement de la séance</h3>
-                        <audio controls preload="none" src="uploads/<?php echo htmlspecialchars($audioPath); ?>" style="width:100%;"></audio>
-                        <p style="margin:0.5rem 0 0; font-size:0.78rem; color:var(--text-muted);">
-                            <a href="uploads/<?php echo htmlspecialchars($audioPath); ?>" download style="color:var(--accent);">⬇️ Télécharger l'enregistrement</a>
-                        </p>
-                    </div>
-                    <?php endif; ?>
+                    <?php if (!$cloture) { echo $gdBlocs; } // séance non clôturée : informations, détails et enregistrement à leur place habituelle ?>
 
                     <!-- Membres présents (trombinoscope) -->
                     <?php $presMembres = dahira_presence_membres($pdo, 'guddi', $id); ?>

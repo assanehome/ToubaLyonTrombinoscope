@@ -120,12 +120,18 @@ if (isset($_POST['next_question'])) {
     }
 }
 
+// Ki Kan La : jamais la photo de celui qui joue. Une question en cours qui la montrerait (sans réponse) est abandonnée.
+$exclureSoi = ' AND id <> ' . (int) $playerId;
+if (isset($_SESSION['game_question']) && (int) ($_SESSION['game_question']['correct_id'] ?? 0) === (int) $playerId && ($_SESSION['game_question']['submitted_id'] ?? null) === null) {
+    unset($_SESSION['game_question']);
+}
+
 // Generate New Question if not set
 $gameError = '';
 if (!isset($_SESSION['game_question']) && (!isset($_SESSION['game_round']['completed']) || $_SESSION['game_round']['completed'] === false)) {
     try {
         // Count approved members with valid photos
-        $stmtCount = $pdo->query("SELECT COUNT(*) FROM membres WHERE status = 'approved' AND photo_path IS NOT NULL AND photo_path != '' AND photo_path != 'default.jpg'");
+        $stmtCount = $pdo->query("SELECT COUNT(*) FROM membres WHERE status = 'approved' AND photo_path IS NOT NULL AND photo_path != '' AND photo_path != 'default.jpg'" . $exclureSoi);
         $totalMembers = $stmtCount->fetchColumn();
         
         if ($totalMembers < 3) {
@@ -141,7 +147,7 @@ if (!isset($_SESSION['game_question']) && (!isset($_SESSION['game_round']['compl
             }
 
             // Check if we still have fresh members left
-            $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM membres WHERE status = 'approved' AND photo_path IS NOT NULL AND photo_path != '' AND photo_path != 'default.jpg'" . $excludeSql);
+            $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM membres WHERE status = 'approved' AND photo_path IS NOT NULL AND photo_path != '' AND photo_path != 'default.jpg'" . $exclureSoi . $excludeSql);
             $stmtCheck->execute($params);
             $remainingCount = $stmtCheck->fetchColumn();
 
@@ -151,7 +157,7 @@ if (!isset($_SESSION['game_question']) && (!isset($_SESSION['game_round']['compl
                 $params = [];
             }
 
-            $stmtCorrect = $pdo->prepare("SELECT id, nom, prenom, civilite, photo_path FROM membres WHERE status = 'approved' AND photo_path IS NOT NULL AND photo_path != '' AND photo_path != 'default.jpg'" . $excludeSql . " ORDER BY RAND() LIMIT 1");
+            $stmtCorrect = $pdo->prepare("SELECT id, nom, prenom, civilite, photo_path FROM membres WHERE status = 'approved' AND photo_path IS NOT NULL AND photo_path != '' AND photo_path != 'default.jpg'" . $exclureSoi . $excludeSql . " ORDER BY RAND() LIMIT 1");
             $stmtCorrect->execute($params);
             $correctMember = $stmtCorrect->fetch();
             

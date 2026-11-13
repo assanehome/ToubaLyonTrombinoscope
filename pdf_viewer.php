@@ -12,6 +12,7 @@
 $file = (string) ($_GET['file'] ?? '');
 $titre = trim((string) ($_GET['titre'] ?? ''));
 $retour = trim((string) ($_GET['retour'] ?? ''));
+$pageDebut = max(1, min(99999, (int) ($_GET['page'] ?? 1))); // page sur laquelle le document s'ouvre
 
 $dossierOk = strpos($file, 'Coran_pdf/') === 0 || strpos($file, 'uploads/') === 0;
 $lisible = $dossierOk
@@ -184,7 +185,7 @@ if (!$lisible) {
         const url = <?php echo json_encode($file); ?>;
         
         let pdfDoc = null,
-            pageNum = 1,
+            pageNum = <?php echo (int) $pageDebut; ?>,
             pageIsRendering = false,
             pageNumIsPending = null,
             scale = 1.3,
@@ -256,6 +257,7 @@ if (!$lisible) {
         pdfjsLib.getDocument(url).promise.then(pdfDoc_ => {
             pdfDoc = pdfDoc_;
             document.getElementById('page_count').textContent = pdfDoc.numPages;
+            if (pageNum > pdfDoc.numPages) { pageNum = pdfDoc.numPages; } // page demandée au-delà de la fin : dernière page
             document.getElementById('loading').style.display = 'none';
             renderPage(pageNum);
         }).catch(err => {

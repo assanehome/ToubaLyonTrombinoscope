@@ -15,6 +15,7 @@ require_once __DIR__ . '/csrf.php';
 require_once __DIR__ . '/dahira_emails.php';
 require_once __DIR__ . '/planning_dahira_helper.php'; // dahira_destinataires, wa_link, wa_button, dahira_param
 require_once __DIR__ . '/planning_guddi_helper.php';
+require_once __DIR__ . '/lien_court_helper.php'; // liens courts des messages WhatsApp
 require_once __DIR__ . '/fonction_responsables_helper.php'; // responsables du Guddi Àjjuma
 require_once __DIR__ . '/notification_helper.php';
 
@@ -55,8 +56,8 @@ function guddi_oublier_audio(PDO $pdo, int $id): void
         $st->execute([$id]);
         $ancien = (string) $st->fetchColumn();
         if ($ancien !== '') {
-            $chemin = __DIR__ . '/uploads/' . basename($ancien);
-            if (is_file($chemin)) { @unlink($chemin); }
+            $chemin = guddi_audio_fichier_abs($ancien);
+            if ($chemin !== null && is_file($chemin)) { @unlink($chemin); }
         }
         $pdo->prepare("UPDATE guddi_plannings SET audio_path = NULL, updated_at = NOW() WHERE id = ?")->execute([$id]);
     } catch (Exception $e) {
@@ -69,6 +70,14 @@ $commissionId = guddi_commission_id($pdo);
 // ---------------------------------------------------------------------------
 // Actions POST
 // ---------------------------------------------------------------------------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'audio_chunk') {
+    // Envoi par morceaux d'un enregistrement de séance : réponse JSON, aucune page
+    header('Content-Type: application/json; charset=UTF-8');
+    if (!csrf_validate()) { echo json_encode(['ok' => false, 'error' => 'Échec de validation de sécurité : rechargez la page puis réessayez.']); exit; }
+    echo json_encode(guddi_recevoir_morceau((int) ($_POST['id'] ?? 0), $_POST, $_FILES, guddi_audio_dossier_abs()));
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Un envoi plus lourd que ce que PHP accepte arrive ici entièrement vide.
     // Sans ce garde-fou, un enregistrement trop gros se plaindrait d'un jeton
@@ -85,16 +94,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($action === 'save_params') {
             dahira_set_param($pdo, 'guddi_heure', trim($_POST['heure'] ?? ''));
             dahira_set_param($pdo, 'guddi_heure_fin', trim($_POST['heure_fin'] ?? ''));
-            dahira_set_param($pdo, 'guddi_theme_defaut', trim($_POST['theme_defaut'] ?? ''));
-            $presDefaut = trim($_POST['presentateur_defaut'] ?? '');
-            // Si « Autre / saisie libre », prendre le champ libre
-            if ($presDefaut === '__libre__') {
-                $presDefaut = trim($_POST['presentateur_defaut_libre'] ?? '');
-            }
-            dahira_set_param($pdo, 'guddi_presentateur_defaut', $presDefaut);
-            dahira_set_param($pdo, 'guddi_lien_defaut', trim($_POST['lien_defaut'] ?? ''));
+            dahira_set_param($pdo, 'guddi_lien_defaut', guddi_lien_normalise((string) ($_POST['lien_defaut'] ?? '')));
             dahira_set_param($pdo, 'guddi_mode_defaut', ($_POST['mode_defaut'] ?? 'distance') === 'presentiel' ? 'presentiel' : 'distance');
             dahira_set_param($pdo, 'guddi_lieu_defaut', trim($_POST['lieu_defaut'] ?? ''));
+            dahira_set_param($pdo, 'guddi_message_pied', trim(str_replace("\r\n", "\n", (string) ($_POST['message_pied'] ?? ''))));
             $success = "Paramètres par défaut du Guddi Àjjuma enregistrés.";
         }
 
@@ -162,13 +165,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                     }
                     if ($error === '') {
+                        $ancienPdf = '';
                         if ($pdfPath !== null) {
+                            try { $stOld = $pdo->prepare("SELECT pdf_path FROM guddi_plannings WHERE id = ?"); $stOld->execute([$id]); $ancienPdf = (string) $stOld->fetchColumn(); } catch (Exception $e) { $ancienPdf = ''; }
                             $pdo->prepare("UPDATE guddi_plannings SET theme = ?, presentateur = ?, lien = ?, livre = ?, pdf_path = ?, mode = ?, heure = ?, heure_fin = ?, details_html = ?, actif = 1, updated_at = NOW() WHERE id = ?")
                                 ->execute([$theme !== '' ? $theme : null, $presentateur !== '' ? $presentateur : null, $lien !== '' ? $lien : null, $livre !== '' ? $livre : null, $pdfPath, $mode, $heureSeance !== '' ? $heureSeance : null, $heureFinSeance !== '' ? $heureFinSeance : null, $detailsHtml !== '' ? $detailsHtml : null, $id]);
                         } else {
                             $pdo->prepare("UPDATE guddi_plannings SET theme = ?, presentateur = ?, lien = ?, livre = ?, mode = ?, heure = ?, heure_fin = ?, details_html = ?, actif = 1, updated_at = NOW() WHERE id = ?")
                                 ->execute([$theme !== '' ? $theme : null, $presentateur !== '' ? $presentateur : null, $lien !== '' ? $lien : null, $livre !== '' ? $livre : null, $mode, $heureSeance !== '' ? $heureSeance : null, $heureFinSeance !== '' ? $heureFinSeance : null, $detailsHtml !== '' ? $detailsHtml : null, $id]);
                         }
+                        // Le PDF remplacé ne reste pas orphelin sur le serveur
+                        if ($pdfPath !== null && $ancienPdf !== '' && basename($ancienPdf) !== $pdfPath) {
+                            $ancienFichier = __DIR__ . '/uploads/' . basename($ancienPdf);
+                            if (is_file($ancienFichier)) { @unlink($ancienFichier); }
+                        }
+                        // Page de début du livre à étudier : le lien de la séance s'ouvre sur cette page
+                        $pageDebut = (int) preg_replace('/\D+/', '', (string) ($_POST['pdf_page_debut'] ?? ''));
+                        $pdo->prepare("UPDATE guddi_plannings SET pdf_page_debut = ? WHERE id = ?")->execute([$pageDebut > 0 ? min(99999, $pageDebut) : null, $id]);
                         $success = "Séance du Guddi Àjjuma enregistrée." . ($pdfPath !== null ? " PDF joint." : "");
                     }
                 } catch (Exception $e) {
@@ -199,11 +212,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
+        // Nombre total de participants d'une séance clôturée : saisi, ou (champ vide) celui des présences validées
+        elseif ($action === 'set_participants') {
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id > 0) {
+                try {
+                    $brut = trim((string) ($_POST['nb_participants'] ?? ''));
+                    if ($brut !== '' && !ctype_digit($brut)) {
+                        $error = "Indiquez un nombre entier de participants.";
+                    } elseif ($brut !== '' && (int) $brut > 0) {
+                        $nbM = min(10000, (int) $brut);
+                        $pdo->prepare("UPDATE guddi_plannings SET nb_participants = ?, nb_manuel = 1, updated_at = NOW() WHERE id = ? AND cloture = 1")->execute([$nbM, $id]);
+                        $success = "Nombre de participants enregistré : $nbM.";
+                    } else {
+                        $stN = $pdo->prepare("SELECT COUNT(*) FROM presence_validations WHERE planning_type = 'guddi' AND planning_id = ?");
+                        $stN->execute([$id]);
+                        $nbP = (int) $stN->fetchColumn();
+                        $pdo->prepare("UPDATE guddi_plannings SET nb_participants = ?, nb_manuel = 0, updated_at = NOW() WHERE id = ? AND cloture = 1")->execute([$nbP > 0 ? $nbP : null, $id]);
+                        $success = $nbP > 0 ? "Nombre de participants rétabli : $nbP (présences validées)." : "Nombre de participants retiré (aucune présence validée).";
+                    }
+                } catch (Exception $e) {
+                    error_log('Touba Lyon guddi - participants : ' . $e->getMessage());
+                    $error = "Une erreur technique est survenue.";
+                }
+            }
+        }
+
         // Joindre (ou remplacer) l'enregistrement d'une séance déjà clôturée
         elseif ($action === 'save_audio') {
             $id = (int) ($_POST['id'] ?? 0);
             if ($id > 0) {
-                $audio = guddi_enregistrer_audio($id, $_FILES['audio_guddi'] ?? [], __DIR__ . '/uploads', $error);
+                $dateSeance = '';
+                try { $stDS = $pdo->prepare("SELECT date_guddi FROM guddi_plannings WHERE id = ?"); $stDS->execute([$id]); $dateSeance = (string) $stDS->fetchColumn(); } catch (Exception $e) { $dateSeance = ''; }
+                $audio = guddi_audio_recu($id, $_POST, $_FILES, guddi_audio_dossier_abs(), $error, $dateSeance);
                 if ($error === '' && $audio === null) {
                     $error = "Aucun fichier n'a été choisi.";
                 } elseif ($error === '') {
@@ -231,14 +272,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Charger les valeurs par défaut dans la séance
         elseif ($action === 'load_default') {
             $id = (int) ($_POST['id'] ?? 0);
-            $theme = dahira_param($pdo, 'guddi_theme_defaut', 'Sëriñ Tuubaa ak Gammu');
-            $presentateur = dahira_param($pdo, 'guddi_presentateur_defaut', 'Oustaz Sëriñ Mbàcke Géy');
             $lien = dahira_param($pdo, 'guddi_lien_defaut', '');
             $mode = dahira_param($pdo, 'guddi_mode_defaut', 'distance');
             if ($id > 0) {
                 try {
-                    $pdo->prepare("UPDATE guddi_plannings SET theme = ?, presentateur = ?, lien = ?, mode = ?, actif = 1, updated_at = NOW() WHERE id = ?")
-                        ->execute([$theme, $presentateur, $lien, $mode, $id]);
+                    $pdo->prepare("UPDATE guddi_plannings SET lien = ?, mode = ?, actif = 1, updated_at = NOW() WHERE id = ?")
+                        ->execute([$lien, $mode, $id]);
                     $success = "Paramètres par défaut chargés dans la séance.";
                 } catch (Exception $e) {
                     $error = "Une erreur technique est survenue.";
@@ -315,21 +354,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $nb = 0;
                         }
                         // L'enregistrement de la séance, s'il a été joint à la clôture
-                        $audio = guddi_enregistrer_audio($id, $_FILES['audio_guddi'] ?? [], __DIR__ . '/uploads', $error);
+                        $audio = guddi_audio_recu($id, $_POST, $_FILES, guddi_audio_dossier_abs(), $error, (string) $d);
                         if ($error !== '') {
                             // Le fichier a échoué : la séance reste ouverte, on le dit.
                             $error .= " La séance n'a pas été clôturée : recommencez, au besoin sans le fichier.";
                         }
+                        // Nombre total de participants : celui saisi à la clôture, sinon celui des présences validées (comme avant)
+                        $nbSaisi = max(0, min(10000, (int) preg_replace('/\D+/', '', (string) ($_POST['nb_participants'] ?? ''))));
+                        $manuel = $nbSaisi > 0 ? 1 : 0;
+                        if ($manuel === 1) { $nb = $nbSaisi; }
                         if ($error === '') {
                             if ($audio !== null) {
                                 guddi_oublier_audio($pdo, $id); // un précédent enregistrement ne reste pas orphelin
-                                $pdo->prepare("UPDATE guddi_plannings SET cloture = 1, nb_participants = ?, audio_path = ?, updated_at = NOW() WHERE id = ?")
-                                    ->execute([$nb > 0 ? $nb : null, $audio, $id]);
+                                $pdo->prepare("UPDATE guddi_plannings SET cloture = 1, nb_participants = ?, nb_manuel = ?, audio_path = ?, updated_at = NOW() WHERE id = ?")
+                                    ->execute([$nb > 0 ? $nb : null, $manuel, $audio, $id]);
                             } else {
-                                $pdo->prepare("UPDATE guddi_plannings SET cloture = 1, nb_participants = ?, updated_at = NOW() WHERE id = ?")
-                                    ->execute([$nb > 0 ? $nb : null, $id]);
+                                $pdo->prepare("UPDATE guddi_plannings SET cloture = 1, nb_participants = ?, nb_manuel = ?, updated_at = NOW() WHERE id = ?")
+                                    ->execute([$nb > 0 ? $nb : null, $manuel, $id]);
                             }
-                            $success = "Séance clôturée." . ($nb > 0 ? " Participants : $nb." : "")
+                            $success = "Séance clôturée." . ($nb > 0 ? " Participants : $nb" . ($manuel === 1 ? ' (saisi).' : ' (présences validées).') : "")
                                 . ($audio !== null ? " Enregistrement joint." : "");
                         }
                     }
@@ -357,7 +400,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Heures propres à la séance si renseignées, sinon valeurs par défaut
                     $heure = trim((string)($row['heure'] ?? '')) !== '' ? trim((string)$row['heure']) : dahira_param($pdo, 'guddi_heure', '20h00');
                     $heureFin = trim((string)($row['heure_fin'] ?? '')) !== '' ? trim((string)$row['heure_fin']) : dahira_param($pdo, 'guddi_heure_fin', '21h30');
-                    $lienEff = dahira_param($pdo, 'guddi_lien_defaut', ''); // lien Zoom toujours celui des paramètres
+                    $lienEff = guddi_lien_normalise(dahira_param($pdo, 'guddi_lien_defaut', '')); // lien Zoom toujours celui des paramètres
                     $lieuGuddi = dahira_param($pdo, 'guddi_lieu_defaut', '');
                     $lieuEff = $lieuGuddi !== '' ? $lieuGuddi : dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
                     $modeEff = (string)($row['mode'] ?? '');
@@ -378,8 +421,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $corps = guddi_email_annulation($date);
                         } else {
                             $sujet = '💎 Guddi Àjjuma — ' . guddi_date_longue($date);
-                            $pdfUrl = !empty($row['pdf_path']) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($row['pdf_path']) : '';
-                            $corps = guddi_email($date, $heure, (string)($row['theme'] ?? ''), (string)($row['presentateur'] ?? ''), $lienEff, (string)($row['livre'] ?? ''), $pdfUrl, $modeEff, $lieuEff, $heureFin, (string)($row['details_html'] ?? ''));
+                            $pdfUrl = guddi_pdf_lien($row);
+                            $corps = guddi_email($date, $heure, (string)($row['theme'] ?? ''), (string)($row['presentateur'] ?? ''), $lienEff, (string)($row['livre'] ?? ''), $pdfUrl, $modeEff, $lieuEff, $heureFin, (string)($row['details_html'] ?? ''), dahira_param($pdo, 'guddi_message_pied', ''));
                         }
                         $sent = 0;
                         foreach ($destinataires as $m) {
@@ -405,11 +448,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ---------------------------------------------------------------------------
 $heure = dahira_param($pdo, 'guddi_heure', '20h00');
 $heureFin = dahira_param($pdo, 'guddi_heure_fin', '21h30');
-$themeDefaut = dahira_param($pdo, 'guddi_theme_defaut', 'Sëriñ Tuubaa ak Gammu');
-$presentateurDefaut = dahira_param($pdo, 'guddi_presentateur_defaut', 'Oustaz Sëriñ Mbàcke Géy');
 $lienDefaut = dahira_param($pdo, 'guddi_lien_defaut', '');
 $modeDefaut = dahira_param($pdo, 'guddi_mode_defaut', 'distance');
 $lieuDefaut = dahira_param($pdo, 'guddi_lieu_defaut', '');
+$piedMessage = guddi_pied_effectif(dahira_param($pdo, 'guddi_message_pied', ''));
 $lieuDahira = $lieuDefaut !== '' ? $lieuDefaut : dahira_param($pdo, 'dahira_lieu', '1 rue du 35 régiment d\'aviation, 69500 Bron');
 $groupeWa = dahira_param($pdo, 'wa_group_link', '');
 
@@ -437,10 +479,10 @@ $planningsPassesNonClotures = array_values(array_filter($planningsPasses, static
     return ((int)($p['cloture'] ?? 0)) !== 1;
 }));
 
-// Séances passées clôturées (historique, affiché en bas de page)
-$planningsPassesCloturees = array_values(array_filter($planningsPasses, static function ($p) {
+// Séances passées clôturées (historique, affiché en bas de page) : de la plus récente à la plus ancienne
+$planningsPassesCloturees = array_reverse(array_values(array_filter($planningsPasses, static function ($p) {
     return ((int)($p['cloture'] ?? 0)) === 1;
-}));
+})));
 
 // Nombre de présences validées par séance (source de l'indicateur Participants)
 $presencesGuddi = [];
@@ -453,6 +495,7 @@ try {
 
 // Nombre de participants d'une séance : membres ayant validé leur présence
 $nbPartGuddi = static function (array $p) use ($presencesGuddi): int {
+    if ((int) ($p['nb_manuel'] ?? 0) === 1 && isset($p['nb_participants'])) { return (int) $p['nb_participants']; } // nombre total saisi par le responsable
     return $presencesGuddi[(int)($p['id'] ?? 0)] ?? 0;
 };
 
@@ -582,6 +625,21 @@ if ($commissionId > 0) {
         .pl-params-stack { display: flex; flex-direction: column; }
         .pl-params-stack .form-group { width: 100%; }
         .pl-params-stack .form-input { width: 100%; box-sizing: border-box; }
+        /* Groupe « Paramètres » : espaces réduits entre les informations */
+        .pl-params-stack { gap: 0.4rem; }
+        /* En colonne, « flex: 1 1 180px » (hérité de .pl-params) imposait 180 px de HAUTEUR minimale à chaque information : cause des grands vides */
+        .pl-params-stack > * { flex: 0 0 auto; }
+        .pl-params-stack .guddi-presentiel-toggle { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+        .pl-params-stack input[type="text"] + input[type="text"] { margin-top: 0.35rem; }
+        .pl-params-stack .form-label { margin-bottom: 0.2rem; font-size: 0.85rem; }
+        .pl-params-stack .form-input { padding: 0.45rem 0.8rem; font-size: 0.9rem; }
+        .pl-params-stack p { margin: 0.15rem 0 0 !important; line-height: 1.4; }
+        /* Zone de saisie de la séance (heures, mode, thème, présentateur, livre, détails) : espaces réduits */
+        #frm-save-seance .pl-params { gap: 0.4rem; margin-bottom: 0.4rem !important; }
+        #frm-save-seance .form-group { margin-bottom: 0.4rem !important; }
+        #frm-save-seance .form-label { margin-bottom: 0.2rem; font-size: 0.85rem; }
+        #frm-save-seance .form-input { padding: 0.45rem 0.8rem; font-size: 0.9rem; }
+        #frm-save-seance p { margin-top: 0.15rem !important; line-height: 1.4; }
         /* Sélecteurs de dates : centrés dans la glass-card, sans dépasser */
         .pl-params {
             min-width: 0;
@@ -787,7 +845,7 @@ if ($commissionId > 0) {
                         $presentateur = (string)($prochain['presentateur'] ?? '');
                         // Le lien de participation n'est plus modifiable par séance :
                         // on utilise toujours celui défini dans les paramètres.
-                        $lienAffiche = $lienDefaut;
+                        $lienAffiche = guddi_lien_normalise($lienDefaut);
                         $prochainActif = ((int)($prochain['actif'] ?? 1)) === 1;
                         $prochainMode = (string)($prochain['mode'] ?? '');
                         if ($prochainMode === '') { $prochainMode = $modeDefaut; }
@@ -798,7 +856,7 @@ if ($commissionId > 0) {
                         $heureFinEff = $heureFinSeance !== '' ? $heureFinSeance : $heureFin;
                         $detailsHtmlSeance = (string)($prochain['details_html'] ?? '');
                         $waMsg = $prochainActif
-                            ? guddi_message($pdate, $heureEff, $theme, $presentateur, $lienAffiche, (string)($prochain['livre'] ?? ''), !empty($prochain['pdf_path']) ? 'https://toubalyon.com/Dahira/uploads/' . rawurlencode($prochain['pdf_path']) : '', $prochainMode, $lieuDahira, dahira_base_url() . '/guddi_detail.php?id=' . (int)$prochain['id'], $heureFinEff, $detailsHtmlSeance)
+                            ? guddi_message($pdate, $heureEff, $theme, $presentateur, (string) $lienAffiche /* lien Zoom complet : non raccourci */, (string)($prochain['livre'] ?? ''), lien_court($pdo, guddi_pdf_lien($prochain)), $prochainMode, $lieuDahira, dahira_base_url() . '/guddi_detail.php?id=' . (int)$prochain['id'], $heureFinEff, $detailsHtmlSeance, dahira_param($pdo, 'guddi_message_pied', ''))
                             : guddi_message_annulation($pdate);
                         $waAnnul = guddi_message_annulation($pdate);
                     ?>
@@ -818,7 +876,7 @@ if ($commissionId > 0) {
                                 <?php if ($theme !== ''): ?><div style="font-size:0.85rem; color:var(--text-muted); margin-top:0.25rem;">🎯 Thème : <?php echo htmlspecialchars($theme); ?></div><?php endif; ?>
                                 <?php if ($presentateur !== ''): ?><div style="font-size:0.85rem; color:var(--text-muted);">🎤 Présentateur : <?php echo htmlspecialchars($presentateur); ?></div><?php endif; ?>
                                 <?php if ($lienAffiche !== '' && $prochainActif): ?><div style="font-size:0.82rem; color:var(--text-muted); margin-top:0.25rem;">🔗 <a href="<?php echo htmlspecialchars($lienAffiche); ?>" target="_blank" rel="noopener" style="color:var(--accent);">Lien de participation Zoom</a></div><?php endif; ?>
-                                <?php if (!empty($prochain['pdf_path'])): ?><div style="font-size:0.82rem; color:var(--text-muted); margin-top:0.25rem;">📄 <a href="uploads/<?php echo htmlspecialchars($prochain['pdf_path']); ?>" target="_blank" rel="noopener" style="color:var(--accent);">Livre étudié PDF joint</a></div><?php endif; ?>
+                                <?php if (!empty($prochain['pdf_path'])): ?><div style="font-size:0.82rem; color:var(--text-muted); margin-top:0.25rem;">📄 <a href="<?php echo htmlspecialchars(guddi_pdf_lien($prochain, '.')); ?>" target="_blank" rel="noopener" style="color:var(--accent);">Livre étudié PDF joint</a></div><?php endif; ?>
                             </div>
                             <div style="display:flex; flex-direction:column; gap:0.55rem; min-width:240px;">
                                 <?php echo dahira_wa_button(dahira_wa_link(null, $waMsg), $prochainActif ? 'Partager sur WhatsApp' : 'Annulation WhatsApp', false, ((int)($prochain['publie'] ?? 0)) !== 1); ?>
@@ -907,20 +965,10 @@ if ($commissionId > 0) {
                             </div>
                             <div class="form-group" style="margin-bottom:0.7rem;"><label class="form-label">📖 Livre à étudier (facultatif)</label><input type="text" name="livre" class="form-input" value="<?php echo htmlspecialchars((string)($prochain['livre'] ?? '')); ?>" placeholder="Ex : Tafsir, Khassaïd, Fiqh…" style="width:100%;"></div>
                             <div class="form-group" style="margin-bottom:0.7rem;">
-                                <label class="form-label">📝 Détails complémentaires (facultatif)</label>
-                                <textarea name="details_html" id="guddi-details-html" class="form-input" rows="5" placeholder="Ex : Récitation du Coran, conférence, précisions pratiques…" style="width:100%;"><?php echo htmlspecialchars((string)($prochain['details_html'] ?? '')); ?></textarea>
-                                <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Texte libre ajouté au message d'annonce et à la page détail. Les retours à la ligne sont conservés.</p>
-                            </div>
-                            <div class="form-group" style="margin-bottom:0.7rem;">
                                 <?php if (!empty($prochain['pdf_path'])): ?>
                                     <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-bottom:0.4rem;">
-                                        <a href="uploads/<?php echo htmlspecialchars($prochain['pdf_path']); ?>" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">📄 Voir le PDF actuel</a>
-                                        <form action="admin_guddi.php" method="POST" style="margin:0;" data-confirm="Supprimer le PDF du livre étudié de cette séance ?">
-                                            <?php echo csrf_field(); ?>
-                                            <input type="hidden" name="action" value="delete_pdf">
-                                            <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
-                                            <button type="submit" class="btn btn-secondary btn-sm" style="border-color:rgba(191,33,33,0.6); color:#fca5a5; cursor:pointer;">🗑️ Supprimer</button>
-                                        </form>
+                                        <a href="<?php echo htmlspecialchars(guddi_pdf_lien($prochain, '.')); ?>" target="_blank" rel="noopener" class="btn btn-secondary btn-sm" style="border-color:var(--accent); color:var(--accent);">📄 Voir le PDF actuel</a>
+                                        <button type="submit" form="frm-delete-pdf" class="btn btn-secondary btn-sm" style="border-color:rgba(191,33,33,0.6); color:#fca5a5; cursor:pointer;">🗑️ Supprimer</button>
                                     </div>
                                 <?php endif; ?>
                                 <div class="mpp-file" style="display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
@@ -930,7 +978,24 @@ if ($commissionId > 0) {
                                     <span id="mpp-file-name" style="color:var(--text-muted); font-size:0.82rem; word-break:break-all;">Aucun fichier choisi</span>
                                 </div>
                             </div>
+                            <div class="form-group" style="margin-bottom:0.7rem;">
+                                <label class="form-label">📄 Page de début pour la séance (facultatif)</label>
+                                <input type="number" name="pdf_page_debut" class="form-input" min="1" max="99999" inputmode="numeric" placeholder="Ex : 12" value="<?php echo !empty($prochain['pdf_page_debut']) ? (int) $prochain['pdf_page_debut'] : ''; ?>" style="width:100%;">
+                                <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Page du livre sur laquelle s'ouvre le lien de cette séance (messages WhatsApp et e-mail, page de la séance).</p>
+                            </div>
+                            <div class="form-group" style="margin-bottom:0.7rem;">
+                                <label class="form-label">📝 Détails complémentaires (facultatif)</label>
+                                <textarea name="details_html" id="guddi-details-html" class="form-input" rows="5" placeholder="Ex : Récitation du Coran, conférence, précisions pratiques…" style="width:100%;"><?php echo htmlspecialchars((string)($prochain['details_html'] ?? '')); ?></textarea>
+                                <p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Texte libre ajouté au message d'annonce et à la page détail. Les retours à la ligne sont conservés.</p>
+                            </div>
                         </form>
+                        <?php if (!empty($prochain['pdf_path'])): ?>
+                        <form id="frm-delete-pdf" action="admin_guddi.php" method="POST" style="display:none;" data-confirm="Supprimer le PDF du livre étudié de cette séance ?">
+                            <?php echo csrf_field(); ?>
+                            <input type="hidden" name="action" value="delete_pdf">
+                            <input type="hidden" name="id" value="<?php echo (int)$prochain['id']; ?>">
+                        </form>
+                        <?php endif; ?>
                             <div class="gu-actions-bar" style="margin-top:0.5rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                                 <button type="submit" form="frm-save-seance" class="btn btn-primary btn-sm">💾 Enregistrer la séance</button>
                                 <form action="admin_guddi.php" method="POST" style="margin:0;">
@@ -957,6 +1022,71 @@ if ($commissionId > 0) {
                     <?php endif; ?>
                 </div>
 
+                <!-- Séances clôturées (historique) -->
+                <?php if (!empty($planningsPassesCloturees)): ?>
+                <details class="glass-card" style="margin-bottom:1.5rem;">
+                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✅ Séances clôturées (<?php echo count($planningsPassesCloturees); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
+                    <div class="pl-grid" style="margin-top:0.9rem;">
+                        <?php foreach ($planningsPassesCloturees as $p):
+                            $d = $p['date_guddi'];
+                            $actif = ((int)($p['actif'] ?? 1)) === 1;
+                            $nbCloture = $nbPartGuddi($p);
+                        ?>
+                        <div class="glass-card pl-card" style="opacity:0.8; border-left:3px solid rgba(37,211,102,0.4);">
+                            <div class="pl-date">
+                                <?php echo ucfirst(guddi_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
+                                <small>· passé</small>
+                            </div>
+                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                                <span>
+                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">✅ Clôturée<?php echo $nbCloture > 0 ? ' · ' . $nbCloture . ' pers.' : ''; ?></span>
+                                    <?php if (!empty(trim((string)($p['livre'] ?? '')))): ?>
+                                        <span class="pl-badge pl-badge-no" style="font-size:0.75rem; padding:0.25rem 0.6rem;">📖 <?php echo htmlspecialchars((string)$p['livre']); ?></span>
+                                    <?php endif; ?>
+                                </span>
+                                <a href="guddi_detail.php?id=<?php echo (int)$p['id']; ?>" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
+                            </div>
+                            <?php // Nombre total de participants : saisi, ou (champ vide) présences validées ?>
+                            <form action="admin_guddi.php" method="POST" style="margin:0.55rem 0 0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
+                                <?php echo csrf_field(); ?>
+                                <input type="hidden" name="action" value="set_participants">
+                                <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                                <label style="font-size:0.72rem; color:var(--text-muted);">👥 Participants</label>
+                                <input type="number" name="nb_participants" min="0" max="10000" inputmode="numeric" class="form-input" style="width:90px; padding:0.25rem 0.5rem; font-size:0.8rem;" value="<?php echo ((int)($p['nb_manuel'] ?? 0) === 1 && $p['nb_participants'] !== null) ? (int)$p['nb_participants'] : ''; ?>" placeholder="<?php echo (int)($presencesGuddi[(int)$p['id']] ?? 0); ?>" title="Vide : présences validées (<?php echo (int)($presencesGuddi[(int)$p['id']] ?? 0); ?>)">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.6rem;">💾 Enregistrer</button>
+                                <span style="font-size:0.68rem; color:var(--text-muted);"><?php echo ((int)($p['nb_manuel'] ?? 0) === 1) ? 'nombre saisi' : 'présences validées'; ?></span>
+                            </form>
+                            <?php // L'enregistrement de la séance : à écouter, à remplacer ou à retirer. ?>
+                            <?php $gaFichier = trim((string)($p['audio_path'] ?? '')); ?>
+                            <div style="margin-top:0.55rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.08);">
+                                <?php if ($gaFichier !== ''): ?>
+                                    <div style="display:flex; gap:0.4rem; align-items:center; justify-content:space-between;">
+                                        <span style="font-size:0.72rem; color:var(--text-muted);">🎧 Enregistrement</span>
+                                        <form action="admin_guddi.php" method="POST" style="margin:0;" data-confirm="Supprimer l'enregistrement de cette séance ? Le fichier sera effacé du serveur et les membres ne pourront plus l'écouter." data-confirm-danger="1">
+                                            <?php echo csrf_field(); ?>
+                                            <input type="hidden" name="action" value="delete_audio">
+                                            <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                                            <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.6rem; border-color:rgba(220,80,80,0.45); color:#f3a6a6;">🗑️ Supprimer l'enregistrement</button>
+                                        </form>
+                                    </div>
+                                    <audio controls preload="none" controlsList="nodownload noplaybackrate" oncontextmenu="return false;" src="<?php echo htmlspecialchars(guddi_audio_lecture_url((int)$p['id'])); ?>" style="width:100%; height:34px; margin-top:0.35rem;"></audio>
+                                <?php else: ?>
+                                    <form action="admin_guddi.php" method="POST" enctype="multipart/form-data" class="guddi-upload" data-ajax="off" style="margin:0;">
+                                        <?php echo csrf_field(); ?>
+                                        <input type="hidden" name="action" value="save_audio">
+                                        <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                                        <input type="file" name="audio_guddi" accept="audio/*,.mp3,.m4a,.ogg,.opus,.wav" required>
+                                        <div style="font-size:0.7rem; color:var(--text-muted); margin:0.35rem 0 0.5rem;">MP3, M4A, OGG ou WAV — <?php echo htmlspecialchars(guddi_audio_limite_totale_texte()); ?> au maximum.</div>
+                                        <button type="submit" class="btn btn-secondary btn-sm" style="width:100%; justify-content:center;">🎧 Joindre l'enregistrement</button>
+                                    </form>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </details>
+                <?php endif; ?>
+
                 <!-- Paramètres -->
                 <details class="glass-card" style="margin-bottom:1.5rem;">
                     <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">⚙️ Paramètres par défaut <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
@@ -975,19 +1105,6 @@ if ($commissionId > 0) {
                                     <?php echo guddi_options_heures($heureFin); ?>
                                 </select>
                             </div>
-                            <div class="form-group"><label class="form-label">🎯 Thème par défaut</label><input type="text" name="theme_defaut" class="form-input" value="<?php echo htmlspecialchars($themeDefaut); ?>"></div>
-                            <div class="form-group">
-                                <label class="form-label">🎤 Présentateur par défaut (membre de la commission Culte)</label>
-                                <select name="presentateur_defaut" id="guddi-presentateur-defaut" class="form-input" style="width:100%;">
-                                    <option value="">— Choisir un membre —</option>
-                                    <?php foreach ($membresCulte as $mc): ?>
-                                        <?php $mcNom = trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); ?>
-                                        <option value="<?php echo htmlspecialchars($mcNom, ENT_QUOTES); ?>" <?php echo $mcNom === $presentateurDefaut ? 'selected' : ''; ?>><?php echo htmlspecialchars($mcNom); ?></option>
-                                    <?php endforeach; ?>
-                                    <option value="__libre__" <?php echo $presentateurDefaut !== '' && !in_array($presentateurDefaut, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? 'selected' : ''; ?>>✏️ Autre / saisie libre…</option>
-                                </select>
-                                <input type="text" name="presentateur_defaut_libre" id="guddi-presentateur-defaut-libre" class="form-input" placeholder="Nom du présentateur (saisie libre)" value="<?php echo $presentateurDefaut !== '' && !in_array($presentateurDefaut, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? htmlspecialchars($presentateurDefaut) : ''; ?>" style="width:100%; margin-top:0.45rem; <?php echo $presentateurDefaut !== '' && !in_array($presentateurDefaut, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? '' : 'display:none;'; ?>">
-                            </div>
                             <div class="form-group">
                                 <label class="guddi-presentiel-toggle" id="guddi-mode-defaut-toggle" for="guddi-mode-defaut" style="width:100%; box-sizing:border-box;">
                                     <input type="checkbox" name="mode_defaut" value="presentiel" id="guddi-mode-defaut" <?php echo $modeDefaut === 'presentiel' ? 'checked' : ''; ?>>
@@ -998,6 +1115,7 @@ if ($commissionId > 0) {
                                 </label>
                             </div>
                             <div class="form-group"><label class="form-label">📍 Adresse (présentiel)</label><textarea name="lieu_defaut" class="form-input" rows="3" placeholder="1 rue du 35 régiment d'aviation,&#10;69500 Bron"><?php echo htmlspecialchars($lieuDahira); ?></textarea><p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Vous pouvez saisir l'adresse sur plusieurs lignes.</p></div>
+                            <div class="form-group"><label class="form-label">✍️ Pied des messages d'annonce (WhatsApp et e-mail)</label><textarea name="message_pied" class="form-input" rows="4" placeholder="<?php echo htmlspecialchars(guddi_pied_defaut(), ENT_QUOTES); ?>"><?php echo htmlspecialchars($piedMessage); ?></textarea><p style="color:var(--text-muted); font-size:0.78rem; margin-top:0.35rem;">Texte placé avant « Commission Culte, Touba Lyon » dans le message d'annonce. Videz le champ puis enregistrez pour revenir au texte d'origine.</p></div>
                             <div class="form-group"><label class="form-label">🔗 Lien de participation par défaut</label><input type="url" name="lien_defaut" class="form-input" value="<?php echo htmlspecialchars($lienDefaut); ?>" placeholder="https://us06web.zoom.us/..."></div>
                         </div>
                         <div style="margin-top:0.9rem;"><button type="submit" class="btn btn-primary btn-sm">💾 Enregistrer</button></div>
@@ -1058,59 +1176,6 @@ if ($commissionId > 0) {
                     </div>
                 </details>
 
-                <!-- Séances clôturées (historique) -->
-                <?php if (!empty($planningsPassesCloturees)): ?>
-                <details class="glass-card" style="margin-bottom:1.5rem;">
-                    <summary style="color:var(--white); font-size:1.17rem; font-weight:700; cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center; gap:0.5rem;">✅ Séances clôturées (<?php echo count($planningsPassesCloturees); ?>) <span class="pl-chevron" style="color:var(--text-muted); transition:transform 0.2s;">▸</span></summary>
-                    <div class="pl-grid" style="margin-top:0.9rem;">
-                        <?php foreach ($planningsPassesCloturees as $p):
-                            $d = $p['date_guddi'];
-                            $actif = ((int)($p['actif'] ?? 1)) === 1;
-                            $nbCloture = $nbPartGuddi($p);
-                        ?>
-                        <div class="glass-card pl-card" style="opacity:0.8; border-left:3px solid rgba(37,211,102,0.4);">
-                            <div class="pl-date">
-                                <?php echo ucfirst(guddi_jour_fr($d)); ?> <?php echo date('d/m/Y', strtotime($d)); ?>
-                                <small>· passé</small>
-                            </div>
-                            <div style="display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
-                                <span>
-                                    <span class="pl-badge pl-badge-ok" style="font-size:0.75rem; padding:0.25rem 0.6rem;">✅ Clôturée<?php echo $nbCloture > 0 ? ' · ' . $nbCloture . ' pers.' : ''; ?></span>
-                                    <?php if (!empty(trim((string)($p['livre'] ?? '')))): ?>
-                                        <span class="pl-badge pl-badge-no" style="font-size:0.75rem; padding:0.25rem 0.6rem;">📖 <?php echo htmlspecialchars((string)$p['livre']); ?></span>
-                                    <?php endif; ?>
-                                </span>
-                                <a href="guddi_detail.php?id=<?php echo (int)$p['id']; ?>" class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.2rem 0.5rem; border-color:var(--accent); color:var(--accent);">👁️ Détail</a>
-                            </div>
-                            <?php // L'enregistrement de la séance : à écouter, à remplacer ou à retirer. ?>
-                            <?php $gaFichier = trim((string)($p['audio_path'] ?? '')); ?>
-                            <div style="margin-top:0.55rem; padding-top:0.5rem; border-top:1px solid rgba(255,255,255,0.08);">
-                                <?php if ($gaFichier !== ''): ?>
-                                    <div style="display:flex; gap:0.4rem; align-items:center; justify-content:space-between;">
-                                        <span style="font-size:0.72rem; color:var(--text-muted);">🎧 Enregistrement</span>
-                                        <form action="admin_guddi.php" method="POST" style="margin:0;" data-confirm="Supprimer l'enregistrement de cette séance ? Le fichier sera effacé du serveur.">
-                                            <?php echo csrf_field(); ?>
-                                            <input type="hidden" name="action" value="delete_audio">
-                                            <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
-                                            <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.68rem; padding:0.15rem 0.45rem; border-color:rgba(220,80,80,0.45); color:#f3a6a6;">🗑️</button>
-                                        </form>
-                                    </div>
-                                    <audio controls preload="none" src="uploads/<?php echo htmlspecialchars($gaFichier); ?>" style="width:100%; height:34px; margin-top:0.35rem;"></audio>
-                                <?php else: ?>
-                                    <form action="admin_guddi.php" method="POST" enctype="multipart/form-data" style="margin:0; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;">
-                                        <?php echo csrf_field(); ?>
-                                        <input type="hidden" name="action" value="save_audio">
-                                        <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
-                                        <input type="file" data-mfile="off" name="audio_guddi" accept="audio/*,.mp3,.m4a,.ogg,.opus,.wav" style="font-size:0.68rem; color:var(--text-muted); max-width:100%;">
-                                        <button type="submit" class="btn btn-secondary btn-sm" style="font-size:0.68rem; padding:0.15rem 0.5rem;">🎧 Joindre</button>
-                                    </form>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <?php endforeach; ?>
-                    </div>
-                </details>
-                <?php endif; ?>
             </div>
         </div>
     </main>
@@ -1122,13 +1187,16 @@ if ($commissionId > 0) {
             <div class="modal-header"><h3 style="color:var(--accent);">✅ Clôturer la séance</h3></div>
             <div class="modal-body" style="display:block; text-align:left;">
                 <p id="cloture-msg" style="margin:0 0 1rem; line-height:1.5; text-align:left;">Clôturer cette séance du Guddi Àjjuma ?</p>
-                <form id="cloture-form" action="admin_guddi.php" method="POST" enctype="multipart/form-data" style="margin:0;">
+                <form id="cloture-form" action="admin_guddi.php" method="POST" enctype="multipart/form-data" class="guddi-upload" data-ajax="off" style="margin:0;">
                     <?php echo csrf_field(); ?>
                     <input type="hidden" name="action" value="cloture">
                     <input type="hidden" name="id" id="cloture-id">
+                    <label for="cloture-nb" style="display:block; font-size:0.82rem; color:var(--white); margin-bottom:0.35rem;">👥 Nombre total de participants <span style="color:var(--text-muted); font-weight:400;">(facultatif)</span></label>
+                    <input type="number" id="cloture-nb" name="nb_participants" class="form-input" min="0" max="10000" inputmode="numeric" placeholder="Laisser vide : présences validées" style="width:100%; margin-bottom:0.3rem;">
+                    <p style="margin:0 0 0.9rem; font-size:0.72rem; color:var(--text-muted); line-height:1.45;">Sans nombre saisi, les participants sont comptés d'après les présences validées par les membres.</p>
                     <label for="cloture-audio" style="display:block; font-size:0.82rem; color:var(--white); margin-bottom:0.35rem;">🎧 Enregistrement de la séance <span style="color:var(--text-muted); font-weight:400;">(facultatif)</span></label>
                     <input type="file" id="cloture-audio" name="audio_guddi" accept="audio/*,.mp3,.m4a,.ogg,.opus,.wav" style="width:100%; font-size:0.8rem; color:var(--text-muted);">
-                    <p style="margin:0.4rem 0 0; font-size:0.72rem; color:var(--text-muted); line-height:1.45;">MP3, M4A, OGG ou WAV — <?php echo htmlspecialchars(guddi_audio_taille_max_texte()); ?> au maximum. L'envoi d'un long enregistrement peut prendre un moment : laissez la page ouverte.</p>
+                    <p style="margin:0.4rem 0 0; font-size:0.72rem; color:var(--text-muted); line-height:1.45;">MP3, M4A, OGG ou WAV — <?php echo htmlspecialchars(guddi_audio_limite_totale_texte()); ?> au maximum. L'envoi d'un long enregistrement peut prendre un moment : laissez la page ouverte.</p>
                 </form>
             </div>
             <div class="modal-footer" style="display:flex; gap:0.5rem; justify-content:flex-end;">
@@ -1203,17 +1271,6 @@ if ($commissionId > 0) {
             }
             sel.addEventListener('change', maj);
         })();
-        // Présentateur par défaut : affiche/masque le champ de saisie libre selon le select
-        (function () {
-            var selD = document.getElementById('guddi-presentateur-defaut');
-            var libreD = document.getElementById('guddi-presentateur-defaut-libre');
-            if (!selD || !libreD) { return; }
-            function majD() {
-                libreD.style.display = (selD.value === '__libre__') ? '' : 'none';
-                if (selD.value === '__libre__') { libreD.focus(); }
-            }
-            selD.addEventListener('change', majD);
-        })();
         // Actualisation par glissement vers le bas en haut de page (pull-to-refresh)
         (function () {
             var bar = document.getElementById('ptr');
@@ -1281,7 +1338,8 @@ if ($commissionId > 0) {
                 btn.addEventListener('click', function () {
                     idInput.value = btn.getAttribute('data-id');
                     msg.textContent = 'Clôturer la séance du ' + date + ' ?';
-                    if (fichierAudio) { fichierAudio.value = ''; } // rien d'hérité d'une autre séance
+                    if (fichierAudio) { fichierAudio.value = ''; fichierAudio.dispatchEvent(new Event('change', { bubbles: true })); } // rien d'hérité d'une autre séance (le sélecteur moderne se remet à zéro)
+                    var champNb = document.getElementById('cloture-nb'); if (champNb) { champNb.value = ''; }
                     if (okBtn) { okBtn.disabled = false; okBtn.textContent = '✅ Clôturer'; }
                     openModal(modal);
                 });
@@ -1290,14 +1348,133 @@ if ($commissionId > 0) {
             // ne se laisse pas cliquer deux fois.
             if (okBtn) { okBtn.addEventListener('click', function () {
                 var avecFichier = fichierAudio && fichierAudio.files && fichierAudio.files.length > 0;
+                if (avecFichier && window.guddiEnvoyer) { window.guddiEnvoyer(form, okBtn, '✅ Clôturer'); return; }
                 okBtn.disabled = true;
-                okBtn.textContent = avecFichier ? '⏳ Envoi en cours…' : '⏳ Clôture…';
+                okBtn.textContent = '⏳ Clôture…';
                 form.submit();
             }); }
             if (cancelBtn) { cancelBtn.addEventListener('click', function () { closeModal(modal); }); }
             modal.addEventListener('click', function (e) { if (e.target === modal) { closeModal(modal); } });
         })();
     </script>
+<script>
+    // Envoi d'un enregistrement de séance par morceaux de 4 Mo : chaque requête reste petite (l'hébergeur refuse les gros envois d'un seul tenant),
+    // reprise automatique d'un morceau en cas de coupure, progression et message d'erreur clair dans tous les cas d'échec
+    (function () {
+        var LIMITE = <?php echo (int) guddi_audio_limite_totale(); ?>;
+        var LIMITE_TXT = <?php echo json_encode(guddi_audio_limite_totale_texte()); ?>;
+        var MORCEAU = 4 * 1024 * 1024;
+        var EXTS = ['mp3', 'm4a', 'ogg', 'opus', 'wav'];
+        function taille(o) { return o >= 1048576 ? (o / 1048576).toFixed(1).replace('.', ',') + ' Mo' : Math.round(o / 1024) + ' Ko'; }
+        function jeton() {
+            var a = new Uint8Array(16), s = '';
+            if (window.crypto && crypto.getRandomValues) { crypto.getRandomValues(a); } else { for (var i = 0; i < 16; i++) { a[i] = Math.floor(Math.random() * 256); } }
+            for (var j = 0; j < a.length; j++) { s += ('0' + a[j].toString(16)).slice(-2); }
+            return s;
+        }
+        function alerte(texte, titre) {
+            if (window.modernAlert) { window.modernAlert(texte, titre || 'Enregistrement non envoyé'); }
+            else { var d = document.createElement('div'); d.textContent = texte; d.style.cssText = 'position:fixed;left:1rem;right:1rem;top:1rem;z-index:9999;background:#7f1d1d;color:#fff;padding:1rem;border-radius:10px;'; document.body.appendChild(d); setTimeout(function () { d.remove(); }, 8000); }
+        }
+        window.guddiEnvoyer = function (form, bouton, libelleBouton) {
+            var champ = form.querySelector('input[type="file"]');
+            var fichier = champ && champ.files && champ.files[0];
+            var libelle = libelleBouton || (bouton ? bouton.textContent : '');
+            function reprendre() { if (bouton) { bouton.disabled = false; bouton.textContent = libelle; } form.__envoi = false; }
+            function echec(texte, titre) { reprendre(); alerte(texte, titre); }
+            if (form.__envoi) { return; }
+            if (!fichier) { alerte('Choisissez d\'abord un fichier audio (MP3, M4A, OGG ou WAV).', 'Aucun fichier'); return; }
+            var ext = (fichier.name.split('.').pop() || '').toLowerCase();
+            if (EXTS.indexOf(ext) === -1) { alerte('Format « .' + ext + ' » non accepté : choisissez un fichier MP3, M4A, OGG ou WAV.', 'Format non accepté'); return; }
+            if (fichier.size > LIMITE) { alerte('Ce fichier fait ' + taille(fichier.size) + ' : la limite est de ' + LIMITE_TXT + '. Compressez-le (par exemple en MP3 à débit réduit) puis réessayez.', 'Fichier trop volumineux'); return; }
+            form.__envoi = true;
+            var csrf = (form.querySelector('input[name="csrf_token"]') || {}).value || '';
+            var idSeance = (form.querySelector('input[name="id"]') || {}).value || '';
+            var id = jeton();
+            if (bouton) { bouton.disabled = true; bouton.textContent = '⏳ Envoi 0 %'; }
+
+            // 1. les morceaux, dans l'ordre, avec 3 essais chacun
+            function morceau(offset, essai) {
+                if (offset >= fichier.size) { return finaliser(); }
+                var fin = Math.min(offset + MORCEAU, fichier.size);
+                var fd = new FormData();
+                fd.append('action', 'audio_chunk'); fd.append('csrf_token', csrf); fd.append('id', idSeance); fd.append('upload_id', id);
+                fd.append('offset', String(offset)); fd.append('taille', String(fichier.size)); fd.append('nom', fichier.name);
+                fd.append('morceau', fichier.slice(offset, fin), 'morceau.bin');
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', form.getAttribute('action') || location.href);
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                xhr.upload.onprogress = function (e) {
+                    if (e.lengthComputable && bouton) { bouton.textContent = '⏳ Envoi ' + Math.min(99, Math.round((offset + e.loaded) * 100 / fichier.size)) + ' % (' + taille(fichier.size) + ')'; }
+                };
+                function reessayer(raison) {
+                    if (essai < 3) { setTimeout(function () { morceau(offset, essai + 1); }, 1200 * (essai + 1)); }
+                    else { echec('L\'envoi a échoué après plusieurs essais (' + raison + ') à ' + Math.round(offset * 100 / fichier.size) + ' %. Vérifiez votre connexion puis recommencez.'); }
+                }
+                xhr.onerror = function () { reessayer('connexion interrompue'); };
+                xhr.ontimeout = function () { reessayer('délai dépassé'); };
+                xhr.onload = function () {
+                    var st = xhr.status, rep = null;
+                    try { rep = JSON.parse(xhr.responseText); } catch (e) { rep = null; }
+                    if (st === 401 || st === 403) { return echec('Accès refusé (code ' + st + ') : reconnectez-vous puis recommencez l\'envoi.'); }
+                    if (st === 413) { return echec('L\'hébergeur refuse même les petits morceaux (code 413) : l\'envoi est impossible depuis ce site. Contactez l\'administrateur.'); }
+                    if (!rep) {
+                        if (xhr.responseURL && xhr.responseURL.indexOf('admin_guddi.php') === -1) { return echec('Votre session a expiré : reconnectez-vous puis recommencez l\'envoi.'); }
+                        return reessayer('réponse inattendue, code ' + st);
+                    }
+                    if (!rep.ok) { return echec(rep.error || 'Le serveur a refusé le morceau.'); }
+                    var suivant = (typeof rep.recu === 'number' && rep.resync) ? rep.recu : fin;
+                    morceau(suivant, 0);
+                };
+                xhr.send(fd);
+            }
+
+            // 2. l'enregistrement est assemblé : la requête finale ne transporte plus que le jeton
+            function finaliser() {
+                if (bouton) { bouton.textContent = '⏳ Enregistrement sur le serveur…'; }
+                var fd = new FormData(form);
+                fd.delete('audio_guddi');
+                fd.append('audio_token', id);
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', form.getAttribute('action') || location.href);
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+                xhr.onerror = function () { echec('La connexion a été interrompue à la fin de l\'envoi. Rechargez la page pour vérifier si l\'enregistrement a été joint.'); };
+                xhr.onload = function () {
+                    var st = xhr.status;
+                    if (st >= 500) { return echec('Le serveur a rencontré une erreur (code ' + st + ') à l\'enregistrement final. Réessayez ; si cela persiste, contactez l\'administrateur du site.'); }
+                    if (st < 200 || st >= 400) { return echec('Réponse inattendue du serveur (code ' + st + ') à l\'enregistrement final.'); }
+                    var url = xhr.responseURL || '';
+                    if (url && url.indexOf('admin_guddi.php') === -1) { return echec('Votre session a expiré : reconnectez-vous puis recommencez l\'envoi.'); }
+                    var doc = new DOMParser().parseFromString(xhr.responseText || '', 'text/html');
+                    var err = doc.querySelector('.alert-danger');
+                    if (err && (err.textContent || '').trim() !== '') { return echec((err.textContent || '').trim()); }
+                    var ok = doc.querySelector('.alert-success');
+                    if (ok && (ok.textContent || '').trim() !== '') {
+                        try { sessionStorage.setItem('guddi_flash', (ok.textContent || '').trim()); } catch (e) {}
+                        location.reload();
+                        return;
+                    }
+                    echec('Le serveur n\'a pas confirmé l\'enregistrement : il n\'a peut-être pas été joint. Rechargez la page pour vérifier, puis réessayez.');
+                };
+                xhr.send(fd);
+            }
+            morceau(0, 0);
+        };
+        // Formulaire « Joindre » d'une séance clôturée
+        document.addEventListener('submit', function (e) {
+            var f = e.target;
+            if (!f || !f.classList || !f.classList.contains('guddi-upload') || f.id === 'cloture-form') { return; }
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.guddiEnvoyer(f, f.querySelector('button[type="submit"]'));
+        }, true);
+        // Message de réussite conservé à travers le rechargement
+        try {
+            var flash = sessionStorage.getItem('guddi_flash');
+            if (flash) { sessionStorage.removeItem('guddi_flash'); document.addEventListener('DOMContentLoaded', function () { alerte(flash, 'Enregistrement'); }); }
+        } catch (e) {}
+    })();
+</script>
 <script src="modern-file.js" defer></script>
 <script src="modern-date.js" defer></script>
 </body>

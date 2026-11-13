@@ -42,7 +42,7 @@ try {
 $gameError = '';
 try {
     // Check if we have at least 3 approved members with photos to allow playing
-    $stmtCount = $pdo->query("SELECT COUNT(*) FROM membres WHERE status = 'approved' AND photo_path IS NOT NULL AND photo_path != '' AND photo_path != 'default.jpg'");
+    $stmtCount = $pdo->query("SELECT COUNT(*) FROM membres WHERE status = 'approved' AND photo_path IS NOT NULL AND photo_path != '' AND photo_path != 'default.jpg' AND id <> " . (int) $playerId); // pas la photo du joueur
     $totalMembers = $stmtCount->fetchColumn();
     
     if ($totalMembers < 3) {

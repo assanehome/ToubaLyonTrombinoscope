@@ -682,6 +682,18 @@ try {
     } catch (Exception $e) {
         $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN nb_participants INT NULL DEFAULT NULL");
     }
+    // Migration : pdf_page_debut (page du livre à étudier sur laquelle s'ouvre le lien de la séance) si absente
+    try {
+        $pdo->query("SELECT pdf_page_debut FROM guddi_plannings LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN pdf_page_debut INT NULL DEFAULT NULL");
+    }
+    // Migration : nb_manuel (1 = nombre total de participants saisi par le responsable ; 0 = nombre des présences validées) si absente
+    try {
+        $pdo->query("SELECT nb_manuel FROM guddi_plannings LIMIT 1");
+    } catch (Exception $e) {
+        $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN nb_manuel TINYINT(1) NOT NULL DEFAULT 0");
+    }
     // Migration : colonne publie (affichage sur l'accueil membre + validation de présence) si absente
     try {
         $pdo->query("SELECT publie FROM guddi_plannings LIMIT 1");
@@ -694,6 +706,58 @@ try {
     } catch (Exception $e) {
         $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN audio_path VARCHAR(255) NULL DEFAULT NULL");
     }
+    // Les enregistrements des séances sont rangés dans uploads/GuddiAjjuma_Historique : reprise unique de ceux déjà déposés dans uploads/
+    try {
+        $dejaRanges = $pdo->query("SELECT 1 FROM app_settings WHERE cle = 'guddi_audio_dossier'")->fetchColumn();
+        if ($dejaRanges === false) {
+            $dossierAudio = __DIR__ . '/uploads/GuddiAjjuma_Historique';
+            if (!is_dir($dossierAudio)) { @mkdir($dossierAudio, 0755, true); }
+            if (is_dir($dossierAudio)) {
+                $anciens = $pdo->query("SELECT id, audio_path FROM guddi_plannings WHERE audio_path IS NOT NULL AND audio_path <> '' AND audio_path NOT LIKE '%/%'")->fetchAll();
+                foreach ($anciens as $ancien) {
+                    $nomA = basename((string) $ancien['audio_path']);
+                    $srcA = __DIR__ . '/uploads/' . $nomA;
+                    if ($nomA !== '' && preg_match('/^[A-Za-z0-9._-]+$/', $nomA) && is_file($srcA) && @rename($srcA, $dossierAudio . '/' . $nomA)) {
+                        $pdo->prepare("UPDATE guddi_plannings SET audio_path = ? WHERE id = ?")->execute(['GuddiAjjuma_Historique/' . $nomA, (int) $ancien['id']]);
+                    }
+                }
+                $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_audio_dossier', '1')");
+            }
+        }
+    } catch (Exception $e) { /* ignoré : les anciens enregistrements restent lisibles là où ils sont */ }
+    // Enregistrements des séances : dossier fermé à tout accès direct (lecture par guddi_audio.php uniquement)
+    try {
+        $dossierProt = __DIR__ . '/uploads/GuddiAjjuma_Historique';
+        if (is_dir($dossierProt) && !is_file($dossierProt . '/.htaccess')) {
+            @file_put_contents($dossierProt . '/.htaccess', "# Enregistrements du Guddi Ajjuma : aucun acces direct, lecture par guddi_audio.php uniquement\n<IfModule mod_authz_core.c>\n    Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n    Order allow,deny\n    Deny from all\n</IfModule>\nOptions -Indexes\n");
+        }
+    } catch (Exception $e) { /* ignoré */ }
+    // Enregistrements des séances : noms fondés sur la date de la séance (« GuddiAjjuma_2026-11-12.mp3 »), reprise unique des fichiers existants
+    try {
+        $dejaNommes = $pdo->query("SELECT 1 FROM app_settings WHERE cle = 'guddi_audio_noms'")->fetchColumn();
+        if ($dejaNommes === false) {
+            $dossierAudio2 = __DIR__ . '/uploads/GuddiAjjuma_Historique';
+            if (!is_dir($dossierAudio2)) { @mkdir($dossierAudio2, 0755, true); }
+            if (is_dir($dossierAudio2)) {
+                $existants = $pdo->query("SELECT id, date_guddi, audio_path FROM guddi_plannings WHERE audio_path IS NOT NULL AND audio_path <> ''")->fetchAll();
+                foreach ($existants as $ex) {
+                    $chemRel = (string) $ex['audio_path'];
+                    if (!preg_match('#^(?:GuddiAjjuma_Historique/)?([A-Za-z0-9._-]+)$#', $chemRel, $mm)) { continue; }
+                    $src = (strpos($chemRel, '/') !== false ? $dossierAudio2 : __DIR__ . '/uploads') . '/' . $mm[1];
+                    $extA = strtolower(pathinfo($mm[1], PATHINFO_EXTENSION));
+                    if (!is_file($src) || $extA === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $ex['date_guddi'])) { continue; }
+                    $baseA = 'GuddiAjjuma_' . $ex['date_guddi'];
+                    $cible = $baseA . '.' . $extA;
+                    if ($cible === $mm[1] && strpos($chemRel, '/') !== false) { continue; } // déjà au bon nom et au bon endroit
+                    for ($k = 2; is_file($dossierAudio2 . '/' . $cible) && $k < 100; $k++) { $cible = $baseA . '_' . $k . '.' . $extA; }
+                    if (@rename($src, $dossierAudio2 . '/' . $cible)) {
+                        $pdo->prepare("UPDATE guddi_plannings SET audio_path = ? WHERE id = ?")->execute(['GuddiAjjuma_Historique/' . $cible, (int) $ex['id']]);
+                    }
+                }
+                $pdo->exec("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_audio_noms', '1')");
+            }
+        }
+    } catch (Exception $e) { /* ignoré : les enregistrements restent lisibles sous leur nom actuel */ }
     // Migration : colonnes heure / heure_fin propres à la séance (sinon valeurs par défaut) si absentes
     try {
         $pdo->query("SELECT heure FROM guddi_plannings LIMIT 1");
@@ -711,11 +775,9 @@ try {
     } catch (Exception $e) {
         $pdo->exec("ALTER TABLE guddi_plannings ADD COLUMN details_html TEXT NULL DEFAULT NULL");
     }
-    // Réglages du Guddi Àjjuma (heure, thème, présentateur, lien par défaut)
+    // Réglages du Guddi Àjjuma (heures, lien et mode par défaut)
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_heure', '20h00')")->execute(); } catch (Exception $e) {}
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_heure_fin', '21h30')")->execute(); } catch (Exception $e) {}
-    try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_theme_defaut', 'Sëriñ Tuubaa ak Gammu')")->execute(); } catch (Exception $e) {}
-    try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_presentateur_defaut', 'Oustaz Sëriñ Mbàcke Géy')")->execute(); } catch (Exception $e) {}
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_lien_defaut', 'https://us06web.zoom.us/j/81338485985?pwd=RDNzM3hBWkpmdTBCTE0rS1lDS2w5QT09')")->execute(); } catch (Exception $e) {}
     try { $pdo->prepare("INSERT IGNORE INTO app_settings (cle, valeur) VALUES ('guddi_mode_defaut', 'distance')")->execute(); } catch (Exception $e) {}
 
@@ -875,6 +937,12 @@ try {
         INDEX idx_statut (statut)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Liens courts des messages (WhatsApp) : l.php?c=<code> renvoie vers l'adresse enregistrée
+    $pdo->exec("CREATE TABLE IF NOT EXISTS liens_courts (
+        code CHAR(8) NOT NULL PRIMARY KEY,
+        url VARCHAR(2000) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     // Responsables des fonctions « Guddi Àjjuma » et « Lecture Coran » : seuls eux (et l'administrateur) y ont accès
     $pdo->exec("CREATE TABLE IF NOT EXISTS fonction_responsables (
         fonction VARCHAR(20) NOT NULL,

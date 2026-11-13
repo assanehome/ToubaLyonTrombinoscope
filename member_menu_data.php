@@ -21,6 +21,7 @@ function troba_member_menu_items(?PDO $pdo = null): array
         'cotisation.php'         => '💶 Mes cotisations',
         'mes_commissions.php'    => '📋 Mes commissions',
         'sondages.php'           => '📊 Sondages',
+        'guddi_historique.php'   => '💎 Guddi Àjjuma',
         'notifications_page.php' => '🔔 Notifications',
         'kikanla.php'            => '🎮 Jouer à Ki Kan La',
     ];
@@ -103,7 +104,7 @@ function troba_member_gestion_items(?PDO $pdo = null): array
         try {
             require_once __DIR__ . '/fonction_responsables_helper.php';
             if (fr_est_responsable($pdo, 'coran', $pidFr)) { $items['wird_admin.php'] = '📖 Lecture Coran'; }
-            if (fr_est_responsable($pdo, 'guddi', $pidFr)) { $items['admin_guddi.php'] = '💎 Guddi Àjjuma'; }
+            if (fr_est_responsable($pdo, 'guddi', $pidFr)) { $items['admin_guddi.php'] = '💎 Gestion Guddi Àjjuma'; }
             if (fr_est_responsable($pdo, 'planning', $pidFr)) { $items['admin_planning.php'] = '📅 Planning Dahira'; }
             if (fr_est_responsable($pdo, 'actualites', $pidFr)) { $items['actualites.php'] = '📰 Actualités'; }
             if (fr_est_responsable($pdo, 'cotisation', $pidFr)) { $items['admin_cotisations.php'] = '💶 Finance'; }
