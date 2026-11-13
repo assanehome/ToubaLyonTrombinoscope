@@ -811,11 +811,11 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                     </div>
                     <div class="mailx-field">
                         <label for="im-subject">Objet</label>
-                        <input type="text" name="mail_subject" id="im-subject" value="Suivi d'intégration" required>
+                        <input class="form-input" type="text" name="mail_subject" id="im-subject" value="Suivi d'intégration" required>
                     </div>
                     <div class="mailx-field">
                         <label for="im-body">Message</label>
-                        <textarea name="mail_body" id="im-body" rows="6" placeholder="Votre message à votre intégrateur…" required></textarea>
+                        <textarea class="form-input" name="mail_body" id="im-body" rows="6" placeholder="Votre message à votre intégrateur…" required></textarea>
                     </div>
                 </div>
                 <div class="mailx-footer">

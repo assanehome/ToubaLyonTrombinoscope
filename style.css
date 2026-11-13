@@ -2652,3 +2652,34 @@ h1.admin-page-title {
     letter-spacing: -0.01em;
 }
 .admin-welcome-banner.glass-card > span:first-child { color: var(--white); }
+
+
+/* ==========================================================================
+   Champs harmonisés dans toute l'application : même hauteur, même typographie
+   (champs .form-input, sélecteur moderne, date moderne, recherches et listes de filtres).
+   Les zones de texte multilignes gardent leur hauteur libre.
+   ========================================================================== */
+:root { --champ-h: 2.75rem; }
+.form-input:not(textarea):not([multiple]):not([size]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]),
+.form-control:not(textarea):not([multiple]):not([size]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]),
+.msel-trigger, .mdate-btn,
+.adh-select, .adh-filters-adv input, .cot-filter-select, .gh-search,
+.stk-toolbar input, .stk-toolbar select, .rep-search input, .filter-commission select {
+    height: var(--champ-h);
+    min-height: var(--champ-h);
+    box-sizing: border-box;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: 0.95rem;
+    line-height: 1.2;
+}
+textarea.form-input, textarea.form-control { font-size: 0.95rem; line-height: 1.5; }
+
+/* Tous les autres champs d'une ligne (recherches, filtres, listes, dates, mots de passe…), même ceux qui n'utilisent pas .form-input :
+   même hauteur. Exclus : cases et boutons radio, fichiers, curseurs, listes à choix multiples, champs cachés des composants (sélecteur, date, fichier). */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="reset"]):not(.msel-search):not(.mdate-native):not(.mfile-input):not(.native-checkbox):not(.checkbox-switch),
+select:not([multiple]):not([size]):not(.msel-native) {
+    height: var(--champ-h);
+    min-height: var(--champ-h);
+    box-sizing: border-box;
+}

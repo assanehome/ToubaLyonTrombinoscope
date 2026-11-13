@@ -930,7 +930,7 @@ try {
                         <?php echo csrf_field(); ?>
                         <input type="hidden" name="action" value="add_ma_tache_commentaire">
                         <input type="hidden" name="tache_id" value="<?php echo (int) $mt['id']; ?>">
-                        <input type="text" name="commentaire" placeholder="💬 Ajouter un commentaire…" maxlength="1000" style="width:100%; box-sizing:border-box; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.4rem 0.6rem; font-size:0.83rem;">
+                        <input class="form-input" type="text" name="commentaire" placeholder="💬 Ajouter un commentaire…" maxlength="1000" style="width:100%; box-sizing:border-box; background:rgba(255,255,255,0.05); border:1px solid var(--glass-border); color:var(--white); border-radius:8px; padding:0.4rem 0.6rem; font-size:0.83rem;">
                         <button type="submit" class="btn btn-secondary btn-sm" style="align-self:flex-start;">Envoyer</button>
                     </form>
                     <div class="mt-voir" style="margin-top:0.6rem;">

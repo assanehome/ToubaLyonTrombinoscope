@@ -311,6 +311,13 @@ if ($membreId > 0) {
                         </div>
                     </div>
 
+                    <?php if (!$actif): ?>
+                    <div class="glass-card gd-anim gd-anim-1" style="margin-bottom:1.4rem; border:2px solid rgba(191,33,33,0.55); background:rgba(191,33,33,0.1);">
+                        <div style="color:#fca5a5; font-weight:800; font-size:1.05rem;">‼️ Ce Guddi Àjjuma est annulé.</div>
+                        <div style="color:var(--text-muted); font-size:0.9rem; margin-top:0.35rem;">Ñungi leen di tuubal bu baax. Sëriñ Muntaxaa MBÀKKE yàlla na fi yàgg Lool te wér.</div>
+                    </div>
+                    <?php endif; ?>
+
                     <?php if ($cloture) { echo $gdBlocs; } // séance clôturée : détails et lecteur de l'enregistrement en haut ?>
 
                     <!-- Indicateur de participation (basé sur les présences validées) -->
@@ -322,7 +329,7 @@ if ($membreId > 0) {
                     </div>
 
                     <!-- Validation de présence (en haut) -->
-                    <?php if ($membreId > 0 && ((int)($seance['publie'] ?? 0)) === 1): ?>
+                    <?php if ($actif && $membreId > 0 && ((int)($seance['publie'] ?? 0)) === 1): ?>
                     <div class="glass-card gd-presence gd-anim gd-anim-3" style="margin-bottom:1.4rem; border:2px solid rgba(212,175,55,0.45);">
                         <h3 style="color:var(--white); margin-bottom:0.6rem;">✅ Validez votre présence</h3>
                         <?php if ($presenceFaite): ?>

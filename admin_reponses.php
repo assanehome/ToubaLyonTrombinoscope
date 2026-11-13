@@ -361,7 +361,7 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
 
                 <div class="rep-field red" style="flex:1 0 100%;">
                     <label>Commentaires</label>
-                    <textarea name="commentaires" rows="2" placeholder="Commentaire…"><?php echo h($r['commentaires']); ?></textarea>
+                    <textarea class="form-input" name="commentaires" rows="2" placeholder="Commentaire…"><?php echo h($r['commentaires']); ?></textarea>
                 </div>
 
                 <div class="rep-save">
@@ -729,11 +729,11 @@ function render_rep_card($r, $isAdmin, $integrateurs, $commissions) {
                     </div>
                     <div class="mailx-field">
                         <label for="mail-subject">Objet</label>
-                        <input type="text" name="mail_subject" id="mail-subject" required>
+                        <input class="form-input" type="text" name="mail_subject" id="mail-subject" required>
                     </div>
                     <div class="mailx-field">
                         <label for="mail-body">Message</label>
-                        <textarea name="mail_body" id="mail-body" rows="6" required></textarea>
+                        <textarea class="form-input" name="mail_body" id="mail-body" rows="6" required></textarea>
                         <span class="mailx-hint">La formule de salutation (« Assalamu aleykum … ») est ajoutée automatiquement.</span>
                     </div>
                 </div>

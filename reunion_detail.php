@@ -474,7 +474,7 @@ $renderTacheCard = function (array $tc) use ($id, $membresCommission, $membresCo
                 <?php echo csrf_field(); ?>
                 <input type="hidden" name="action" value="add_tache_commentaire">
                 <input type="hidden" name="tache_id" value="<?php echo (int) $tc['id']; ?>">
-                <input type="text" name="commentaire" placeholder="💬 Ajouter un commentaire…" maxlength="1000">
+                <input class="form-input" type="text" name="commentaire" placeholder="💬 Ajouter un commentaire…" maxlength="1000">
                 <button type="submit" class="btn btn-secondary btn-sm">Envoyer</button>
             </form>
             <?php endif; ?>

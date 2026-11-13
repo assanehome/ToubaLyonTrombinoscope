@@ -280,7 +280,7 @@ unset($_SESSION['wird_flash']);
                     <div class="w-stats" style="margin-top:0.5rem; color:#ffd873;">Session clôturée — lecture terminée.</div>
                 <?php elseif (!$isPlayer): ?>
                     <div class="w-name">
-                        <input type="text" id="w-nom" placeholder="Votre nom (pour choisir une partie)" maxlength="120">
+                        <input class="form-input" type="text" id="w-nom" placeholder="Votre nom (pour choisir une partie)" maxlength="120">
                     </div>
                 <?php else: ?>
                     <div class="w-stats" style="margin-top:0.5rem;">Connecté : <strong class="gold-text"><?php echo htmlspecialchars($playerName); ?></strong></div>

@@ -621,7 +621,7 @@ function member_photo_html($m, $cls = 'table-photo', $link = true) {
                 <div id="modal-pw" style="display:none; width:100%;">
                     <label for="modal-pw-input" style="display:block; color:var(--text-muted); font-size:0.78rem; font-weight:700; margin-bottom:0.35rem;">🔒 Confirmez avec votre mot de passe</label>
                     <div style="position:relative;">
-                        <input type="password" id="modal-pw-input" autocomplete="current-password" placeholder="Votre mot de passe" style="width:100%; box-sizing:border-box; padding:0.65rem 3rem 0.65rem 0.85rem; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); border-radius:10px; color:var(--white); font-size:0.95rem;">
+                        <input class="form-input" type="password" id="modal-pw-input" autocomplete="current-password" placeholder="Votre mot de passe" style="width:100%; box-sizing:border-box; padding:0.65rem 3rem 0.65rem 0.85rem; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.18); border-radius:10px; color:var(--white); font-size:0.95rem;">
                         <button type="button" id="modal-pw-eye" aria-label="Afficher le mot de passe" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); width:2.2rem; height:2.2rem; border:0; background:none; cursor:pointer; font-size:1.1rem;">👁️</button>
                     </div>
                     <div id="modal-pw-msg" style="color:#fca5a5; font-size:0.8rem; margin-top:0.3rem; min-height:1em;"></div>

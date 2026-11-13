@@ -418,7 +418,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         if ($type === 'annulation' || (int)($row['actif'] ?? 1) === 0) {
                             $sujet = '‼️ Annulation Guddi Àjjuma — ' . guddi_date_longue($date);
-                            $corps = guddi_email_annulation($date);
+                            $corps = guddi_email_annulation($date, dahira_base_url() . '/guddi_detail.php?id=' . (int) $id);
                         } else {
                             $sujet = '💎 Guddi Àjjuma — ' . guddi_date_longue($date);
                             $pdfUrl = guddi_pdf_lien($row);
@@ -578,6 +578,19 @@ if ($commissionId > 0) {
         $membresCulte = [];
     }
 }
+// Présentateur : tous les autres membres validés, proposés après ceux de la commission Culte
+$membresAutres = [];
+try {
+    $idsCulte = array_map('intval', array_column($membresCulte, 'id'));
+    $sqlAutres = "SELECT id, prenom, nom FROM membres WHERE status = 'approved'";
+    if (!empty($idsCulte)) { $sqlAutres .= " AND id NOT IN (" . implode(',', $idsCulte) . ")"; }
+    $membresAutres = $pdo->query($sqlAutres . " ORDER BY prenom ASC, nom ASC")->fetchAll();
+} catch (Exception $e) {
+    $membresAutres = [];
+}
+// Noms proposés dans la liste (le reste relève de la saisie libre)
+$nomsPresentateurs = [];
+foreach (array_merge($membresCulte, $membresAutres) as $mp) { $nomsPresentateurs[] = trim(($mp['prenom'] ?? '') . ' ' . ($mp['nom'] ?? '')); }
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -632,14 +645,13 @@ if ($commissionId > 0) {
         .pl-params-stack .guddi-presentiel-toggle { padding-top: 0.5rem; padding-bottom: 0.5rem; }
         .pl-params-stack input[type="text"] + input[type="text"] { margin-top: 0.35rem; }
         .pl-params-stack .form-label { margin-bottom: 0.2rem; font-size: 0.85rem; }
-        .pl-params-stack .form-input { padding: 0.45rem 0.8rem; font-size: 0.9rem; }
         .pl-params-stack p { margin: 0.15rem 0 0 !important; line-height: 1.4; }
         /* Zone de saisie de la séance (heures, mode, thème, présentateur, livre, détails) : espaces réduits */
         #frm-save-seance .pl-params { gap: 0.4rem; margin-bottom: 0.4rem !important; }
         #frm-save-seance .form-group { margin-bottom: 0.4rem !important; }
         #frm-save-seance .form-label { margin-bottom: 0.2rem; font-size: 0.85rem; }
-        #frm-save-seance .form-input { padding: 0.45rem 0.8rem; font-size: 0.9rem; }
         #frm-save-seance p { margin-top: 0.15rem !important; line-height: 1.4; }
+        #frm-save-seance textarea.form-input, .pl-params-stack textarea.form-input { padding: 0.55rem 0.8rem; font-size: 0.9rem; line-height: 1.4; }
         /* Sélecteurs de dates : centrés dans la glass-card, sans dépasser */
         .pl-params {
             min-width: 0;
@@ -857,8 +869,8 @@ if ($commissionId > 0) {
                         $detailsHtmlSeance = (string)($prochain['details_html'] ?? '');
                         $waMsg = $prochainActif
                             ? guddi_message($pdate, $heureEff, $theme, $presentateur, (string) $lienAffiche /* lien Zoom complet : non raccourci */, (string)($prochain['livre'] ?? ''), lien_court($pdo, guddi_pdf_lien($prochain)), $prochainMode, $lieuDahira, dahira_base_url() . '/guddi_detail.php?id=' . (int)$prochain['id'], $heureFinEff, $detailsHtmlSeance, dahira_param($pdo, 'guddi_message_pied', ''))
-                            : guddi_message_annulation($pdate);
-                        $waAnnul = guddi_message_annulation($pdate);
+                            : guddi_message_annulation($pdate, dahira_base_url() . '/guddi_detail.php?id=' . (int)$prochain['id']);
+                        $waAnnul = guddi_message_annulation($pdate, dahira_base_url() . '/guddi_detail.php?id=' . (int)$prochain['id']);
                     ?>
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1.5rem; flex-wrap:wrap;">
                             <div>
@@ -952,16 +964,28 @@ if ($commissionId > 0) {
                             </div>
                             <div class="form-group" style="margin-bottom:0.7rem;"><label class="form-label">🎯 Thème</label><input type="text" name="theme" class="form-input" value="<?php echo htmlspecialchars($theme); ?>" style="width:100%;"></div>
                             <div class="form-group" style="margin-bottom:0.7rem;">
-                                <label class="form-label">🎤 Présentateur (membre de la commission Culte)</label>
+                                <label class="form-label">🎤 Présentateur (commission Culte en premier, ou saisie libre)</label>
                                 <select name="presentateur" id="guddi-presentateur" class="form-input" style="width:100%;">
                                     <option value="">— Choisir un membre —</option>
-                                    <?php foreach ($membresCulte as $mc): ?>
-                                        <?php $mcNom = trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); ?>
-                                        <option value="<?php echo htmlspecialchars($mcNom, ENT_QUOTES); ?>" <?php echo $mcNom === $presentateur ? 'selected' : ''; ?>><?php echo htmlspecialchars($mcNom); ?></option>
-                                    <?php endforeach; ?>
-                                    <option value="__libre__" <?php echo $presentateur !== '' && !in_array($presentateur, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? 'selected' : ''; ?>>✏️ Autre / saisie libre…</option>
+                                    <option value="__libre__" <?php echo $presentateur !== '' && !in_array($presentateur, $nomsPresentateurs, true) ? 'selected' : ''; ?>>✏️ Autre / saisie libre…</option>
+                                    <?php if (!empty($membresCulte)): ?>
+                                    <optgroup label="🕌 Commission Culte">
+                                        <?php foreach ($membresCulte as $mc): ?>
+                                            <?php $mcNom = trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); ?>
+                                            <option value="<?php echo htmlspecialchars($mcNom, ENT_QUOTES); ?>" <?php echo $mcNom === $presentateur ? 'selected' : ''; ?>><?php echo htmlspecialchars($mcNom); ?></option>
+                                        <?php endforeach; ?>
+                                    </optgroup>
+                                    <?php endif; ?>
+                                    <?php if (!empty($membresAutres)): ?>
+                                    <optgroup label="👥 Autres membres">
+                                        <?php foreach ($membresAutres as $mc): ?>
+                                            <?php $mcNom = trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); ?>
+                                            <option value="<?php echo htmlspecialchars($mcNom, ENT_QUOTES); ?>" <?php echo $mcNom === $presentateur ? 'selected' : ''; ?>><?php echo htmlspecialchars($mcNom); ?></option>
+                                        <?php endforeach; ?>
+                                    </optgroup>
+                                    <?php endif; ?>
                                 </select>
-                                <input type="text" name="presentateur_libre" id="guddi-presentateur-libre" class="form-input" placeholder="Nom du présentateur (saisie libre)" value="<?php echo $presentateur !== '' && !in_array($presentateur, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? htmlspecialchars($presentateur) : ''; ?>" style="width:100%; margin-top:0.45rem; <?php echo $presentateur !== '' && !in_array($presentateur, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? '' : 'display:none;'; ?>">
+                                <input type="text" name="presentateur_libre" id="guddi-presentateur-libre" class="form-input" placeholder="Nom du présentateur (saisie libre)" value="<?php echo $presentateur !== '' && !in_array($presentateur, $nomsPresentateurs, true) ? htmlspecialchars($presentateur) : ''; ?>" style="width:100%; margin-top:0.45rem; <?php echo $presentateur !== '' && !in_array($presentateur, array_map(static function ($mc) { return trim(($mc['prenom'] ?? '') . ' ' . ($mc['nom'] ?? '')); }, $membresCulte), true) ? '' : 'display:none;'; ?>">
                             </div>
                             <div class="form-group" style="margin-bottom:0.7rem;"><label class="form-label">📖 Livre à étudier (facultatif)</label><input type="text" name="livre" class="form-input" value="<?php echo htmlspecialchars((string)($prochain['livre'] ?? '')); ?>" placeholder="Ex : Tafsir, Khassaïd, Fiqh…" style="width:100%;"></div>
                             <div class="form-group" style="margin-bottom:0.7rem;">

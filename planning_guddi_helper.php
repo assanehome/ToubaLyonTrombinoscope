@@ -277,11 +277,16 @@ function guddi_email(string $date, string $heure, string $theme, string $present
  *    Commission Culte,
  *    Touba Lyon »
  */
-function guddi_message_annulation(string $date): string
+function guddi_message_annulation(string $date, string $pageLien = ''): string
 {
-    return "‼️‼️ ANNULATION GUDDI ÀJJUMA\n\n"
+    $msg = "‼️‼️ ANNULATION GUDDI ÀJJUMA\n\n"
         . "Àssalaamu hanlaykum,\n\n"
-        . "Le Guddi Àjjuma de ce " . guddi_date_longue($date) . " est annulé.\n\n"
+        . "Le Guddi Àjjuma de ce " . guddi_date_longue($date) . " est annulé.\n\n";
+    // Lien vers la page de la séance, où l'annulation est affichée
+    if (trim($pageLien) !== '') {
+        $msg .= "👉 Détails :\n" . trim($pageLien) . "\n\n";
+    }
+    return $msg
         . "Ñungi leen di tuubal bu baax.\n\n"
         . "Sëriñ Muntaxaa MBÀKKE yàlla na fi yàgg Lool te wér.\n\n"
         . "Commission Culte,\nTouba Lyon";
@@ -290,7 +295,7 @@ function guddi_message_annulation(string $date): string
 /**
  * Corps HTML d'un e-mail annonçant l'annulation d'un Guddi Àjjuma.
  */
-function guddi_email_annulation(string $date): string
+function guddi_email_annulation(string $date, string $pageLien = ''): string
 {
     $date_fr = date('d/m/Y', strtotime($date));
     $jour = guddi_jour_fr($date);
@@ -300,6 +305,7 @@ function guddi_email_annulation(string $date): string
         . '<p style="color:#333;">Àssalaamu hanlaykum,</p>'
         . '<p style="color:#333;">Le <strong>Guddi Àjjuma</strong> de ce '
         . '<strong>' . htmlspecialchars($jour) . ' ' . htmlspecialchars($date_fr) . '</strong> est annulé.</p>'
+        . (trim($pageLien) !== '' ? '<p style="color:#333;"><strong>👉 Détails :</strong> <a href="' . htmlspecialchars(trim($pageLien)) . '" style="color:#b91c1c;font-weight:700;">Voir la page du Guddi Àjjuma</a></p>' : '')
         . '<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px 16px;color:#991b1b;">Ñungi leen di tuubal bu baax.</p>'
         . '<p style="color:#333;">Sëriñ Muntaxaa MBÀKKE yàlla na fi yàgg Lool te wér. 🤲</p>'
         . '<p style="color:#888;font-size:12px;">— Commission Culte, Touba Lyon</p>'
