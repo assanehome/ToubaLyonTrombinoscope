@@ -458,7 +458,11 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                 </a>
             </div>
 
-            <?php if ($readonly): ?>
+            <?php
+            // Membre : le profil s'ouvre en consultation, avec un bouton « Modifier » qui affiche le formulaire.
+            // Il s'ouvre directement en modification après une erreur d'enregistrement (ou avec ?edit=1).
+            $ouvrirEdition = !$readonly && (!empty($error) || isset($_GET['edit']));
+            ?>
             <style>
                 .profile-view { display:flex; flex-direction:column; gap:1.5rem; }
                 .pv-section h4 { color:var(--gold); font-size:0.8rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; margin:0 0 0.5rem; padding-bottom:0.5rem; border-bottom:1px solid rgba(212,175,55,0.25); }
@@ -467,7 +471,10 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                 .pv-k { color:var(--text-muted); font-size:0.85rem; flex-shrink:0; }
                 .pv-v { color:var(--white); font-size:0.95rem; font-weight:600; text-align:right; word-break:break-word; }
                 @media (max-width:520px){ .pv-row { flex-direction:column; gap:0.15rem; } .pv-v { text-align:left; } }
+                .pv-actions { display:flex; flex-direction:column; gap:0.6rem; margin-top:1.5rem; }
+                .pv-actions .btn { width:100%; text-align:center; }
             </style>
+            <?php if ($readonly): ?>
             <div class="glass-card" style="display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:0.7rem 1rem; margin-bottom:1.25rem; border-left:3px solid var(--gold);">
                 <span style="color:var(--text-muted); font-size:0.9rem;">👁️ Profil en lecture seule (consultation administrateur)</span>
                 <a href="membre.php?id=<?php echo (int)$playerId; ?>" class="btn btn-primary btn-sm">✏️ Modifier</a>
@@ -594,9 +601,8 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
 
             <!-- Edit Profile Form -->
             <div class="form-card" style="margin-top: 0; padding: 2.5rem 2rem;">
-                <h3 class="gold-text" style="font-size: 1.4rem; font-weight: 700; margin-bottom: 1.5rem; text-align: center;"><?php echo $readonly ? 'Informations du membre' : 'Modifier mes Informations'; ?></h3>
+                <h3 class="gold-text" id="pv-titre" style="font-size: 1.4rem; font-weight: 700; margin-bottom: 1.5rem; text-align: center;"><?php echo $readonly ? 'Informations du membre' : ($ouvrirEdition ? 'Modifier mes Informations' : 'Mes Informations'); ?></h3>
 
-                <?php if ($readonly): ?>
                 <?php
                     $dispSections = [
                         'Identité' => [
@@ -621,7 +627,7 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                         ],
                     ];
                 ?>
-                <div class="profile-view">
+                <div class="profile-view" id="pv-vue"<?php echo $ouvrirEdition ? ' style="display:none;"' : ''; ?>>
                     <?php foreach ($dispSections as $secTitle => $rows): ?>
                         <div class="pv-section">
                             <h4><?php echo $secTitle; ?></h4>
@@ -630,10 +636,15 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                             <?php endforeach; ?>
                         </div>
                     <?php endforeach; ?>
+                    <?php if (!$readonly): ?>
+                    <div class="pv-actions">
+                        <button type="button" class="btn btn-primary" id="pv-btn-modifier">✏️ Modifier</button>
+                    </div>
+                    <?php endif; ?>
                 </div>
-                <?php else: ?>
+                <?php if (!$readonly): ?>
 
-                <form action="profile.php" method="POST" enctype="multipart/form-data">
+                <form action="profile.php" method="POST" enctype="multipart/form-data" id="pv-form"<?php echo $ouvrirEdition ? '' : ' style="display:none;"'; ?>>
                     <fieldset style="border:0; padding:0; margin:0; min-width:0;">
 
                     <div class="form-group">
@@ -747,8 +758,25 @@ if (!$adminView && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ??
                     </div>
 
                     <button type="submit" class="btn btn-primary" style="width: 100%;">Enregistrer les modifications</button>
+                    <button type="button" class="btn btn-secondary" id="pv-btn-annuler" style="width: 100%; margin-top: 0.6rem;">Annuler</button>
                     </fieldset>
                 </form>
+                <script>
+                    (function () {
+                        var vue = document.getElementById('pv-vue'), form = document.getElementById('pv-form'), titre = document.getElementById('pv-titre');
+                        var bm = document.getElementById('pv-btn-modifier'), ba = document.getElementById('pv-btn-annuler');
+                        if (!vue || !form) { return; }
+                        function basculer(edition) {
+                            vue.style.display = edition ? 'none' : '';
+                            form.style.display = edition ? '' : 'none';
+                            if (titre) { titre.textContent = edition ? 'Modifier mes Informations' : 'Mes Informations'; }
+                            if (edition) { form.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                            else { try { form.reset(); } catch (e) {} vue.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                        }
+                        if (bm) { bm.addEventListener('click', function () { basculer(true); }); }
+                        if (ba) { ba.addEventListener('click', function () { basculer(false); }); }
+                    })();
+                </script>
                 <?php endif; ?>
             </div>
 

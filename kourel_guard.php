@@ -23,7 +23,8 @@ if (!empty($_SESSION['player_id'])) {
     $__pid = (int) $_SESSION['player_id'];
     $__isKurelAdmin = $__isKurelAdmin || member_is_kourel_admin($pdo, $__pid);
     $__managedKourels = member_managed_kourels($pdo, $__pid);
-    $_SESSION['is_gestion_kourel'] = ($__isKurelAdmin || !empty($__managedKourels));
+    // Drapeau du menu membre : uniquement les rôles réels du membre (jamais le simple statut d'administrateur)
+    $_SESSION['is_gestion_kourel'] = (member_is_kourel_admin($pdo, $__pid) || !empty($__managedKourels));
 }
 
 if (!$__isKurelAdmin && empty($__managedKourels)) {

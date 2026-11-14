@@ -19,22 +19,39 @@ function troba_member_menu_items(?PDO $pdo = null): array
         'trombinoscope.php'      => '🖼️ Trombinoscope',
         'profile.php'            => '👤 Mon profil',
         'cotisation.php'         => '💶 Mes cotisations',
-        'mes_commissions.php'    => '📋 Mes commissions',
-        'sondages.php'           => '📊 Sondages',
         'guddi_historique.php'   => '💎 Guddi Àjjuma',
         'notifications_page.php' => '🔔 Notifications',
         'kikanla.php'            => '🎮 Jouer à Ki Kan La',
     ];
-    // Disponibilités pour les Dahira : réservé aux membres d'au moins une commission
+    // « Sondages » : seulement s'il y a au moins un sondage en cours (publié et non échu)
+    $sondageEnCours = false;
+    if ($pdo instanceof PDO) {
+        try {
+            $sondageEnCours = ((int) $pdo->query("SELECT COUNT(*) FROM sondages WHERE statut = 'publie' AND (date_fin IS NULL OR date_fin >= CURDATE())")->fetchColumn()) > 0;
+        } catch (Throwable $e) { $sondageEnCours = false; }
+    }
+    if ($sondageEnCours) {
+        $menu = array_slice($menu, 0, 4, true) + ['sondages.php' => '📊 Sondages'] + array_slice($menu, 4, null, true);
+    }
+    // « Mes commissions » : réservé aux membres d'au moins une commission (membre, responsable ou sous-commission).
+    // « Mes disponibilités » : en plus, la commission doit avoir activé les disponibilités.
     if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
         $pid = (int) $_SESSION['player_id'];
+        $dansCommission = "(c.id IN (SELECT commission_id FROM commission_membres WHERE membre_id = $pid) OR c.id IN (SELECT commission_id FROM commission_gestionnaires WHERE membre_id = $pid) OR c.id IN (SELECT sc.commission_id FROM sous_commission_membres scm JOIN sous_commissions sc ON sc.id = scm.sous_commission_id WHERE scm.membre_id = $pid))";
+        $apres = [];
         try {
-            $nbCom = (int) $pdo->query("SELECT COUNT(*) FROM commissions c WHERE COALESCE(c.dispo_active, 1) = 1 AND (c.id IN (SELECT commission_id FROM commission_membres WHERE membre_id = $pid) OR c.id IN (SELECT commission_id FROM commission_gestionnaires WHERE membre_id = $pid) OR c.id IN (SELECT sc.commission_id FROM sous_commission_membres scm JOIN sous_commissions sc ON sc.id = scm.sous_commission_id WHERE scm.membre_id = $pid))")->fetchColumn();
-            if ($nbCom > 0) {
-                $apres = ['disponibilites.php' => '🗓️ Mes disponibilités'];
-                $menu = array_slice($menu, 0, 5, true) + $apres + array_slice($menu, 5, null, true);
+            if ((int) $pdo->query("SELECT COUNT(*) FROM commissions c WHERE $dansCommission")->fetchColumn() > 0) {
+                $apres['mes_commissions.php'] = '📋 Mes commissions';
             }
         } catch (Throwable $e) {}
+        try {
+            if ((int) $pdo->query("SELECT COUNT(*) FROM commissions c WHERE COALESCE(c.dispo_active, 1) = 1 AND $dansCommission")->fetchColumn() > 0) {
+                $apres['disponibilites.php'] = '🗓️ Mes disponibilités';
+            }
+        } catch (Throwable $e) {}
+        if (!empty($apres)) {
+            $menu = array_slice($menu, 0, 4, true) + $apres + array_slice($menu, 4, null, true);
+        }
     }
     // Points de gestion selon les droits (responsable de commission, Kurel, Culte, Secrétariat, Finance…)
     try {
@@ -65,6 +82,16 @@ function troba_member_gestion_items(?PDO $pdo = null): array
         } catch (Throwable $e) { /* repli sur la session */ }
     }
     $isCom    = !empty($_SESSION['is_gestion_commission']);
+    // Rôles relus en base (jamais le simple statut d'administrateur, ni un drapeau de session périmé)
+    if ($pdo instanceof PDO && !empty($_SESSION['player_id'])) {
+        $pidRoles = (int) $_SESSION['player_id'];
+        try {
+            $isCom = ((int) $pdo->query("SELECT COUNT(*) FROM commission_gestionnaires WHERE membre_id = $pidRoles")->fetchColumn()) > 0;
+        } catch (Throwable $e) { /* repli sur la session */ }
+        try {
+            $isInteg = ((int) $pdo->query("SELECT COUNT(*) FROM membres WHERE id = $pidRoles AND is_integrateur = 1")->fetchColumn()) > 0;
+        } catch (Throwable $e) { /* repli sur la session */ }
+    }
     $items = [];
 
     // Responsable désigné du Suivi intégration (sans lien avec une commission)
